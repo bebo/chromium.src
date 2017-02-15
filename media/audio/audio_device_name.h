@@ -16,6 +16,9 @@ struct MEDIA_EXPORT AudioDeviceName {
   AudioDeviceName(const std::string& device_name,
                   const std::string& unique_id);
 
+  // Creates loopback device representation.
+  static AudioDeviceName CreateLoopback();
+
   // Creates default device representation.
   static AudioDeviceName CreateDefault();
 
