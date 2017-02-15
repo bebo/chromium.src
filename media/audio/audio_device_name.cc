@@ -16,6 +16,12 @@ AudioDeviceName::AudioDeviceName(const std::string& device_name,
 }
 
 // static
+AudioDeviceName AudioDeviceName::CreateLoopback() {
+  return AudioDeviceName("loopback",
+		  AudioDeviceDescription::kLoopbackInputDeviceId);
+}
+
+// static
 AudioDeviceName AudioDeviceName::CreateDefault() {
   return AudioDeviceName(AudioDeviceDescription::GetDefaultDeviceName(),
                          AudioDeviceDescription::kDefaultDeviceId);
