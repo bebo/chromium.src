@@ -284,6 +284,9 @@ void AudioManagerWin::GetAudioDeviceNamesImpl(
     if (enumeration_type() == kMMDeviceEnumeration)
       device_names->push_front(AudioDeviceName::CreateCommunications());
 
+    // Add loopback device so we can capture desktop audio direct
+    device_names->push_front(AudioDeviceName::CreateLoopback());
+
     // Always add default device parameters as first element.
     device_names->push_front(AudioDeviceName::CreateDefault());
   }
