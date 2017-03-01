@@ -282,7 +282,7 @@ void UserMediaClientImpl::requestUserMedia(
   if (request_audio_input_devices || request_video_input_devices) {
     GetMediaDevicesDispatcher()->EnumerateDevices(
         request_audio_input_devices, request_video_input_devices,
-        false /* request_audio_output_devices */, security_origin,
+        true /* request_audio_output_devices */, security_origin,
         base::Bind(&UserMediaClientImpl::SelectUserMediaDevice,
                    weak_factory_.GetWeakPtr(), request_id, user_media_request,
                    base::Passed(&controls),
@@ -307,6 +307,9 @@ void UserMediaClientImpl::SelectUserMediaDevice(
       IsDeviceSource(controls->audio.stream_source)) {
     if (!PickDeviceId(user_media_request.audioConstraints(),
                       device_enumeration[MEDIA_DEVICE_TYPE_AUDIO_INPUT],
+                      &controls->audio.device_id)
+       && !PickDeviceId(user_media_request.audioConstraints(),
+                      device_enumeration[MEDIA_DEVICE_TYPE_AUDIO_OUTPUT],
                       &controls->audio.device_id)) {
       GetUserMediaRequestFailed(user_media_request, MEDIA_DEVICE_NO_HARDWARE,
                                 "");

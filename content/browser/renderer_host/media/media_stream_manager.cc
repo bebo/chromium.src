@@ -852,6 +852,7 @@ void MediaStreamManager::StartEnumeration(DeviceRequest* request,
   DCHECK(request_audio_input || request_video_input);
   MediaDevicesManager::BoolDeviceTypes devices_to_enumerate;
   devices_to_enumerate[MEDIA_DEVICE_TYPE_AUDIO_INPUT] = request_audio_input;
+  devices_to_enumerate[MEDIA_DEVICE_TYPE_AUDIO_OUTPUT] = request_audio_input;
   devices_to_enumerate[MEDIA_DEVICE_TYPE_VIDEO_INPUT] = request_video_input;
   media_devices_manager_->EnumerateDevices(
       devices_to_enumerate,
@@ -1024,6 +1025,9 @@ bool MediaStreamManager::SetupDeviceCaptureRequest(
   if (request->controls.audio.requested &&
       !GetRequestedDeviceCaptureId(request, request->audio_type(),
                                    enumeration[MEDIA_DEVICE_TYPE_AUDIO_INPUT],
+                                   &audio_device_id) &&
+      !GetRequestedDeviceCaptureId(request, request->audio_type(),
+                                   enumeration[MEDIA_DEVICE_TYPE_AUDIO_OUTPUT],
                                    &audio_device_id)) {
     return false;
   }
@@ -1382,10 +1386,11 @@ void MediaStreamManager::DevicesEnumerated(
     }
   }
 
-  if (!SetupDeviceCaptureRequest(request, enumeration))
+  if (!SetupDeviceCaptureRequest(request, enumeration)) {
     FinalizeRequestFailed(label, request, MEDIA_DEVICE_NO_HARDWARE);
-  else
+  } else {
     ReadOutputParamsAndPostRequestToUI(label, request, enumeration);
+  }
 }
 
 void MediaStreamManager::Aborted(MediaStreamType stream_type,
