@@ -32,8 +32,8 @@ namespace media {
 
 namespace {
 
-const int32_t kDefaultTargetBitrate = 5000000;
-const size_t kMaxFrameRateNumerator = 30;
+const int32_t kDefaultTargetBitrate = 6000000;
+const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kMaxResolutionWidth = 1920;
 const size_t kMaxResolutionHeight = 1088;
@@ -102,6 +102,7 @@ MediaFoundationVideoEncodeAccelerator::GetSupportedProfiles() {
   TRACE_EVENT0("gpu,startup",
                "MediaFoundationVideoEncodeAccelerator::GetSupportedProfiles");
   DVLOG(3) << __func__;
+  LOG(INFO) << __func__;
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
 
   SupportedProfiles profiles;
@@ -111,7 +112,7 @@ MediaFoundationVideoEncodeAccelerator::GetSupportedProfiles() {
   if (!CreateHardwareEncoderMFT() || !SetEncoderModes() ||
       !InitializeInputOutputSamples()) {
     ReleaseEncoderResources();
-    DVLOG(1)
+    LOG(ERROR)
         << "Hardware encode acceleration is not available on this platform.";
     return profiles;
   }
@@ -142,7 +143,14 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
     VideoCodecProfile output_profile,
     uint32_t initial_bitrate,
     Client* client) {
+
+  // FIXME
+  initial_bitrate = kDefaultTargetBitrate;
   DVLOG(3) << __func__ << ": input_format=" << VideoPixelFormatToString(format)
+           << ", input_visible_size=" << input_visible_size.ToString()
+           << ", output_profile=" << output_profile
+           << ", initial_bitrate=" << initial_bitrate;
+  LOG(INFO) << __func__ << ": input_format=" << VideoPixelFormatToString(format)
            << ", input_visible_size=" << input_visible_size.ToString()
            << ", output_profile=" << output_profile
            << ", initial_bitrate=" << initial_bitrate;
@@ -329,6 +337,7 @@ void MediaFoundationVideoEncodeAccelerator::PreSandboxInitialization() {
 
 bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
   DVLOG(3) << __func__;
+  LOG(INFO) << __func__;
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
 
   if (base::win::GetVersion() < base::win::VERSION_WIN8) {
@@ -354,22 +363,71 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
   output_info.guidMajorType = MFMediaType_Video;
   output_info.guidSubtype = MFVideoFormat_H264;
 
-  base::win::ScopedCoMem<CLSID> CLSIDs;
   uint32_t count = 0;
+
+#undef USE_MFT_ENUM_EX
+#ifdef USE_MFT_ENUM_EX 
+  IMFActivate **activate = NULL;
+  HRESULT hr = MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, flags, &input_info,
+          &output_info, &activate, &count);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't enumerate hardware encoder", false);
+  RETURN_ON_FAILURE((count > 0), "No HW encoder found", false);
+  LOG(INFO) << "HW encoder(s) found: " << count;
+  DVLOG(3) << "HW encoder(s) found: " << count;
+
+  hr = activate[0]->ActivateObject(IID_PPV_ARGS(&encoder_));
+
+  RETURN_ON_HR_FAILURE(hr, "Couldn't activate hardware encoder", false);
+  RETURN_ON_FAILURE((encoder_.Get() != nullptr),
+                                           "No HW encoder instance created", false);
+  PROPVARIANT pvalue;
+  activate[0]->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
+  LOG(INFO) << "Current encoder: " << pvalue.pwszVal;
+  
+  IMFAttributes *attributes;
+  encoder_.Get()->GetAttributes(&attributes);
+  hr = attributes->SetUINT32(MF_TRANSFORM_ASYNC, FALSE);
+  RETURN_ON_HR_FAILURE(hr, "Could not set sync", false);
+  //FIXME - free all activate instances
+  //
+#else
+
+  base::win::ScopedCoMem<CLSID> CLSIDs;
   HRESULT hr = MFTEnum(MFT_CATEGORY_VIDEO_ENCODER, flags, &input_info,
                        &output_info, NULL, &CLSIDs, &count);
   RETURN_ON_HR_FAILURE(hr, "Couldn't enumerate hardware encoder", false);
   RETURN_ON_FAILURE((count > 0), "No HW encoder found", false);
   DVLOG(3) << "HW encoder(s) found: " << count;
+  LOG(INFO) << "HW encoder(s) found: " << count;
   hr = ::CoCreateInstance(CLSIDs[0], nullptr, CLSCTX_ALL,
                           IID_PPV_ARGS(&encoder_));
   RETURN_ON_HR_FAILURE(hr, "Couldn't activate hardware encoder", false);
   RETURN_ON_FAILURE((encoder_.Get() != nullptr),
                     "No HW encoder instance created", false);
+
+  std::string name;
+  char buff[512];
+
+  LPWSTR info_name;
+  MFTGetInfo(CLSIDs[0], &info_name, NULL, NULL, NULL, NULL, NULL);
+  std::snprintf(buff, sizeof(buff), "%S", info_name);
+  name = buff;
+  LOG(INFO) << "Current encoder name: " << name;
+
+  IMFAttributes *attributes;
+  encoder_.Get()->GetAttributes(&attributes);
+  PROPVARIANT pvalue;
+  attributes->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
+  std::snprintf(buff, sizeof(buff), "%S", pvalue.pwszVal);
+  name = buff;
+  LOG(INFO) << "Current encoder friendly name : " << name;
+
+#endif
   return true;
 }
 
 bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
+  LOG(INFO) << __func__;
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
 
   DWORD input_count = 0;
@@ -393,7 +451,10 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
     input_stream_id_ = 0;
     output_stream_id_ = 0;
   } else {
-    LOG(ERROR) << "Couldn't find stream ids.";
+    // LOG(ERROR) << "Couldn't find stream ids.";
+    LOG(ERROR) << "Couldn't find stream ids." << std::hex << hr << std::dec ;
+    RETURN_ON_HR_FAILURE(hr, "Couldn't find stream ids", false);
+
     return false;
   }
 
@@ -406,6 +467,7 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
   RETURN_ON_HR_FAILURE(hr, "Couldn't set video format", false);
   hr = imf_output_media_type_->SetUINT32(MF_MT_AVG_BITRATE, target_bitrate_);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+  LOG(INFO) << "MF_MT_AVG_BITRATE: " << target_bitrate_;
   hr = MFSetAttributeRatio(imf_output_media_type_.Get(), MF_MT_FRAME_RATE,
                            frame_rate_, 1);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate", false);
@@ -416,8 +478,10 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
   hr = imf_output_media_type_->SetUINT32(MF_MT_INTERLACE_MODE,
                                          MFVideoInterlace_Progressive);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set interlace mode", false);
+  // fpn
   hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_PROFILE,
                                          eAVEncH264VProfile_Base);
+                                         //eAVEncH264VProfile_UCConstrainedHigh);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set codec profile", false);
   hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
                                0);
@@ -447,6 +511,8 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
 }
 
 bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
+  LOG(INFO) << __func__;
+
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
   RETURN_ON_FAILURE((encoder_.Get() != nullptr),
                     "No HW encoder instance created", false);
@@ -454,21 +520,71 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   HRESULT hr = encoder_.CopyTo(codec_api_.GetAddressOf());
   RETURN_ON_HR_FAILURE(hr, "Couldn't get ICodecAPI", false);
   VARIANT var;
+
+
+
+
+#if 0
+  var.vt = VT_UI4;
+  //var.ulVal = eAVEncCommonRateControlMode_PeakConstrainedVBR;
+  var.ulVal = eAVEncCommonRateControlMode_Quality;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonRateControlMode, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CommonRateControlMode", false);
+
+  var.ulVal = 50;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQuality, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+#endif
+
+#if 0
+  var.vt = VT_UI4;
+  var.ulVal = eAVEncCommonRateControlMode_PeakConstrainedVBR;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonRateControlMode, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CommonRateControlMode", false);
+
+  var.vt = VT_UI4;
+  var.ulVal = 2*target_bitrate_;
+  LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << 2*target_bitrate_;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+  var.ulVal = target_bitrate_;
+  LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+#endif
+
+#if 1
   var.vt = VT_UI4;
   var.ulVal = eAVEncCommonRateControlMode_CBR;
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonRateControlMode, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CommonRateControlMode", false);
+
   var.ulVal = target_bitrate_;
+  LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+#endif
+  var.vt = VT_UI4;
   var.ulVal = eAVEncAdaptiveMode_Resolution;
   hr = codec_api_->SetValue(&CODECAPI_AVEncAdaptiveMode, &var);
+  LOG(ERROR) << std::hex << "can't set CODECAPI_AVEncAdaptiveMode 0x" << hr << std::dec ;
   RETURN_ON_HR_FAILURE(hr, "Couldn't set FrameRate", false);
   var.vt = VT_BOOL;
   var.boolVal = VARIANT_TRUE;
   hr = codec_api_->SetValue(&CODECAPI_AVLowLatencyMode, &var);
+  LOG(ERROR) << std::hex << "Couldn't set LowLatencyMode 0x" << hr << std::dec ;
   RETURN_ON_HR_FAILURE(hr, "Couldn't set LowLatencyMode", false);
+// TODO SET SYNC !
+//
+#if 0
+  var.vt = VT_UI4;
+  var.ulVal = 100;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQualityVsSpeed, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQualityVsSpeed", false);
+#endif
+
   return SUCCEEDED(hr);
+
 }
 
 bool MediaFoundationVideoEncodeAccelerator::IsResolutionSupported(
@@ -683,8 +799,17 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     VARIANT var;
     var.vt = VT_UI4;
     var.ulVal = target_bitrate_;
+
     HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
     RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+    LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
+#if 0
+    var.ulVal = 2*target_bitrate_;
+    hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+    LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << 2*target_bitrate_;
+#endif
+
   }
 }
 
