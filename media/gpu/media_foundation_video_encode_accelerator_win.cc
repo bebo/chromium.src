@@ -416,11 +416,11 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
 
   IMFAttributes *attributes;
   encoder_.Get()->GetAttributes(&attributes);
-  PROPVARIANT pvalue;
-  attributes->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
-  std::snprintf(buff, sizeof(buff), "%S", pvalue.pwszVal);
-  name = buff;
-  LOG(INFO) << "Current encoder friendly name : " << name;
+  // PROPVARIANT pvalue;
+  // attributes->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
+  // std::snprintf(buff, sizeof(buff), "%S", pvalue.pwszVal);
+  // name = buff;
+  // LOG(INFO) << "Current encoder friendly name : " << name;
 
 #endif
   return true;
@@ -480,8 +480,8 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
   RETURN_ON_HR_FAILURE(hr, "Couldn't set interlace mode", false);
   // fpn
   hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_PROFILE,
-                                         eAVEncH264VProfile_Base);
-                                         //eAVEncH264VProfile_UCConstrainedHigh);
+                                         //eAVEncH264VProfile_Base);
+                                         eAVEncH264VProfile_UCConstrainedHigh);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set codec profile", false);
   hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
                                0);
@@ -520,8 +520,6 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   HRESULT hr = encoder_.CopyTo(codec_api_.GetAddressOf());
   RETURN_ON_HR_FAILURE(hr, "Couldn't get ICodecAPI", false);
   VARIANT var;
-
-
 
 
 #if 0
@@ -563,6 +561,17 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+
+#if 0
+  // TODO try 31?
+  var.vt = VT_UI8;
+  uint64_t qp =  20;
+  var.ullVal = qp | (qp << 16) | (qp << 32) | (qp << 48);
+  
+  hr = codec_api_->SetValue(&CODECAPI_AVEncVideoEncodeQP, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set encode QP", false);
+#endif
+
 #endif
   var.vt = VT_UI4;
   var.ulVal = eAVEncAdaptiveMode_Resolution;
@@ -574,13 +583,16 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   hr = codec_api_->SetValue(&CODECAPI_AVLowLatencyMode, &var);
   LOG(ERROR) << std::hex << "Couldn't set LowLatencyMode 0x" << hr << std::dec ;
   RETURN_ON_HR_FAILURE(hr, "Couldn't set LowLatencyMode", false);
-// TODO SET SYNC !
-//
-#if 0
+
+#if 1
   var.vt = VT_UI4;
-  var.ulVal = 100;
+  var.ulVal = 75;
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQualityVsSpeed, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQualityVsSpeed", false);
+
+  var.ulVal = 1;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncNumWorkerThreads, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncNumWorkerThreads", false);
 #endif
 
   return SUCCEEDED(hr);
