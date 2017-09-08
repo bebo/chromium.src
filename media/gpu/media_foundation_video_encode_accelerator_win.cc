@@ -590,9 +590,15 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQualityVsSpeed, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQualityVsSpeed", false);
 
-  var.ulVal = 1;
+  var.ulVal = 2;
   hr = codec_api_->SetValue(&CODECAPI_AVEncNumWorkerThreads, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncNumWorkerThreads", false);
+
+  var.vt = VT_UI4;
+  var.ulVal = 2;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount", false);
+
 #endif
 
   return SUCCEEDED(hr);
