@@ -18,6 +18,7 @@
 
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/trace_event.h"
+#include "base/win/registry.h"
 #include "base/win/scoped_co_mem.h"
 #include "base/win/scoped_variant.h"
 #include "base/win/windows_version.h"
@@ -27,6 +28,7 @@
 
 using base::win::ScopedComPtr;
 using media::mf::MediaBufferScopedPointer;
+using base::win::RegKey;
 
 namespace media {
 
@@ -50,7 +52,12 @@ constexpr const wchar_t* const kMediaFoundationVideoEncoderDLLs[] = {
 // Resolutions that some platforms support, should be listed in ascending order.
 constexpr const gfx::Size kOptionalMaxResolutions[] = {gfx::Size(3840, 2176)};
 
+
+
+
 }  // namespace
+
+
 
 class MediaFoundationVideoEncodeAccelerator::EncodeOutput {
  public:
@@ -585,19 +592,42 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   RETURN_ON_HR_FAILURE(hr, "Couldn't set LowLatencyMode", false);
 
 #if 1
+  //static constexpr wchar_t kBeboRegKey[] = 
+
+  RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
+  DWORD AVEncCommonQualityVsSpeed = 75;
+  DWORD AVEncNumWorkerThreads = 2;
+  DWORD AVEncMPVDefaultBPictureCount = 2;
+  if (beboKey.Valid()) {
+    if (beboKey.HasValue(L"AVEncCommonQualityVsSpeed")) {
+       beboKey.ReadValueDW(L"AVEncCommonQualityVsSpeed", &AVEncCommonQualityVsSpeed);
+    }
+    if (beboKey.HasValue(L"AVEncNumWorkerThreads")) {
+       beboKey.ReadValueDW(L"AVEncNumWorkerThreads", &AVEncNumWorkerThreads);
+    }
+    if (beboKey.HasValue(L"AVEncMPVDefaultBPictureCount")) {
+       beboKey.ReadValueDW(L"AVEncMPVDefaultBPictureCount", &AVEncMPVDefaultBPictureCount);
+    }
+  }
+
   var.vt = VT_UI4;
-  var.ulVal = 75;
+  var.ulVal = AVEncCommonQualityVsSpeed;
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQualityVsSpeed, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQualityVsSpeed", false);
 
-  var.ulVal = 2;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncNumWorkerThreads, &var);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncNumWorkerThreads", false);
+  LOG(INFO) << "AVEncCommonQualityVsSpeed: " << AVEncCommonQualityVsSpeed;
 
   var.vt = VT_UI4;
-  var.ulVal = 2;
+  var.ulVal = AVEncNumWorkerThreads;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncNumWorkerThreads, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncNumWorkerThreads", false);
+  LOG(INFO) << "AVEncNumWorkerThreads: " << AVEncNumWorkerThreads;
+
+  var.vt = VT_UI4;
+  var.ulVal = AVEncMPVDefaultBPictureCount;
   hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount", false);
+  LOG(INFO) << "AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount;
 
 #endif
 
