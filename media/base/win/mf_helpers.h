@@ -20,7 +20,7 @@ namespace mf {
 #define RETURN_ON_FAILURE(result, log, ret) \
   do {                                      \
     if (!(result)) {                        \
-      DLOG(ERROR) << log;                   \
+      LOG(ERROR) << log;                   \
       mf::LogDXVAError(__LINE__);           \
       return ret;                           \
     }                                       \

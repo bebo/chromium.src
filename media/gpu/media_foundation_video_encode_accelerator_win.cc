@@ -545,7 +545,7 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   DWORD AVEncH264CABACEnable = 0xDEADBEEF;
   DWORD AVEncAdaptiveMode = eAVEncAdaptiveMode_Resolution;
   DWORD AVEncVideoMinQP = 0;
-  bool AVLowLatencyMode = true;
+  DWORD AVLowLatencyMode = true;
   int64_t AVEncVideoEncodeQP = 0x0;
 
   if (beboKey.Valid()) {
@@ -559,9 +559,7 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
        beboKey.ReadValueDW(L"AVEncVideoMinQP ", &AVEncVideoMinQP);
     }
     if (beboKey.HasValue(L"AVLowLatencyMode")) {
-       DWORD  latency;
-       beboKey.ReadValueDW(L"AVLowLatencyMode", &latency);
-       AVLowLatencyMode = latency > 0;
+       beboKey.ReadValueDW(L"AVLowLatencyMode", &AVLowLatencyMode);
     }
     if (beboKey.HasValue(L"AVEncCommonMaxBitRate")) {
        beboKey.ReadValueDW(L"AVEncCommonMaxBitRate", &AVEncCommonMaxBitRate_);
@@ -631,7 +629,7 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   LOG(INFO) << std::hex << "CODECAPI_AVEncAdaptiveMode: 0x" << AVEncAdaptiveMode << std::dec ;
 
   var.vt = VT_BOOL;
-  var.boolVal = AVLowLatencyMode;
+  var.boolVal = AVLowLatencyMode > 0 ? VARIANT_TRUE : VARIANT_FALSE;
   hr = codec_api_->SetValue(&CODECAPI_AVLowLatencyMode, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set LowLatencyMode", false);
   LOG(INFO) << std::hex << "CODECAPI_AVLowLatencyMode: 0x" << AVLowLatencyMode << std::dec ;
@@ -652,11 +650,11 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
 
   if (AVEncH264CABACEnable != 0xDEADBEEF) {
     var.vt = VT_BOOL;
-    var.boolVal = AVEncH264CABACEnable > 0;
+    var.boolVal = AVEncH264CABACEnable > 0 ? VARIANT_TRUE : VARIANT_FALSE;
     hr = codec_api_->SetValue(&CODECAPI_AVEncH264CABACEnable, &var);
     RETURN_ON_HR_FAILURE(hr, "Couldn't set AVEncH264CABACEnable", false);
   }
-  LOG(INFO) << "CODECAPI_AVEncH264CABACEnable: " << std::hex << AVEncH264CABACEnable << std::dec;
+  LOG(INFO) << "CODECAPI_AVEncH264CABACEnable: 0x" << std::hex << AVEncH264CABACEnable << std::dec;
 
   var.vt = VT_UI4;
   var.ulVal = AVEncMPVDefaultBPictureCount;
