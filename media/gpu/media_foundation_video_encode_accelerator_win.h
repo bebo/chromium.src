@@ -121,6 +121,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   size_t bitstream_buffer_size_;
   uint32_t frame_rate_;
   uint32_t target_bitrate_;
+  DWORD AVEncCommonMaxBitRate_;
   size_t u_plane_offset_;
   size_t v_plane_offset_;
   size_t y_stride_;
