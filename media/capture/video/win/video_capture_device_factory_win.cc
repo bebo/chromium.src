@@ -44,8 +44,9 @@ enum BlacklistedCameraNames {
   BLACKLISTED_CAMERA_IP_CAMERA = 1,
   BLACKLISTED_CAMERA_CYBERLINK_WEBCAM_SPLITTER = 2,
   BLACKLISTED_CAMERA_EPOCCAM = 3,
+  BLACKLISTED_CAMERA_CHROMACAM = 4,
   // This one must be last, and equal to the previous enumerated value.
-  BLACKLISTED_CAMERA_MAX = BLACKLISTED_CAMERA_EPOCCAM,
+  BLACKLISTED_CAMERA_MAX = BLACKLISTED_CAMERA_CHROMACAM,
 };
 
 // Blacklisted devices are identified by a characteristic prefix of the name.
@@ -56,6 +57,7 @@ static const char* const kBlacklistedCameraNames[] = {
     "Google Camera Adapter",
     // The following software WebCams cause crashes.
     "IP Camera [JPEG/MJPEG]", "CyberLink Webcam Splitter", "EpocCam",
+    "ChromaCam",
 };
 static_assert(arraysize(kBlacklistedCameraNames) == BLACKLISTED_CAMERA_MAX + 1,
               "kBlacklistedCameraNames should be same size as "
