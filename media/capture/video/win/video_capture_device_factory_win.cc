@@ -328,8 +328,14 @@ static void GetDeviceSupportedFormatsDirectShow(const Descriptor& descriptor,
                                        enum_moniker.GetAddressOf(), 0);
   // CreateClassEnumerator returns S_FALSE on some Windows OS when no camera
   // exists. Therefore the FAILED macro can't be used.
-  if (hr != S_OK)
-    return;
+  if (hr != S_OK) {
+    // whitelisted devices are usually filters, and not video input source,
+    // and they are usually valid device? we're not going through moniker again,
+    // do we even need this check?
+    if (!IsDeviceWhiteListed(descriptor.device_id)) {
+      return;
+    }
+  }
 
   // Walk the capture devices. No need to check for device presence again since
   // that is anyway needed in GetDeviceFilter(). "google camera adapter" and old
