@@ -389,9 +389,9 @@ void WASAPIAudioInputStream::Run() {
   base::win::ScopedComPtr<IAudioClock> audio_clock;
   audio_client_->GetService(IID_PPV_ARGS(&audio_clock));
 
-  UINT64 buffer_cnt = {};
-  UINT64 late_cnt = {};
-  UINT64 discont_cnt = -1;
+  INT64 buffer_cnt = 0;
+  INT64 late_cnt = 0;
+  INT64 discont_cnt = -1;
   bool late = false;
 
   while (recording && !error) {
