@@ -25,6 +25,8 @@
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 
+#define HNS_BUFFER_DURATION (5*10000000)
+
 namespace media {
 namespace {
 bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
@@ -79,6 +81,8 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
   packet_size_bytes_ = params.GetBytesPerBuffer();
   DVLOG(1) << "Number of bytes per audio frame  : " << frame_size_;
   DVLOG(1) << "Number of audio frames per packet: " << packet_size_frames_;
+  LOG(INFO) << "Number of bytes per audio frame  : " << frame_size_;
+  LOG(INFO) << "Number of audio frames per packet: " << packet_size_frames_;
 
   // All events are auto-reset events and non-signaled initially.
 
@@ -99,6 +103,7 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
         (10000000.0 / static_cast<double>(performance_frequency.QuadPart));
   } else {
     DLOG(ERROR) << "High-resolution performance counters are not supported.";
+    LOG(ERROR) << "High-resolution performance counters are not supported.";
   }
 }
 
@@ -133,12 +138,12 @@ bool WASAPIAudioInputStream::Open() {
     return false;
   }
 
-#ifndef NDEBUG
+//#ifndef NDEBUG
   // Retrieve the stream format which the audio engine uses for its internal
   // processing/mixing of shared-mode streams. This function call is for
   // diagnostic purposes only and only in debug mode.
   hr = GetAudioEngineStreamFormat();
-#endif
+//#endif
 
   // Verify that the selected audio endpoint supports the specified format
   // set during construction.
@@ -252,6 +257,7 @@ void WASAPIAudioInputStream::Stop() {
 
 void WASAPIAudioInputStream::Close() {
   DVLOG(1) << "WASAPIAudioInputStream::Close()";
+  LOG(INFO) << "WASAPIAudioInputStream::Close()";
   // It is valid to call Close() before calling open or Start().
   // It is also valid to call Close() after Start() has been called.
   Stop();
@@ -370,8 +376,10 @@ void WASAPIAudioInputStream::Run() {
                                  buffers_required));
 
   DVLOG(1) << "AudioBlockFifo buffer count: " << buffers_required;
+  LOG(INFO) << "AudioBlockFifo buffer count: " << buffers_required;
 
   LARGE_INTEGER now_count = {};
+  LARGE_INTEGER end_count = {};
   bool recording = true;
   bool error = false;
   double volume = GetVolume();
@@ -380,6 +388,11 @@ void WASAPIAudioInputStream::Run() {
 
   base::win::ScopedComPtr<IAudioClock> audio_clock;
   audio_client_->GetService(IID_PPV_ARGS(&audio_clock));
+
+  UINT64 buffer_cnt = {};
+  UINT64 late_cnt = {};
+  UINT64 discont_cnt = {};
+  bool late = false;
 
   while (recording && !error) {
     HRESULT hr = S_FALSE;
@@ -410,9 +423,10 @@ void WASAPIAudioInputStream::Run() {
                                               &flags, &device_position,
                                               &first_audio_frame_timestamp);
         if (FAILED(hr)) {
-          DLOG(ERROR) << "Failed to get data from the capture buffer";
+          LOG(ERROR) << "Failed to get data from the capture buffer: 0x" << std::hex << hr << std::dec ;
           continue;
         }
+        QueryPerformanceCounter(&now_count);
 
         if (audio_clock) {
           // The reported timestamp from GetBuffer is not as reliable as the
@@ -430,6 +444,14 @@ void WASAPIAudioInputStream::Run() {
             fifo_->Push(data_ptr, num_frames_to_read,
                         format_.wBitsPerSample / 8);
           }
+          buffer_cnt++;
+          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
+            if (late) {
+              late_cnt++;
+            } else {
+              discont_cnt++;
+            }
+          }
         }
 
         hr = audio_capture_client_->ReleaseBuffer(num_frames_to_read);
@@ -439,7 +461,7 @@ void WASAPIAudioInputStream::Run() {
         // The value contains two parts (A+B), where A is the delay of the
         // first audio frame in the packet and B is the extra delay
         // contained in any stored data. Unit is in audio frames.
-        QueryPerformanceCounter(&now_count);
+        //QueryPerformanceCounter(&now_count);
         // first_audio_frame_timestamp will be 0 if we didn't get a timestamp.
         double audio_delay_frames =
             first_audio_frame_timestamp == 0
@@ -480,12 +502,26 @@ void WASAPIAudioInputStream::Run() {
             delay_frames = 0;
           }
         }
+
+        QueryPerformanceCounter(&end_count);
+        end_count.QuadPart  = end_count.QuadPart - now_count.QuadPart;
+        end_count.QuadPart *= perf_count_to_100ns_units_;
+        // FIXME
+        LOG(INFO) << "duration in 100ns units: " << end_count.QuadPart << " MAX: " << HNS_BUFFER_DURATION;
+        if (end_count.QuadPart > HNS_BUFFER_DURATION) {
+          late = true;
+        } else {
+          late = false;
+        }
+
       } break;
       default:
         error = true;
         break;
     }
   }
+
+  LOG(INFO) << "WASAPI CAPTURE STATS - buffer_cnt: " << buffer_cnt << " late_cnt: " << late_cnt << " discont_cnt: " << discont_cnt << "pro_audio: " << mmcss_is_ok << " " << device_id_;
 
   if (recording && error) {
     // TODO(henrika): perhaps it worth improving the cleanup here by e.g.
@@ -574,7 +610,7 @@ HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
 
 HRESULT WASAPIAudioInputStream::GetAudioEngineStreamFormat() {
   HRESULT hr = S_OK;
-#ifndef NDEBUG
+//#ifndef NDEBUG
   // The GetMixFormat() method retrieves the stream format that the
   // audio engine uses for its internal processing of shared-mode streams.
   // The method always uses a WAVEFORMATEXTENSIBLE structure, instead
@@ -588,27 +624,27 @@ HRESULT WASAPIAudioInputStream::GetAudioEngineStreamFormat() {
   // See http://msdn.microsoft.com/en-us/windows/hardware/gg463006#EFH
   // for details on the WAVE file format.
   WAVEFORMATEX format = format_ex->Format;
-  DVLOG(2) << "WAVEFORMATEX:";
-  DVLOG(2) << "  wFormatTags    : 0x" << std::hex << format.wFormatTag;
-  DVLOG(2) << "  nChannels      : " << format.nChannels;
-  DVLOG(2) << "  nSamplesPerSec : " << format.nSamplesPerSec;
-  DVLOG(2) << "  nAvgBytesPerSec: " << format.nAvgBytesPerSec;
-  DVLOG(2) << "  nBlockAlign    : " << format.nBlockAlign;
-  DVLOG(2) << "  wBitsPerSample : " << format.wBitsPerSample;
-  DVLOG(2) << "  cbSize         : " << format.cbSize;
+  LOG(INFO) << "WAVEFORMATEX:";
+  LOG(INFO) << "  wFormatTags    : 0x" << std::hex << format.wFormatTag;
+  LOG(INFO) << "  nChannels      : " << format.nChannels;
+  LOG(INFO) << "  nSamplesPerSec : " << format.nSamplesPerSec;
+  LOG(INFO) << "  nAvgBytesPerSec: " << format.nAvgBytesPerSec;
+  LOG(INFO) << "  nBlockAlign    : " << format.nBlockAlign;
+  LOG(INFO) << "  wBitsPerSample : " << format.wBitsPerSample;
+  LOG(INFO) << "  cbSize         : " << format.cbSize;
 
-  DVLOG(2) << "WAVEFORMATEXTENSIBLE:";
-  DVLOG(2) << " wValidBitsPerSample: "
+  LOG(INFO) << "WAVEFORMATEXTENSIBLE:";
+  LOG(INFO) << " wValidBitsPerSample: "
            << format_ex->Samples.wValidBitsPerSample;
-  DVLOG(2) << " dwChannelMask      : 0x" << std::hex
+  LOG(INFO) << " dwChannelMask      : 0x" << std::hex
            << format_ex->dwChannelMask;
   if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_PCM)
-    DVLOG(2) << " SubFormat          : KSDATAFORMAT_SUBTYPE_PCM";
+    LOG(INFO) << " SubFormat          : KSDATAFORMAT_SUBTYPE_PCM";
   else if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
-    DVLOG(2) << " SubFormat          : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT";
+    LOG(INFO) << " SubFormat          : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT";
   else if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_WAVEFORMATEX)
-    DVLOG(2) << " SubFormat          : KSDATAFORMAT_SUBTYPE_WAVEFORMATEX";
-#endif
+    LOG(INFO) << " SubFormat          : KSDATAFORMAT_SUBTYPE_WAVEFORMATEX";
+//#endif
   return hr;
 }
 
@@ -628,8 +664,10 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
   DLOG_IF(ERROR, hr == S_FALSE)
       << "Format is not supported but a closest match exists.";
 
+  LOG(INFO) << "IS Audio capture data conversion needed ?";
   if (hr == S_FALSE && IsSupportedFormatForConversion(*closest_match.get())) {
     DVLOG(1) << "Audio capture data conversion needed.";
+    LOG(INFO) << "Audio capture data conversion needed.";
     // Ideally, we want a 1:1 ratio between the buffers we get and the buffers
     // we give to OnData so that each buffer we receive from the OS can be
     // directly converted to a buffer that matches with what was asked for.
@@ -664,7 +702,8 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
     format_.nChannels = closest_match->nChannels;
     format_.nBlockAlign = (format_.wBitsPerSample / 8) * format_.nChannels;
     format_.nAvgBytesPerSec = format_.nSamplesPerSec * format_.nBlockAlign;
-    DVLOG(1) << "Will convert audio from: \nbits: " << format_.wBitsPerSample
+    /* DVLOG(1) << "Will convert audio from: \nbits: " << format_.wBitsPerSample */
+    LOG(INFO) << "Will convert audio from: \nbits: " << format_.wBitsPerSample
              << "\nsample rate: " << format_.nSamplesPerSec
              << "\nchannels: " << format_.nChannels
              << "\nblock align: " << format_.nBlockAlign
@@ -680,8 +719,13 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
 
     imperfect_buffer_size_conversion_ =
         std::modf(new_frames_per_buffer, &new_frames_per_buffer) != 0.0;
-    DVLOG_IF(1, imperfect_buffer_size_conversion_)
-        << "Audio capture data conversion: Need to inject fifo";
+    /* DVLOG_IF(1, imperfect_buffer_size_conversion_) */
+    /*     << "Audio capture data conversion: Need to inject fifo"; */
+    if (imperfect_buffer_size_conversion_) {
+      LOG(INFO) << "Audio capture data conversion: Need to inject fifo";
+    }
+    /* DVLOG_IF(1, imperfect_buffer_size_conversion_) */
+    /*     << "Audio capture data conversion: Need to inject fifo"; */
 
     // Indicate that we're good to go with a close match.
     hr = S_OK;
@@ -709,9 +753,11 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   // buffer is never smaller than the minimum buffer size needed to ensure
   // that glitches do not occur between the periodic processing passes.
   // This setting should lead to lowest possible latency.
+  //
+  // Changed this to 5ms to avoid glitches
   HRESULT hr = audio_client_->Initialize(
       AUDCLNT_SHAREMODE_SHARED, flags,
-      0,  // hnsBufferDuration
+      HNS_BUFFER_DURATION,
       0, &format_, device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
                        ? &kCommunicationsSessionId
                        : nullptr);
