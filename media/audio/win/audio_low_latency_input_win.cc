@@ -25,7 +25,7 @@
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 
-#define HNS_BUFFER_DURATION (5*10000000)
+#define HNS_BUFFER_DURATION (500*10000) // 500 ms
 
 namespace media {
 namespace {
@@ -391,7 +391,7 @@ void WASAPIAudioInputStream::Run() {
 
   UINT64 buffer_cnt = {};
   UINT64 late_cnt = {};
-  UINT64 discont_cnt = {};
+  UINT64 discont_cnt = -1;
   bool late = false;
 
   while (recording && !error) {
@@ -506,9 +506,7 @@ void WASAPIAudioInputStream::Run() {
         QueryPerformanceCounter(&end_count);
         end_count.QuadPart  = end_count.QuadPart - now_count.QuadPart;
         end_count.QuadPart *= perf_count_to_100ns_units_;
-        // FIXME
-        LOG(INFO) << "duration in 100ns units: " << end_count.QuadPart << " MAX: " << HNS_BUFFER_DURATION;
-        if (end_count.QuadPart > HNS_BUFFER_DURATION) {
+        if (end_count.QuadPart >= HNS_BUFFER_DURATION) {
           late = true;
         } else {
           late = false;
@@ -779,7 +777,7 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
     return hr;
   }
 
-  DVLOG(1) << "endpoint buffer size: " << endpoint_buffer_size_frames_
+  LOG(INFO) << "endpoint buffer size: " << endpoint_buffer_size_frames_
            << " [frames]";
 
 #ifndef NDEBUG
