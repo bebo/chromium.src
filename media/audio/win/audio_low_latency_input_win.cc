@@ -64,6 +64,8 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
   bool avrt_init = avrt::Initialize();
   DCHECK(avrt_init) << "Failed to load the Avrt.dll";
 
+  LOG(INFO) << "BEBO - number of desired channels: " << params.channels();
+
   // Set up the desired capture format specified by the client.
   format_.nSamplesPerSec = params.sample_rate();
   format_.wFormatTag = WAVE_FORMAT_PCM;
@@ -616,8 +618,7 @@ HRESULT WASAPIAudioInputStream::GetAudioEngineStreamFormat() {
   // An WAVEFORMATEXTENSIBLE structure can specify both the mapping of
   // channels to speakers and the number of bits of precision in each sample.
   base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> format_ex;
-  hr =
-      audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&format_ex));
+  hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&format_ex));
 
   // See http://msdn.microsoft.com/en-us/windows/hardware/gg463006#EFH
   // for details on the WAVE file format.
@@ -656,14 +657,32 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
   // rate as the stream format used byfCHANNEL_LAYOUT_UNSUPPORTED the device.
   // Many audio devices support both PCM and non-PCM stream formats. However,
   // the audio engine can mix only PCM streams.
-  base::win::ScopedCoMem<WAVEFORMATEX> closest_match;
-  HRESULT hr = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
-                                                &format_, &closest_match);
-  DLOG_IF(ERROR, hr == S_FALSE)
-      << "Format is not supported but a closest match exists.";
 
-  LOG(INFO) << "IS Audio capture data conversion needed ?";
-  if (hr == S_FALSE && IsSupportedFormatForConversion(*closest_match.get())) {
+  /* base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> format_ex; */
+  // TODO handle return
+
+	/* if (wfex->wFormatTag == WAVE_FORMAT_EXTENSIBLE) { */
+	/* 	PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(wfex); */
+	/* 	speaker_layout = ConvertSpeakerLayout(pEx->dwChannelMask); */
+	/* } */
+
+  //hr = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
+  //                                              &format_, &closest_match);
+  base::win::ScopedCoMem<WAVEFORMATEX> closest_match;
+  HRESULT hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
+	PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(&closest_match);
+  pEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+  pEx->Samples.wValidBitsPerSample = 16;
+  closest_match->wBitsPerSample = 16;
+  closest_match->nBlockAlign = closest_match->nChannels * closest_match->wBitsPerSample / 8;
+  closest_match->nAvgBytesPerSec = closest_match->nBlockAlign * closest_match->nSamplesPerSec; 
+
+  /* DLOG_IF(ERROR, hr == S_FALSE) */
+  /*     << "Format is not supported but a closest match exists."; */
+
+  LOG(INFO) << "IS Audio capture data conversion needed ? S_FALSE:" << (hr == S_FALSE);
+
+  if (true || hr == S_FALSE && IsSupportedFormatForConversion(*closest_match.get())) {
     DVLOG(1) << "Audio capture data conversion needed.";
     LOG(INFO) << "Audio capture data conversion needed.";
     // Ideally, we want a 1:1 ratio between the buffers we get and the buffers
@@ -735,6 +754,7 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
 HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   DCHECK_EQ(OPEN_RESULT_OK, open_result_);
   DWORD flags;
+  LOG(INFO) << "WASAPIAudioInputStream::InitializeAudioEngine()";
   // Use event-driven mode only fo regular input devices. For loopback the
   // EVENTCALLBACK flag is specified when intializing
   // |audio_render_client_for_loopback_|.
@@ -752,17 +772,32 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   // that glitches do not occur between the periodic processing passes.
   // This setting should lead to lowest possible latency.
   //
-  // Changed this to 5ms to avoid glitches
-  HRESULT hr = audio_client_->Initialize(
-      AUDCLNT_SHAREMODE_SHARED, flags,
+  // Changed this to 500ms to avoid glitches
+  base::win::ScopedCoMem<WAVEFORMATEX> closest_match;
+  HRESULT hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
+	PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(&closest_match);
+  pEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+  pEx->Samples.wValidBitsPerSample = 16;
+  closest_match->wBitsPerSample = 16;
+  closest_match->nBlockAlign = closest_match->nChannels * closest_match->wBitsPerSample / 8;
+  closest_match->nAvgBytesPerSec = closest_match->nBlockAlign * closest_match->nSamplesPerSec; 
+
+
+  //HRESULT hr = audio_client_->Initialize(
+  hr = audio_client_->Initialize(
+      AUDCLNT_SHAREMODE_SHARED,
+      flags,
       HNS_BUFFER_DURATION,
-      0, &format_, device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
+      0,
+      closest_match.get(),
+      device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
                        ? &kCommunicationsSessionId
                        : nullptr);
 
   if (FAILED(hr)) {
     open_result_ = OPEN_RESULT_AUDIO_CLIENT_INIT_FAILED;
     UMA_HISTOGRAM_SPARSE_SLOWLY("Media.Audio.Capture.Win.InitError", hr);
+    LOG(ERROR) << "WASAPIAudioInputStream::InitializeAudioEngine - Media.Audio.Capture.Win.InitError 0x" << std::hex <<  hr << std::dec;
     return hr;
   }
 
@@ -833,7 +868,9 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
     hr = audio_render_client_for_loopback_->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST, 0, 0,
-        &format_, NULL);
+        closest_match.get(),
+        NULL);
+        //&format_, NULL);
     if (FAILED(hr)) {
       open_result_ = OPEN_RESULT_LOOPBACK_INIT_FAILED;
       return hr;
