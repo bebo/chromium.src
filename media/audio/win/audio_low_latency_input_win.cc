@@ -670,7 +670,7 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
   //                                              &format_, &closest_match);
   base::win::ScopedCoMem<WAVEFORMATEX> closest_match;
   HRESULT hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
-	PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(&closest_match);
+  PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(closest_match.get());
   pEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
   pEx->Samples.wValidBitsPerSample = 16;
   closest_match->wBitsPerSample = 16;
@@ -775,7 +775,7 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   // Changed this to 500ms to avoid glitches
   base::win::ScopedCoMem<WAVEFORMATEX> closest_match;
   HRESULT hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
-	PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(&closest_match);
+  PWAVEFORMATEXTENSIBLE pEx = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(closest_match.get());
   pEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
   pEx->Samples.wValidBitsPerSample = 16;
   closest_match->wBitsPerSample = 16;
