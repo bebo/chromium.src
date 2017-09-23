@@ -11,6 +11,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/system_monitor/system_monitor.h" //FIXME
 #include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "media/audio/audio_device_description.h"
@@ -378,18 +379,27 @@ void AudioManagerBase::ShutdownOnAudioThread() {
 void AudioManagerBase::AddOutputDeviceChangeListener(
     AudioDeviceListener* listener) {
   DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  LOG(INFO) << "AudioManagerBase::AddOutputDeviceChangeListener.";
   output_listeners_.AddObserver(listener);
 }
 
 void AudioManagerBase::RemoveOutputDeviceChangeListener(
     AudioDeviceListener* listener) {
   DCHECK(GetTaskRunner()->BelongsToCurrentThread());
+  LOG(INFO) << "AudioManagerBase::AddOutputDeviceChangeListener.";
   output_listeners_.RemoveObserver(listener);
 }
 
 void AudioManagerBase::NotifyAllOutputDeviceChangeListeners() {
   DCHECK(GetTaskRunner()->BelongsToCurrentThread());
   DVLOG(1) << "Firing OnDeviceChange() notifications.";
+  LOG(INFO) << "Firing OnDeviceChange() notifications.";
+
+  // FIXME
+  base::SystemMonitor* monitor = base::SystemMonitor::Get();
+  if (monitor)
+    monitor->ProcessDevicesChanged(base::SystemMonitor::DEVTYPE_AUDIO);
+
   for (auto& observer : output_listeners_)
     observer.OnDeviceChange();
 }
@@ -418,7 +428,8 @@ std::string AudioManagerBase::GetAssociatedOutputDeviceID(
 
 std::string AudioManagerBase::GetGroupIDOutput(
     const std::string& output_device_id) {
-  if (output_device_id == AudioDeviceDescription::kDefaultDeviceId) {
+  if (output_device_id == AudioDeviceDescription::kDefaultDeviceId || 
+      output_device_id == AudioDeviceDescription::kLoopbackInputDeviceId) {
     std::string real_device_id = GetDefaultOutputDeviceID();
     if (!real_device_id.empty()) {
       return real_device_id;

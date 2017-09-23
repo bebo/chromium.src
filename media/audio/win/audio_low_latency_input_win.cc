@@ -117,18 +117,25 @@ bool WASAPIAudioInputStream::Open() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(OPEN_RESULT_OK, open_result_);
 
+  LOG(INFO) << "WASAPIAudioInputStream::Open()";
+
   // Verify that we are not already opened.
   if (opened_)
     return false;
+
+  LOG(INFO) << "WASAPIAudioInputStream::Open() - stream is not opened yet";
 
   // Obtain a reference to the IMMDevice interface of the capturing
   // device with the specified unique identifier or role which was
   // set at construction.
   HRESULT hr = SetCaptureDevice();
   if (FAILED(hr)) {
+    LOG(INFO) << "WASAPIAudioInputStream::Open() - failed to set capture device";
     ReportOpenResult();
     return false;
   }
+
+  LOG(INFO) << "WASAPIAudioInputStream::Open() - successfully set capture device";
 
   // Obtain an IAudioClient interface which enables us to create and initialize
   // an audio stream between an audio application and the audio engine.
@@ -577,6 +584,7 @@ HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
     endpoint_device_->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL,
                                &system_audio_volume_);
   } else if (device_id_ == AudioDeviceDescription::kLoopbackInputDeviceId) {
+    LOG(INFO) << "getting default audio endpoint";
     // Capture the default playback stream.
     hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole,
                                              endpoint_device_.GetAddressOf());
