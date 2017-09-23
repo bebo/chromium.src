@@ -102,6 +102,7 @@ LRESULT SystemMessageWindowWin::OnDeviceChange(UINT event_type, LPARAM data) {
   base::SystemMonitor* monitor = base::SystemMonitor::Get();
   base::SystemMonitor::DeviceType device_type =
       base::SystemMonitor::DEVTYPE_UNKNOWN;
+
   switch (event_type) {
     case DBT_DEVNODES_CHANGED:
       // For this notification, we're happy with the default DEVTYPE_UNKNOWN.

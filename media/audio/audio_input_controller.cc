@@ -180,7 +180,10 @@ AudioInputController::AudioInputController(
     SyncWriter* sync_writer,
     UserInputMonitor* user_input_monitor,
     const AudioParameters& params,
-    StreamType type)
+    StreamType type,
+    AudioManager* audio_manager,
+    const std::string& device_id,
+    bool enable_agc)
     : creator_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       task_runner_(std::move(task_runner)),
       handler_(handler),
@@ -191,7 +194,11 @@ AudioInputController::AudioInputController(
 #if BUILDFLAG(ENABLE_WEBRTC)
       debug_recording_helper_(params, task_runner_, base::OnceClosure()),
 #endif
-      weak_ptr_factory_(this) {
+      weak_ptr_factory_(this),
+      audio_manager_(audio_manager),
+      params_(params),
+      input_device_id_(device_id),
+      agc_enabled_(enable_agc) {
   DCHECK(creator_task_runner_.get());
   DCHECK(handler_);
   DCHECK(sync_writer_);
@@ -216,10 +223,13 @@ scoped_refptr<AudioInputController> AudioInputController::Create(
   DCHECK(sync_writer);
   DCHECK(event_handler);
 
+  LOG(INFO) << "AudioInputController::Create";
+
   if (!params.IsValid() || (params.channels() > kMaxInputChannels))
     return nullptr;
 
   if (factory_) {
+    LOG(INFO) << "AudioInputController::Create - factory_";
     return factory_->Create(audio_manager->GetTaskRunner(), sync_writer,
                             audio_manager, event_handler, params,
                             user_input_monitor, ParamsToStreamType(params));
@@ -229,7 +239,8 @@ scoped_refptr<AudioInputController> AudioInputController::Create(
   // the audio-manager thread.
   scoped_refptr<AudioInputController> controller(new AudioInputController(
       audio_manager->GetTaskRunner(), event_handler, sync_writer,
-      user_input_monitor, params, ParamsToStreamType(params)));
+      user_input_monitor, params, ParamsToStreamType(params),
+      audio_manager, device_id, enable_agc));
 
   // Create and open a new audio input stream from the existing
   // audio-device thread. Use the provided audio-input device.
@@ -266,7 +277,8 @@ scoped_refptr<AudioInputController> AudioInputController::CreateForStream(
   // the audio-manager thread.
   scoped_refptr<AudioInputController> controller(
       new AudioInputController(task_runner, event_handler, sync_writer,
-                               user_input_monitor, params, VIRTUAL));
+                               user_input_monitor, params, VIRTUAL,
+                               nullptr, "", false));
 
   if (!controller->task_runner_->PostTask(
           FROM_HERE,
@@ -305,7 +317,15 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
                                     const std::string& device_id,
                                     bool enable_agc) {
   DCHECK(task_runner_->BelongsToCurrentThread());
-  DCHECK(!stream_);
+
+  LOG(INFO) << "AudioInputController::DoCreate - device_id: " << device_id;
+  if (stream_ && device_id.compare("loopback") == 0) {
+      audio_manager->RemoveOutputDeviceChangeListener(this);
+      DoClose();
+  } else {
+    DCHECK(!stream_);
+  }
+
   SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.CreateTime");
   handler_->OnLog(this, "AIC::DoCreate");
 
@@ -317,12 +337,17 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
   last_audio_level_log_time_ = base::TimeTicks::Now();
 #endif
 
+
   // MakeAudioInputStream might fail and return nullptr. If so,
   // DoCreateForStream will handle and report it.
   auto* stream = audio_manager->MakeAudioInputStream(
       params, device_id,
       base::BindRepeating(&AudioInputController::LogMessage, this));
   DoCreateForStream(stream, enable_agc);
+
+  if (device_id.compare("loopback") == 0) {
+    audio_manager->AddOutputDeviceChangeListener(this);
+  }
 }
 
 void AudioInputController::DoCreateForStream(
@@ -631,6 +656,14 @@ void AudioInputController::DoDisableDebugRecording() {
   debug_recording_helper_.DisableDebugRecording();
 }
 #endif  // BUILDFLAG(ENABLE_WEBRTC)
+
+void AudioInputController::OnDeviceChange() {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+  LOG(INFO) << "AudioInputController::OnDeviceChange";
+
+  DoCreate(audio_manager_, params_, input_device_id_, agc_enabled_);
+}
+
 
 void AudioInputController::LogMessage(const std::string& message) {
   DCHECK(task_runner_->BelongsToCurrentThread());

@@ -135,7 +135,9 @@ STDMETHODIMP AudioDeviceListenerWin::OnDefaultDeviceChanged(
     did_run_listener_cb = true;
   }
 
-  DVLOG(1) << "OnDefaultDeviceChanged() "
+  // FIXME
+  // DVLOG(1) << "OnDefaultDeviceChanged() "
+  LOG(INFO) << "OnDefaultDeviceChanged() "
            << "new_default_device: "
            << (new_default_device_id
                    ? CoreAudioUtil::GetFriendlyName(new_device_id)
