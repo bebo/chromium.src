@@ -500,7 +500,19 @@ void MediaDevicesDispatcherHost::GotAudioInputEnumeration(
   DCHECK_GT(pending_audio_input_capabilities_requests_.size(), 0U);
   DCHECK(current_audio_input_capabilities_.empty());
   DCHECK_EQ(num_pending_audio_input_parameters_, 0U);
+  LOG(INFO) << "GotAudioInputEnumeration - " << default_device_id;
   for (const auto& device_info : enumeration[MEDIA_DEVICE_TYPE_AUDIO_INPUT]) {
+    ::mojom::AudioInputDeviceCapabilities capabilities(
+        device_info.device_id,
+        media::AudioParameters::UnavailableDeviceParams());
+    if (device_info.device_id == default_device_id)
+      current_audio_input_capabilities_.insert(
+          current_audio_input_capabilities_.begin(), std::move(capabilities));
+    else
+      current_audio_input_capabilities_.push_back(std::move(capabilities));
+  }
+  // FIXME
+  for (const auto& device_info : enumeration[MEDIA_DEVICE_TYPE_AUDIO_OUTPUT]) {
     ::mojom::AudioInputDeviceCapabilities capabilities(
         device_info.device_id,
         media::AudioParameters::UnavailableDeviceParams());
