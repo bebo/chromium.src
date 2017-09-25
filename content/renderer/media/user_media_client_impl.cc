@@ -450,7 +450,6 @@ void UserMediaClientImpl::MaybeProcessNextRequestInfo() {
 }
 
 void UserMediaClientImpl::LegacySetupAudioInput() {
-  LOG(INFO) << "UserMediaClientImpl::LegacySetupAudioInput";
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(IsOldAudioConstraints());
   DCHECK(current_request_info_);
@@ -477,7 +476,7 @@ void UserMediaClientImpl::LegacySetupAudioInput() {
   if (request_audio_input_devices) {
     GetMediaDevicesDispatcher()->EnumerateDevices(
         true /* audio_input */, false /* video_input */,
-        true /* audio_output */,
+        false /* audio_output */,
         base::Bind(&UserMediaClientImpl::LegacySelectAudioInputDevice,
                    weak_factory_.GetWeakPtr(),
                    current_request_info_->request()));
@@ -515,7 +514,6 @@ void UserMediaClientImpl::LegacySelectAudioInputDevice(
 }
 
 void UserMediaClientImpl::SetupAudioInput() {
-  LOG(INFO) << "UserMediaClientImpl::SetupAudioInput";
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!IsOldAudioConstraints());
   DCHECK(current_request_info_);
@@ -525,14 +523,11 @@ void UserMediaClientImpl::SetupAudioInput() {
   InitializeTrackControls(current_request_info_->request().AudioConstraints(),
                           &audio_controls);
   if (IsDeviceSource(audio_controls.stream_source)) {
-    LOG(INFO) << "UserMediaClientImpl::SetupAudioInput - IsDeviceSource";
     GetMediaDevicesDispatcher()->GetAudioInputCapabilities(base::Bind(
         &UserMediaClientImpl::SelectAudioSettings, weak_factory_.GetWeakPtr(),
         current_request_info_->request()));
   } else {
-    LOG(INFO) << "UserMediaClientImpl::SetupAudioInput - IsDeviceSource=false";
     if (!IsValidAudioContentSource(audio_controls.stream_source)) {
-      LOG(INFO) << "UserMediaClientImpl::SetupAudioInput - !IsValidAudioContentSource";
       blink::WebString failed_constraint_name =
           blink::WebString::FromASCII(current_request_info_->request()
                                           .AudioConstraints()
@@ -551,7 +546,6 @@ void UserMediaClientImpl::SelectAudioSettings(
     const blink::WebUserMediaRequest& user_media_request,
     std::vector<::mojom::AudioInputDeviceCapabilitiesPtr>
         audio_input_capabilities) {
-  LOG(INFO) << "UserMediaClientImpl::SelectAudioSettings";
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!IsOldAudioConstraints());
   // The frame might reload or |user_media_request| might be cancelled while
@@ -565,7 +559,6 @@ void UserMediaClientImpl::SelectAudioSettings(
       SelectSettingsAudioCapture(std::move(audio_input_capabilities),
                                  user_media_request.AudioConstraints());
   if (!settings.HasValue()) {
-    LOG(INFO) << "UserMediaClientImpl::SelectAudioSettings - !settings.HasValue";
     blink::WebString failed_constraint_name =
         blink::WebString::FromASCII(settings.failed_constraint_name());
     MediaStreamRequestResult result =

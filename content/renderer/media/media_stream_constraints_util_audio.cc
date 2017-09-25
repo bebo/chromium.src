@@ -545,20 +545,14 @@ AudioCaptureSettings SelectResult(
 AudioCaptureSettings SelectSettingsAudioCapture(
     const AudioDeviceCaptureCapabilities& capabilities,
     const blink::WebMediaConstraints& constraints) {
-
-  LOG(INFO) << "SelectSettingsAudioCapture" ;
-
   std::string media_stream_source = GetMediaStreamSource(constraints);
   bool is_device_capture = media_stream_source.empty();
-  if (is_device_capture && capabilities.empty()) {
-    LOG(INFO) << "SelectSettingsAudioCapture (is_device_capture && capabilities.empty())" ;
+  if (is_device_capture && capabilities.empty())
     return AudioCaptureSettings();
-  }
 
   AudioCaptureCandidates candidates(constraints.Basic(), capabilities,
                                     is_device_capture);
   if (candidates.IsEmpty()) {
-    LOG(INFO) << "SelectSettingsAudioCapture - candidates.IsEmpty() " << candidates.failed_constraint_name();
     return AudioCaptureSettings(candidates.failed_constraint_name());
   }
 
