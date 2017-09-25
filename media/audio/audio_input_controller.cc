@@ -223,13 +223,10 @@ scoped_refptr<AudioInputController> AudioInputController::Create(
   DCHECK(sync_writer);
   DCHECK(event_handler);
 
-  LOG(INFO) << "AudioInputController::Create";
-
   if (!params.IsValid() || (params.channels() > kMaxInputChannels))
     return nullptr;
 
   if (factory_) {
-    LOG(INFO) << "AudioInputController::Create - factory_";
     return factory_->Create(audio_manager->GetTaskRunner(), sync_writer,
                             audio_manager, event_handler, params,
                             user_input_monitor, ParamsToStreamType(params));
@@ -319,8 +316,6 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
                                     bool reconnect) {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
-  LOG(INFO) << "AudioInputController::DoCreate - device_id: " << device_id;
-
   if (reconnect && stream_) {
       audio_manager->RemoveOutputDeviceChangeListener(this);
       DoCloseForReconnect();
@@ -401,8 +396,6 @@ void AudioInputController::DoRecord() {
   DCHECK(task_runner_->BelongsToCurrentThread());
   SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.RecordTime");
 
-  LOG(INFO) << "DoRecord";
-
   if (!stream_ || audio_callback_)
     return;
 
@@ -417,8 +410,6 @@ void AudioInputController::DoRecord() {
 
   audio_callback_.reset(new AudioCallback(this));
   stream_->Start(audio_callback_.get());
-
-  LOG(INFO) << "DoRecord - Started";
 }
 
 void AudioInputController::DoClose() {
@@ -435,8 +426,6 @@ void AudioInputController::DoClose() {
 
   // Allow calling unconditionally and bail if we don't have a stream to close.
   if (audio_callback_) {
-    LOG(INFO) << "DoClose has audio_callback_";
-
     stream_->Stop();
 
     // Sometimes a stream (and accompanying audio track) is created and
@@ -495,20 +484,14 @@ void AudioInputController::DoClose() {
 
   max_volume_ = 0.0;
   weak_ptr_factory_.InvalidateWeakPtrs();
-
-  LOG(INFO) << "DoClose done";
 }
 
 void AudioInputController::DoCloseForReconnect() {
   DCHECK(task_runner_->BelongsToCurrentThread());
   SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.CloseTime");
 
-  LOG(INFO) << "DoCloseForReconnect";
-
   if (!stream_)
     return;
-
-  LOG(INFO) << "DoCloseForReconnect has stream_";
 
   check_muted_state_timer_.AbandonAndStop();
 
@@ -517,8 +500,6 @@ void AudioInputController::DoCloseForReconnect() {
 
   // Allow calling unconditionally and bail if we don't have a stream to close.
   if (audio_callback_) {
-    LOG(INFO) << "DoCloseForReconnect has audio_callback_";
-
     stream_->Stop();
 
     // Sometimes a stream (and accompanying audio track) is created and
@@ -575,8 +556,6 @@ void AudioInputController::DoCloseForReconnect() {
 
   max_volume_ = 0.0;
   weak_ptr_factory_.InvalidateWeakPtrs();
-
-  LOG(INFO) << "DoCloseForReconnect done";
 }
 
 
@@ -751,7 +730,6 @@ void AudioInputController::DoDisableDebugRecording() {
 // we only register device change listener if device_id is loopback
 void AudioInputController::OnDeviceChange() {
   DCHECK(task_runner_->BelongsToCurrentThread());
-  LOG(INFO) << "AudioInputController::OnDeviceChange";
 
   DoCreate(audio_manager_, params_, device_id_, agc_enabled_, true);
   DoRecord();
