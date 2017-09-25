@@ -407,6 +407,10 @@ void AudioOutputController::OnDeviceChange() {
   handler_->OnLog(base::StringPrintf("AOC::OnDeviceChange while in state: %s",
                                      state_to_string(state_)));
 
+
+  LOG(INFO) << "AudioOutputController::OnDeviceChange state: " << state_to_string(state_);
+
+
   // TODO(dalecurtis): Notify the renderer side that a device change has
   // occurred.  Currently querying the hardware information here will lead to
   // crashes on OSX.  See http://crbug.com/158170.

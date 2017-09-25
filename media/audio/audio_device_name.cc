@@ -18,7 +18,7 @@ AudioDeviceName::AudioDeviceName(const std::string& device_name,
 // static
 AudioDeviceName AudioDeviceName::CreateLoopback() {
   return AudioDeviceName("loopback",
-		  AudioDeviceDescription::kLoopbackInputDeviceId);
+                         AudioDeviceDescription::kLoopbackInputDeviceId);
 }
 
 // static
