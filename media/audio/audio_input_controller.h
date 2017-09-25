@@ -293,10 +293,12 @@ class MEDIA_EXPORT AudioInputController
   void DoCreate(AudioManager* audio_manager,
                 const AudioParameters& params,
                 const std::string& device_id,
-                bool enable_agc);
+                bool enable_agc,
+                bool reconnect);
   void DoCreateForStream(AudioInputStream* stream_to_control, bool enable_agc);
   void DoRecord();
   void DoClose();
+  void DoCloseForReconnect();
   void DoReportError();
   void DoSetVolume(double volume);
   void DoLogAudioLevels(float level_dbfs, int microphone_volume_percent);
@@ -361,7 +363,7 @@ class MEDIA_EXPORT AudioInputController
 
   AudioManager* const audio_manager_;
   const AudioParameters params_;
-  std::string input_device_id_;
+  std::string device_id_;
   bool agc_enabled_;
 
   // SyncWriter is used only in low-latency mode for synchronous writing.

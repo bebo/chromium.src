@@ -197,7 +197,7 @@ AudioInputController::AudioInputController(
       weak_ptr_factory_(this),
       audio_manager_(audio_manager),
       params_(params),
-      input_device_id_(device_id),
+      device_id_(device_id),
       agc_enabled_(enable_agc) {
   DCHECK(creator_task_runner_.get());
   DCHECK(handler_);
@@ -247,7 +247,7 @@ scoped_refptr<AudioInputController> AudioInputController::Create(
   if (!controller->task_runner_->PostTask(
           FROM_HERE, base::BindOnce(&AudioInputController::DoCreate, controller,
                                     base::Unretained(audio_manager), params,
-                                    device_id, enable_agc))) {
+                                    device_id, enable_agc, false))) {
     controller = nullptr;
   }
 
@@ -315,13 +315,15 @@ void AudioInputController::SetVolume(double volume) {
 void AudioInputController::DoCreate(AudioManager* audio_manager,
                                     const AudioParameters& params,
                                     const std::string& device_id,
-                                    bool enable_agc) {
+                                    bool enable_agc,
+                                    bool reconnect) {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   LOG(INFO) << "AudioInputController::DoCreate - device_id: " << device_id;
-  if (stream_ && device_id.compare("loopback") == 0) {
+
+  if (reconnect && stream_) {
       audio_manager->RemoveOutputDeviceChangeListener(this);
-      DoClose();
+      DoCloseForReconnect();
   } else {
     DCHECK(!stream_);
   }
@@ -345,8 +347,8 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
       base::BindRepeating(&AudioInputController::LogMessage, this));
   DoCreateForStream(stream, enable_agc);
 
-  if (device_id.compare("loopback") == 0) {
-    audio_manager->AddOutputDeviceChangeListener(this);
+  if (device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
+    audio_manager_->AddOutputDeviceChangeListener(this);
   }
 }
 
@@ -399,6 +401,8 @@ void AudioInputController::DoRecord() {
   DCHECK(task_runner_->BelongsToCurrentThread());
   SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.RecordTime");
 
+  LOG(INFO) << "DoRecord";
+
   if (!stream_ || audio_callback_)
     return;
 
@@ -413,6 +417,8 @@ void AudioInputController::DoRecord() {
 
   audio_callback_.reset(new AudioCallback(this));
   stream_->Start(audio_callback_.get());
+
+  LOG(INFO) << "DoRecord - Started";
 }
 
 void AudioInputController::DoClose() {
@@ -429,6 +435,8 @@ void AudioInputController::DoClose() {
 
   // Allow calling unconditionally and bail if we don't have a stream to close.
   if (audio_callback_) {
+    LOG(INFO) << "DoClose has audio_callback_";
+
     stream_->Stop();
 
     // Sometimes a stream (and accompanying audio track) is created and
@@ -487,7 +495,90 @@ void AudioInputController::DoClose() {
 
   max_volume_ = 0.0;
   weak_ptr_factory_.InvalidateWeakPtrs();
+
+  LOG(INFO) << "DoClose done";
 }
+
+void AudioInputController::DoCloseForReconnect() {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+  SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.CloseTime");
+
+  LOG(INFO) << "DoCloseForReconnect";
+
+  if (!stream_)
+    return;
+
+  LOG(INFO) << "DoCloseForReconnect has stream_";
+
+  check_muted_state_timer_.AbandonAndStop();
+
+  std::string log_string;
+  static const char kLogStringPrefix[] = "AIC::DoClose:";
+
+  // Allow calling unconditionally and bail if we don't have a stream to close.
+  if (audio_callback_) {
+    LOG(INFO) << "DoCloseForReconnect has audio_callback_";
+
+    stream_->Stop();
+
+    // Sometimes a stream (and accompanying audio track) is created and
+    // immediately closed or discarded. In this case they are registered as
+    // 'stopped early' rather than 'never got data'.
+    const base::TimeDelta duration =
+        base::TimeTicks::Now() - stream_create_time_;
+    CaptureStartupResult capture_startup_result =
+        audio_callback_->received_callback()
+            ? CAPTURE_STARTUP_OK
+            : (duration.InMilliseconds() < 500
+                   ? CAPTURE_STARTUP_STOPPED_EARLY
+                   : CAPTURE_STARTUP_NEVER_GOT_DATA);
+    LogCaptureStartupResult(capture_startup_result);
+    LogCallbackError();
+
+    log_string = base::StringPrintf(
+        "%s stream duration=%" PRId64 " seconds%s", kLogStringPrefix,
+        duration.InSeconds(),
+        audio_callback_->received_callback() ? "" : " (no callbacks received)");
+
+    if (type_ == LOW_LATENCY) {
+      if (audio_callback_->received_callback()) {
+        UMA_HISTOGRAM_LONG_TIMES("Media.InputStreamDuration", duration);
+      } else {
+        UMA_HISTOGRAM_LONG_TIMES("Media.InputStreamDurationWithoutCallback",
+                                 duration);
+      }
+    }
+
+    audio_callback_.reset();
+  } else {
+    log_string =
+        base::StringPrintf("%s recording never started", kLogStringPrefix);
+  }
+
+  handler_->OnLog(this, log_string);
+
+  stream_->Close();
+  stream_ = nullptr;
+
+  if (user_input_monitor_)
+    user_input_monitor_->DisableKeyPressMonitoring();
+
+#if defined(AUDIO_POWER_MONITORING)
+  // Send UMA stats if enabled.
+  if (power_measurement_is_enabled_)
+    LogSilenceState(silence_state_);
+#endif
+
+#if BUILDFLAG(ENABLE_WEBRTC)
+  debug_recording_helper_.DisableDebugRecording();
+#endif
+
+  max_volume_ = 0.0;
+  weak_ptr_factory_.InvalidateWeakPtrs();
+
+  LOG(INFO) << "DoCloseForReconnect done";
+}
+
 
 void AudioInputController::DoReportError() {
   DCHECK(task_runner_->BelongsToCurrentThread());
@@ -657,11 +748,13 @@ void AudioInputController::DoDisableDebugRecording() {
 }
 #endif  // BUILDFLAG(ENABLE_WEBRTC)
 
+// we only register device change listener if device_id is loopback
 void AudioInputController::OnDeviceChange() {
   DCHECK(task_runner_->BelongsToCurrentThread());
   LOG(INFO) << "AudioInputController::OnDeviceChange";
 
-  DoCreate(audio_manager_, params_, input_device_id_, agc_enabled_);
+  DoCreate(audio_manager_, params_, device_id_, agc_enabled_, true);
+  DoRecord();
 }
 
 
