@@ -25,7 +25,7 @@
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 
-#define HNS_BUFFER_DURATION (500*10000) // 500 ms
+#define HNS_BUFFER_DURATION (80*10000) // 60 ms
 
 namespace media {
 namespace {
