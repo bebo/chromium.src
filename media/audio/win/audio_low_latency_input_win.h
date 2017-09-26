@@ -163,7 +163,7 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   std::unique_ptr<base::DelegateSimpleThread> capture_thread_;
 
   // Contains the desired audio format which is set up at construction.
-  WAVEFORMATEX format_;
+  WAVEFORMATEXTENSIBLE format_;
 
   bool opened_ = false;
   bool started_ = false;
