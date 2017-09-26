@@ -35,12 +35,11 @@
 #include "core/CoreInitializer.h"
 
 #include "third_party/node-nw/src/node_webkit.h"
+#define BLINK_HOOK_MAP(type, sym, fn) extern type fn;
 #if defined(COMPONENT_BUILD) && defined(WIN32)
 #define NW_HOOK_MAP(type, sym, fn) BASE_EXPORT type fn;
-#define BLINK_HOOK_MAP(type, sym, fn) BASE_EXPORT type fn;
 #else
 #define NW_HOOK_MAP(type, sym, fn) extern type fn;
-#define BLINK_HOOK_MAP(type, sym, fn) extern type fn;
 #endif
 #include "content/nw/src/common/node_hooks.h"
 #undef NW_HOOK_MAP
