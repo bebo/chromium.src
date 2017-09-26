@@ -488,7 +488,6 @@ void AudioInputController::DoClose() {
 
 void AudioInputController::DoCloseForReconnect() {
   DCHECK(task_runner_->BelongsToCurrentThread());
-  SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.CloseTime");
 
   if (!stream_)
     return;
@@ -496,7 +495,6 @@ void AudioInputController::DoCloseForReconnect() {
   check_muted_state_timer_.AbandonAndStop();
 
   std::string log_string;
-  static const char kLogStringPrefix[] = "AIC::DoClose:";
 
   // Allow calling unconditionally and bail if we don't have a stream to close.
   if (audio_callback_) {
@@ -516,27 +514,8 @@ void AudioInputController::DoCloseForReconnect() {
     LogCaptureStartupResult(capture_startup_result);
     LogCallbackError();
 
-    log_string = base::StringPrintf(
-        "%s stream duration=%" PRId64 " seconds%s", kLogStringPrefix,
-        duration.InSeconds(),
-        audio_callback_->received_callback() ? "" : " (no callbacks received)");
-
-    if (type_ == LOW_LATENCY) {
-      if (audio_callback_->received_callback()) {
-        UMA_HISTOGRAM_LONG_TIMES("Media.InputStreamDuration", duration);
-      } else {
-        UMA_HISTOGRAM_LONG_TIMES("Media.InputStreamDurationWithoutCallback",
-                                 duration);
-      }
-    }
-
     audio_callback_.reset();
-  } else {
-    log_string =
-        base::StringPrintf("%s recording never started", kLogStringPrefix);
   }
-
-  handler_->OnLog(this, log_string);
 
   stream_->Close();
   stream_ = nullptr;
