@@ -163,7 +163,7 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   std::unique_ptr<base::DelegateSimpleThread> capture_thread_;
 
   // Contains the desired audio format which is set up at construction.
-  WAVEFORMATEX format_;
+  WAVEFORMATEXTENSIBLE format_;
 
   bool opened_ = false;
   bool started_ = false;
@@ -187,6 +187,8 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   // Note that AudioDeviceDescription::kDefaultDeviceId represents the default
   // device role and is not a valid ID as such.
   std::string device_id_;
+
+  std::string friendly_name_;
 
   // Pointer to the object that will receive the recorded audio samples.
   AudioInputCallback* sink_ = nullptr;
