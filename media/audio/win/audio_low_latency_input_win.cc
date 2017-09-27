@@ -25,8 +25,6 @@
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 
-#define HNS_BUFFER_DURATION 0
-
 namespace media {
 namespace {
 bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
@@ -52,7 +50,6 @@ bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
   return true;
 }
 }
-
 
 WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
                                                const AudioParameters& params,
@@ -429,6 +426,35 @@ void WASAPIAudioInputStream::Run() {
       case WAIT_OBJECT_0 + 1: {
         TRACE_EVENT0("audio", "WASAPIAudioInputStream::Run_0");
 
+
+        // Quote from Microsofts WindowsAudioSession Sample:
+        //
+        // A word on why we have a loop here;
+        // Suppose it has been 10 milliseconds or so since the last time
+        // this routine was invoked, and that we're capturing 48000 samples per second.
+        //
+        // The audio engine can be reasonably expected to have accumulated about that much
+        // audio data - that is, about 480 samples.
+        //
+        // However, the audio engine is free to accumulate this in various ways:
+        // a. as a single packet of 480 samples, OR
+        // b. as a packet of 80 samples plus a packet of 400 samples, OR
+        // c. as 48 packets of 10 samples each.
+        //
+        // In particular, there is no guarantee that this routine will be
+        // run once for each packet.
+        //
+        // So every time this routine runs, we need to read ALL the packets
+        // that are now available;
+        //
+        // We do this by calling IAudioCaptureClient::GetNextPacketSize
+        // over and over again until it indicates there are no more packets remaining.
+        //
+        // In our case we loop / wait - but the same applies - there are many
+        // devices which occasionally have extra data and they don't handle it
+        // gracefully if we don't read all data, specifically he have seen the
+        // Logitech G430 go into a mode where it never recovers
+
         while (true) {
           // |audio_samples_ready_event_| has been set.
           BYTE* data_ptr = NULL;
@@ -444,7 +470,7 @@ void WASAPIAudioInputStream::Run() {
                                                 &flags, &device_position,
                                                 &first_audio_frame_timestamp);
           if (hr == AUDCLNT_S_BUFFER_EMPTY) {
-            LOG(INFO) << friendly_name_ << " NO MORE AUDIO";
+            // LOG(INFO) << friendly_name_ << " NO MORE AUDIO";
             break;
           }
           if (FAILED(hr)) {
@@ -471,10 +497,10 @@ void WASAPIAudioInputStream::Run() {
             }
             buffer_cnt++;
             if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
-              LOG(INFO) << friendly_name_ << " GOT frames: " << num_frames_to_read << " with DISCONTINUITY";
+              // LOG(INFO) << friendly_name_ << " GOT frames: " << num_frames_to_read << " with DISCONTINUITY";
               discont_cnt++;
             } else {
-              LOG(INFO) << friendly_name_ << " GOT frames: " << num_frames_to_read;
+              // LOG(INFO) << friendly_name_ << " GOT frames: " << num_frames_to_read;
             }
           }
 
@@ -813,7 +839,7 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   HRESULT hr = audio_client_->Initialize(
       AUDCLNT_SHAREMODE_SHARED,
       flags,
-      HNS_BUFFER_DURATION,
+      0,
       0,
       reinterpret_cast<WAVEFORMATEX*>(&format_),
       device_id_ == AudioDeviceDescription::kCommunicationsDeviceId

@@ -44,7 +44,6 @@ ProcessedLocalAudioSource::ProcessedLocalAudioSource(
       allow_invalid_render_frame_id_for_testing_(false) {
   DCHECK(pc_factory_);
   DVLOG(1) << "ProcessedLocalAudioSource::ProcessedLocalAudioSource()";
-  LOG(INFO) << "ProcessedLocalAudioSource::ProcessedLocalAudioSource()";
   MediaStreamSource::SetDeviceInfo(device_info);
 }
 
