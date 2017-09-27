@@ -238,12 +238,22 @@ void AudioManagerWin::GetAudioDeviceNamesImpl(bool input,
                                               AudioDeviceNames* device_names) {
   DCHECK(device_names->empty());
   // Enumerate all active audio-endpoint capture devices.
-  if (input)
+  if (input)  {
     GetInputDeviceNamesWin(device_names);
-  else
+    AudioDeviceNames output_device_names;
+    GetOutputDeviceNamesWin(&output_device_names);
+    if (!output_device_names.empty()) {
+      // Add loopback device (reads from output device) so we can capture
+      // desktop audio direct
+      device_names->push_front(AudioDeviceName::CreateLoopback());
+      output_device_names.clear();
+    }
+  } else {
     GetOutputDeviceNamesWin(device_names);
+  }
 
   if (!device_names->empty()) {
+
     device_names->push_front(AudioDeviceName::CreateCommunications());
 
     // Always add default device parameters as first element.
