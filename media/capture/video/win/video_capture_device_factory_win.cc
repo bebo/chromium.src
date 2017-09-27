@@ -44,8 +44,9 @@ enum BlacklistedCameraNames {
   BLACKLISTED_CAMERA_IP_CAMERA = 1,
   BLACKLISTED_CAMERA_CYBERLINK_WEBCAM_SPLITTER = 2,
   BLACKLISTED_CAMERA_EPOCCAM = 3,
+  BLACKLISTED_CAMERA_CHROMACAM = 4,
   // This one must be last, and equal to the previous enumerated value.
-  BLACKLISTED_CAMERA_MAX = BLACKLISTED_CAMERA_EPOCCAM,
+  BLACKLISTED_CAMERA_MAX = BLACKLISTED_CAMERA_CHROMACAM,
 };
 
 // Blacklisted devices are identified by a characteristic prefix of the name.
@@ -56,6 +57,7 @@ static const char* const kBlacklistedCameraNames[] = {
     "Google Camera Adapter",
     // The following software WebCams cause crashes.
     "IP Camera [JPEG/MJPEG]", "CyberLink Webcam Splitter", "EpocCam",
+    "ChromaCam",
 };
 static_assert(arraysize(kBlacklistedCameraNames) == BLACKLISTED_CAMERA_MAX + 1,
               "kBlacklistedCameraNames should be same size as "
@@ -65,6 +67,18 @@ static bool IsDeviceBlacklistedForQueryingDetailedFrameRates(
     const std::string& display_name) {
   return display_name.find("WebcamMax") != std::string::npos;
 }
+
+enum WhitelistedFilterNames {
+  WHITELISTED_FILTER_BEBO_CAPTURE = 0,
+  WHITELISTED_FILTER_MAX = WHITELISTED_FILTER_BEBO_CAPTURE,
+};
+static const char* const kWhitelistedFilterNames[] = {
+  "bebo-game-capture",
+};
+static_assert(arraysize(kWhitelistedFilterNames) == WHITELISTED_FILTER_MAX + 1,
+              "kWhitelistedFilterNames should be same size as "
+              "WhitelistedFilterNames enum");
+
 
 static bool LoadMediaFoundationDlls() {
   static const wchar_t* const kMfDLLs[] = {
@@ -135,6 +149,19 @@ static bool IsDeviceBlackListed(const std::string& name) {
   return false;
 }
 
+bool IsDeviceWhiteListed(const std::string& name) {
+  DCHECK_EQ(WHITELISTED_FILTER_MAX + 1,
+            static_cast<int>(arraysize(kWhitelistedFilterNames)));
+  for (size_t i = 0; i < arraysize(kWhitelistedFilterNames); ++i) {
+    if (base::StartsWith(name, kWhitelistedFilterNames[i],
+                         base::CompareCase::INSENSITIVE_ASCII) != 0) {
+      DVLOG(1) << "Enumerated whitelist device: " << name;
+      return true;
+    }
+  }
+  return false;
+}
+
 static std::string GetDeviceModelId(const std::string& device_id) {
   const size_t vid_prefix_size = sizeof(kVidPrefix) - 1;
   const size_t pid_prefix_size = sizeof(kPidPrefix) - 1;
@@ -170,6 +197,52 @@ static void GetDeviceDescriptorsDirectShow(Descriptors* device_descriptors) {
                                        enum_moniker.GetAddressOf(), 0);
   // CreateClassEnumerator returns S_FALSE on some Windows OS
   // when no camera exist. Therefore the FAILED macro can't be used.
+
+  if (hr == S_OK) {
+    // Enumerate all video capture devices.
+    for (ScopedComPtr<IMoniker> moniker;
+        enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
+        moniker.Reset()) {
+      ScopedComPtr<IPropertyBag> prop_bag;
+      hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
+      if (FAILED(hr))
+        continue;
+
+      // Find the description or friendly name.
+      ScopedVariant name;
+      hr = prop_bag->Read(L"Description", name.Receive(), 0);
+      if (FAILED(hr))
+        hr = prop_bag->Read(L"FriendlyName", name.Receive(), 0);
+
+      if (FAILED(hr) || name.type() != VT_BSTR)
+        continue;
+
+      const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
+      if (IsDeviceBlackListed(device_name))
+        continue;
+
+      name.Reset();
+      hr = prop_bag->Read(L"DevicePath", name.Receive(), 0);
+      std::string id;
+      if (FAILED(hr) || name.type() != VT_BSTR) {
+        id = device_name;
+      } else {
+        DCHECK_EQ(name.type(), VT_BSTR);
+        id = base::SysWideToUTF8(V_BSTR(name.ptr()));
+      }
+
+      const std::string model_id = GetDeviceModelId(id);
+
+      device_descriptors->emplace_back(device_name, id, model_id,
+          VideoCaptureApi::WIN_DIRECT_SHOW);
+    }
+  }
+
+
+  // for whitelisted filters like bebo-game-capture and capture cards
+  hr = dev_enum->CreateClassEnumerator(CLSID_CQzFilterClassManager,
+      enum_moniker.GetAddressOf(), 0);
+
   if (hr != S_OK)
     return;
 
@@ -192,7 +265,7 @@ static void GetDeviceDescriptorsDirectShow(Descriptors* device_descriptors) {
       continue;
 
     const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
-    if (IsDeviceBlackListed(device_name))
+    if (!IsDeviceWhiteListed(device_name))
       continue;
 
     name.Reset();
