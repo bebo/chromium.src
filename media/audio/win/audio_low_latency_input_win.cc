@@ -25,7 +25,9 @@
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 
-#define HNS_BUFFER_DURATION (80*10000) // 60 ms
+// MSDN: event-based stream should not define hnsbufferduration,
+// it should be 0 and use GetBufferSize to get the size
+#define HNS_BUFFER_DURATION 0
 
 namespace media {
 namespace {
