@@ -18,7 +18,8 @@ LocalMediaStreamAudioSource::LocalMediaStreamAudioSource(
     : MediaStreamAudioSource(true /* is_local_source */),
       consumer_render_frame_id_(consumer_render_frame_id),
       started_callback_(started_callback) {
-  DVLOG(1) << "LocalMediaStreamAudioSource::LocalMediaStreamAudioSource()";
+  LOG(INFO) << "LocalMediaStreamAudioSource::LocalMediaStreamAudioSource()";
+
   MediaStreamSource::SetDeviceInfo(device_info);
 
   // If the device buffer size was not provided, use a default.
@@ -34,6 +35,7 @@ LocalMediaStreamAudioSource::LocalMediaStreamAudioSource(
     frames_per_buffer = device_info.device.input.sample_rate / 100;  // 10 ms
 #endif
   }
+  LOG(INFO) << "LocalMediaStreamAudioSource::LocalMediaStreamAudioSource() " << device_info.device.input.sample_rate;
 
   MediaStreamAudioSource::SetFormat(media::AudioParameters(
       media::AudioParameters::AUDIO_PCM_LOW_LATENCY,

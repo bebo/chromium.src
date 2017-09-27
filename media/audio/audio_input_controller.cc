@@ -232,6 +232,8 @@ scoped_refptr<AudioInputController> AudioInputController::Create(
                             user_input_monitor, ParamsToStreamType(params));
   }
 
+  LOG(INFO) << "AudioInputController::Create " << params.AsHumanReadableString();
+
   // Create the AudioInputController object and ensure that it runs on
   // the audio-manager thread.
   scoped_refptr<AudioInputController> controller(new AudioInputController(
@@ -262,6 +264,7 @@ scoped_refptr<AudioInputController> AudioInputController::CreateForStream(
   DCHECK(sync_writer);
   DCHECK(stream);
   DCHECK(event_handler);
+  LOG(INFO) << "AudioInputController::CreateForStream " << params.AsHumanReadableString();
 
   if (factory_) {
     return factory_->Create(task_runner, sync_writer, AudioManager::Get(),

@@ -188,6 +188,8 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   // device role and is not a valid ID as such.
   std::string device_id_;
 
+  std::string friendly_name_;
+
   // Conversion factor used in delay-estimation calculations.
   // Converts a raw performance counter value to 100-nanosecond unit.
   double perf_count_to_100ns_units_ = 0.0;

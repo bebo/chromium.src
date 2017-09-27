@@ -302,6 +302,7 @@ void AudioInputRendererHost::DoCreateStream(
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
 
   DCHECK_GT(render_frame_id, 0);
+  LOG(INFO) << "AudioInputRendererHost::DoCreateStream";
 
   // media::AudioParameters is validated in the deserializer.
   if (LookupById(stream_id)) {

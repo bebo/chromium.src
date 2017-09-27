@@ -380,7 +380,7 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
     const std::string& device_id,
     const LogCallback& log_callback) {
   // Used for both AUDIO_PCM_LOW_LATENCY and AUDIO_PCM_LINEAR.
-  DVLOG(1) << "MakeLowLatencyInputStream: " << device_id;
+  LOG(INFO) << "MakeLowLatencyInputStream: " << device_id;
   return new WASAPIAudioInputStream(this, params, device_id);
 }
 

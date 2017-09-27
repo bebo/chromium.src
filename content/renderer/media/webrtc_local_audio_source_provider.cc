@@ -68,6 +68,8 @@ void WebRtcLocalAudioSourceProvider::OnSetFormat(
   DCHECK(params.IsValid());
   DCHECK(sink_params_.IsValid());
 
+  LOG(INFO) << "WebRtcLocalAudioSourceProvider::OnSetFormat";
+
   base::AutoLock auto_lock(lock_);
   source_params_ = params;
   // Create the audio converter with |disable_fifo| as false so that the

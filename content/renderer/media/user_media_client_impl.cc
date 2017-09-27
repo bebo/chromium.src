@@ -772,6 +772,7 @@ void UserMediaClientImpl::OnStreamGenerated(
     const StreamDeviceInfoArray& audio_array,
     const StreamDeviceInfoArray& video_array) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
   if (!IsCurrentRequestInfo(request_id)) {
     // This can happen if the request is cancelled or the frame reloads while
     // MediaStreamDispatcher is processing the request.
@@ -780,6 +781,12 @@ void UserMediaClientImpl::OnStreamGenerated(
     return;
   }
   current_request_info_->set_state(UserMediaRequestInfo::State::GENERATED);
+
+  for (const auto* array : {&audio_array}) {
+    for (const auto& info : *array) {
+      LOG(INFO) << "UserMediaClientImpl::OnStreamGenerated - " << info.device.name.c_str() << " " << info.device.input.sample_rate;
+    }
+  }
 
   for (const auto* array : {&audio_array, &video_array}) {
     for (const auto& info : *array) {
@@ -1012,12 +1019,14 @@ MediaStreamAudioSource* UserMediaClientImpl::CreateAudioSource(
       !MediaStreamAudioProcessor::WouldModifyAudio(
           audio_processing_properties)) {
     *has_sw_echo_cancellation = false;
+    LOG(INFO) << "Creating LocalMediaStreamAudioSource" ;
     return new LocalMediaStreamAudioSource(RenderFrameObserver::routing_id(),
                                            device, source_ready);
   }
 
   // The audio device is not associated with screen capture and also requires
   // processing.
+  LOG(INFO) << "Creating ProcessedLocalAudioSource" ;
   ProcessedLocalAudioSource* source = new ProcessedLocalAudioSource(
       RenderFrameObserver::routing_id(), device, audio_processing_properties,
       source_ready, dependency_factory_);
@@ -1078,6 +1087,9 @@ void UserMediaClientImpl::CreateAudioTracks(
       device_info.device.matched_output =
           MediaStreamDevice::AudioDeviceParameters();
     }
+  }
+  for (auto& device_info : overridden_audio_array) {
+    device_info.device.input.sample_rate = 48000;
   }
 
   for (size_t i = 0; i < overridden_audio_array.size(); ++i) {

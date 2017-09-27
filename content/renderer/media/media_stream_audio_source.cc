@@ -108,7 +108,7 @@ void MediaStreamAudioSource::EnsureSourceIsStopped() {
 }
 
 void MediaStreamAudioSource::SetFormat(const media::AudioParameters& params) {
-  DVLOG(1) << "MediaStreamAudioSource@" << this << "::SetFormat("
+  LOG(INFO) << "MediaStreamAudioSource@" << this << "::SetFormat("
            << params.AsHumanReadableString() << "), was previously set to {"
            << deliverer_.GetAudioParameters().AsHumanReadableString() << "}.";
   deliverer_.OnSetFormat(params);

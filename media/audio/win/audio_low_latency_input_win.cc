@@ -53,6 +53,7 @@ bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
 }
 }
 
+
 WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
                                                const AudioParameters& params,
                                                const std::string& device_id)
@@ -60,11 +61,14 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
   DCHECK(manager_);
   DCHECK(!device_id_.empty());
 
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(device_id_);
+
   // Load the Avrt DLL if not already loaded. Required to support MMCSS.
   bool avrt_init = avrt::Initialize();
   DCHECK(avrt_init) << "Failed to load the Avrt.dll";
 
-  LOG(INFO) << "BEBO - number of desired channels: " << params.channels();
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::WASAPIAudioInputStream "
+    << params.AsHumanReadableString();
 
   // Set up the desired capture format specified by the client.
   WAVEFORMATEX* format = &format_.Format;
@@ -84,8 +88,8 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
   packet_size_bytes_ = params.GetBytesPerBuffer();
   DVLOG(1) << "Number of bytes per audio frame  : " << frame_size_;
   DVLOG(1) << "Number of audio frames per packet: " << packet_size_frames_;
-  LOG(INFO) << "Number of bytes per audio frame  : " << frame_size_;
-  LOG(INFO) << "Number of audio frames per packet: " << packet_size_frames_;
+  LOG(INFO) << friendly_name_ << " Number of bytes per audio frame  : " << frame_size_;
+  LOG(INFO) << friendly_name_ << " Number of audio frames per packet: " << packet_size_frames_;
 
   // All events are auto-reset events and non-signaled initially.
 
@@ -106,7 +110,7 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
         (10000000.0 / static_cast<double>(performance_frequency.QuadPart));
   } else {
     DLOG(ERROR) << "High-resolution performance counters are not supported.";
-    LOG(ERROR) << "High-resolution performance counters are not supported.";
+    LOG(ERROR) << friendly_name_ << " High-resolution performance counters are not supported.";
   }
 }
 
@@ -118,19 +122,24 @@ bool WASAPIAudioInputStream::Open() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(OPEN_RESULT_OK, open_result_);
 
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Open()";
   // Verify that we are not already opened.
   if (opened_)
     return false;
+
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Open() - stream is not opened yet";
 
   // Obtain a reference to the IMMDevice interface of the capturing
   // device with the specified unique identifier or role which was
   // set at construction.
   HRESULT hr = SetCaptureDevice();
   if (FAILED(hr)) {
-    LOG(ERROR) << "WASAPIAudioInputStream::Open() - failed to set capture device";
+    LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Open() - failed to set capture device";
     ReportOpenResult();
     return false;
   }
+
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Open() - successfully set capture device";
 
   // Obtain an IAudioClient interface which enables us to create and initialize
   // an audio stream between an audio application and the audio engine.
@@ -172,8 +181,11 @@ void WASAPIAudioInputStream::Start(AudioInputCallback* callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(callback);
   DLOG_IF(ERROR, !opened_) << "Open() has not been called successfully";
-  if (!opened_)
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Start()";
+  if (!opened_) {
+    LOG(ERROR) << friendly_name_ << " WASAPIAudioInputStream::Start() - Open() has not been called successfully";
     return;
+  }
 
   if (started_)
     return;
@@ -220,6 +232,7 @@ void WASAPIAudioInputStream::Start(AudioInputCallback* callback) {
 void WASAPIAudioInputStream::Stop() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DVLOG(1) << "WASAPIAudioInputStream::Stop()";
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Stop()";
   if (!started_)
     return;
 
@@ -245,7 +258,7 @@ void WASAPIAudioInputStream::Stop() {
   // Stop the input audio streaming.
   HRESULT hr = audio_client_->Stop();
   if (FAILED(hr)) {
-    LOG(ERROR) << "Failed to stop input streaming.";
+    LOG(ERROR) << friendly_name_ << " Failed to stop input streaming.";
   }
 
   // Wait until the thread completes and perform cleanup.
@@ -261,7 +274,7 @@ void WASAPIAudioInputStream::Stop() {
 
 void WASAPIAudioInputStream::Close() {
   DVLOG(1) << "WASAPIAudioInputStream::Close()";
-  LOG(INFO) << "WASAPIAudioInputStream::Close()";
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Close()";
   // It is valid to call Close() before calling open or Start().
   // It is also valid to call Close() after Start() has been called.
   Stop();
@@ -278,6 +291,7 @@ double WASAPIAudioInputStream::GetMaxVolume() {
   // Verify that Open() has been called succesfully, to ensure that an audio
   // session exists and that an ISimpleAudioVolume interface has been created.
   DLOG_IF(ERROR, !opened_) << "Open() has not been called successfully";
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::GetMaxVolume()";
   if (!opened_)
     return 0.0;
 
@@ -291,6 +305,7 @@ void WASAPIAudioInputStream::SetVolume(double volume) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_GE(volume, 0.0);
   DCHECK_LE(volume, 1.0);
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::SetVolume(" << volume << ")";
 
   DLOG_IF(ERROR, !opened_) << "Open() has not been called successfully";
   if (!opened_)
@@ -312,6 +327,7 @@ void WASAPIAudioInputStream::SetVolume(double volume) {
 }
 
 double WASAPIAudioInputStream::GetVolume() {
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::GetVolume()";
   DCHECK(opened_) << "Open() has not been called successfully";
   if (!opened_)
     return 0.0;
@@ -328,6 +344,7 @@ double WASAPIAudioInputStream::GetVolume() {
 bool WASAPIAudioInputStream::IsMuted() {
   DCHECK(opened_) << "Open() has not been called successfully";
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::IsMuted()";
   if (!opened_)
     return false;
 
@@ -342,6 +359,7 @@ bool WASAPIAudioInputStream::IsMuted() {
 
 void WASAPIAudioInputStream::Run() {
   ScopedCOMInitializer com_init(ScopedCOMInitializer::kMTA);
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Run()";
 
   // Enable MMCSS to ensure that this thread receives prioritized access to
   // CPU resources.
@@ -354,7 +372,7 @@ void WASAPIAudioInputStream::Run() {
     // Failed to enable MMCSS on this thread. It is not fatal but can lead
     // to reduced QoS at high load.
     DWORD err = GetLastError();
-    LOG(WARNING) << "Failed to enable MMCSS (error code=" << err << ").";
+    LOG(WARNING) << friendly_name_ << "Failed to enable MMCSS (error code=" << err << ").";
   }
 
   // Allocate a buffer with a size that enables us to take care of cases like:
@@ -380,7 +398,7 @@ void WASAPIAudioInputStream::Run() {
                                  buffers_required));
 
   DVLOG(1) << "AudioBlockFifo buffer count: " << buffers_required;
-  LOG(INFO) << "AudioBlockFifo buffer count: " << buffers_required;
+  LOG(INFO) << friendly_name_ << "AudioBlockFifo buffer count: " << buffers_required;
 
   LARGE_INTEGER now_count = {};
   LARGE_INTEGER end_count = {};
@@ -427,7 +445,7 @@ void WASAPIAudioInputStream::Run() {
                                               &flags, &device_position,
                                               &first_audio_frame_timestamp);
         if (FAILED(hr)) {
-          LOG(ERROR) << "Failed to get data from the capture buffer: 0x" << std::hex << hr << std::dec ;
+          LOG(ERROR) << friendly_name_ << " Failed to get data from the capture buffer: 0x" << std::hex << hr << std::dec ;
           continue;
         }
         QueryPerformanceCounter(&now_count);
@@ -523,7 +541,7 @@ void WASAPIAudioInputStream::Run() {
     }
   }
 
-  LOG(INFO) << "WASAPI CAPTURE STATS - buffer_cnt: " << buffer_cnt << " late_cnt: " << late_cnt << " discont_cnt: " << discont_cnt << " pro_audio: " << mmcss_is_ok << " " << device_id_;
+  LOG(INFO) << "WASAPI CAPTURE STATS - buffer_cnt: " << buffer_cnt << " late_cnt: " << late_cnt << " discont_cnt: " << discont_cnt << " pro_audio: " << mmcss_is_ok << " " << friendly_name_;
 
   if (recording && error) {
     // TODO(henrika): perhaps it worth improving the cleanup here by e.g.
@@ -549,6 +567,7 @@ void WASAPIAudioInputStream::HandleError(HRESULT err) {
 HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
   DCHECK_EQ(OPEN_RESULT_OK, open_result_);
   DCHECK(!endpoint_device_.Get());
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::SetCaptureDevice()";
 
   ScopedComPtr<IMMDeviceEnumerator> enumerator;
   HRESULT hr =
@@ -625,26 +644,26 @@ HRESULT WASAPIAudioInputStream::GetAudioEngineStreamFormat() {
   // See http://msdn.microsoft.com/en-us/windows/hardware/gg463006#EFH
   // for details on the WAVE file format.
   WAVEFORMATEX format = format_ex->Format;
-  LOG(INFO) << "WAVEFORMATEX:";
-  LOG(INFO) << "  wFormatTags    : 0x" << std::hex << format.wFormatTag;
-  LOG(INFO) << "  nChannels      : " << format.nChannels;
-  LOG(INFO) << "  nSamplesPerSec : " << format.nSamplesPerSec;
-  LOG(INFO) << "  nAvgBytesPerSec: " << format.nAvgBytesPerSec;
-  LOG(INFO) << "  nBlockAlign    : " << format.nBlockAlign;
-  LOG(INFO) << "  wBitsPerSample : " << format.wBitsPerSample;
-  LOG(INFO) << "  cbSize         : " << format.cbSize;
+  LOG(INFO) << friendly_name_ << " WAVEFORMATEX:";
+  LOG(INFO) << friendly_name_ << "   wFormatTags    : 0x" << std::hex << format.wFormatTag;
+  LOG(INFO) << friendly_name_ << "   nChannels      : " << format.nChannels;
+  LOG(INFO) << friendly_name_ << "   nSamplesPerSec : " << format.nSamplesPerSec;
+  LOG(INFO) << friendly_name_ << "   nAvgBytesPerSec: " << format.nAvgBytesPerSec;
+  LOG(INFO) << friendly_name_ << "   nBlockAlign    : " << format.nBlockAlign;
+  LOG(INFO) << friendly_name_ << "   wBitsPerSample : " << format.wBitsPerSample;
+  LOG(INFO) << friendly_name_ << "   cbSize         : " << format.cbSize;
 
-  LOG(INFO) << "WAVEFORMATEXTENSIBLE:";
-  LOG(INFO) << " wValidBitsPerSample: "
+  LOG(INFO) << friendly_name_ << " WAVEFORMATEXTENSIBLE:";
+  LOG(INFO) << friendly_name_ << "  wValidBitsPerSample: "
            << format_ex->Samples.wValidBitsPerSample;
-  LOG(INFO) << " dwChannelMask      : 0x" << std::hex
+  LOG(INFO) << friendly_name_ << "  dwChannelMask      : 0x" << std::hex
            << format_ex->dwChannelMask;
   if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_PCM)
-    LOG(INFO) << " SubFormat          : KSDATAFORMAT_SUBTYPE_PCM";
+    LOG(INFO) << friendly_name_ << "  SubFormat          : KSDATAFORMAT_SUBTYPE_PCM";
   else if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
-    LOG(INFO) << " SubFormat          : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT";
+    LOG(INFO) << friendly_name_ << "  SubFormat          : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT";
   else if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_WAVEFORMATEX)
-    LOG(INFO) << " SubFormat          : KSDATAFORMAT_SUBTYPE_WAVEFORMATEX";
+    LOG(INFO) << friendly_name_ << "  SubFormat          : KSDATAFORMAT_SUBTYPE_WAVEFORMATEX";
 //#endif
   return hr;
 }
@@ -660,6 +679,9 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
   // Many audio devices support both PCM and non-PCM stream formats. However,
   // the audio engine can mix only PCM streams.
 
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::DesiredFormatIsSupported()";
+  /* base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> format_ex; */
+  // TODO handle return
 
   base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> closest_match;
   HRESULT hr;
@@ -777,7 +799,7 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
 HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   DCHECK_EQ(OPEN_RESULT_OK, open_result_);
   DWORD flags;
-  LOG(INFO) << "WASAPIAudioInputStream::InitializeAudioEngine()";
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::InitializeAudioEngine()";
   // Use event-driven mode only fo regular input devices. For loopback the
   // EVENTCALLBACK flag is specified when intializing
   // |audio_render_client_for_loopback_|.
@@ -808,7 +830,7 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   if (FAILED(hr)) {
     open_result_ = OPEN_RESULT_AUDIO_CLIENT_INIT_FAILED;
     UMA_HISTOGRAM_SPARSE_SLOWLY("Media.Audio.Capture.Win.InitError", hr);
-    LOG(ERROR) << "WASAPIAudioInputStream::InitializeAudioEngine - Media.Audio.Capture.Win.InitError 0x" << std::hex <<  hr << std::dec;
+    LOG(ERROR) <<  friendly_name_ << " WASAPIAudioInputStream::InitializeAudioEngine - Media.Audio.Capture.Win.InitError 0x" << std::hex <<  hr << std::dec;
     return hr;
   }
 
@@ -823,7 +845,7 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
     return hr;
   }
 
-  LOG(INFO) << "endpoint buffer size: " << endpoint_buffer_size_frames_
+  LOG(INFO) << friendly_name_ << " endpoint buffer size: " << endpoint_buffer_size_frames_
            << " [frames]";
 
 #ifndef NDEBUG
