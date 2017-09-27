@@ -23,6 +23,18 @@ using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
 
+GUID kBeboGameCaptureCLSID = {0x1f1383ef,
+                          0x8019,
+                          0x4f96,
+                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x63}};
+enum FILTER {
+  FILTER_BEBO_GAME_CAPTUIRE = 0,
+  FILTER_MAX = FILTER_BEBO_GAME_CAPTUIRE,
+};
+const int kFilterSize = FILTER_MAX + 1;
+const GUID kFilterArray[kFilterSize] = {kBeboGameCaptureCLSID};
+const std::string kFilterArrayName[kFilterSize] = {"bebo-game-capture"};
+
 namespace media {
 
 #if DCHECK_IS_ON()
@@ -107,6 +119,25 @@ HRESULT VideoCaptureDeviceWin::GetDeviceFilter(const std::string& device_id,
                                                IBaseFilter** filter) {
   DCHECK(filter);
 
+  // go through our whitelisted filters first (bebo-game-capture, capture cards)
+  // so that we won't fail on the shortcircuit for when no camera exist in the OS
+  ScopedComPtr<IBaseFilter> capture_filter;
+  for (int i = 0; i < kFilterSize; i++) {
+    GUID guid = kFilterArray[i];
+    std::string name = kFilterArrayName[i];
+
+    if (name.compare(device_id) == 0) {
+
+      HRESULT hr = ::CoCreateInstance(guid, NULL, CLSCTX_INPROC_SERVER,
+          IID_PPV_ARGS(&capture_filter));
+
+      if (SUCCEEDED(hr)) {
+        *filter = capture_filter.Detach();
+        return hr;
+      }
+    }
+  }
+
   ScopedComPtr<ICreateDevEnum> dev_enum;
   HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
                                   IID_PPV_ARGS(&dev_enum));
@@ -121,7 +152,6 @@ HRESULT VideoCaptureDeviceWin::GetDeviceFilter(const std::string& device_id,
   if (hr != S_OK)
     return hr;
 
-  ScopedComPtr<IBaseFilter> capture_filter;
   for (ScopedComPtr<IMoniker> moniker;
        enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
        moniker.Reset()) {
