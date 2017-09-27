@@ -25,7 +25,7 @@
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 
-#define HNS_BUFFER_DURATION (80*10000) // 60 ms
+#define HNS_BUFFER_DURATION 0
 
 namespace media {
 namespace {
@@ -401,7 +401,6 @@ void WASAPIAudioInputStream::Run() {
   LOG(INFO) << friendly_name_ << "AudioBlockFifo buffer count: " << buffers_required;
 
   LARGE_INTEGER now_count = {};
-  LARGE_INTEGER end_count = {};
   bool recording = true;
   bool error = false;
   double volume = GetVolume();
@@ -412,9 +411,7 @@ void WASAPIAudioInputStream::Run() {
   audio_client_->GetService(IID_PPV_ARGS(&audio_clock));
 
   UINT64 buffer_cnt = 0;
-  UINT64 late_cnt = 0;
   INT64 discont_cnt = -1;
-  bool late = false;
 
   while (recording && !error) {
     HRESULT hr = S_FALSE;
@@ -431,109 +428,105 @@ void WASAPIAudioInputStream::Run() {
         break;
       case WAIT_OBJECT_0 + 1: {
         TRACE_EVENT0("audio", "WASAPIAudioInputStream::Run_0");
-        // |audio_samples_ready_event_| has been set.
-        BYTE* data_ptr = NULL;
-        UINT32 num_frames_to_read = 0;
-        DWORD flags = 0;
-        UINT64 device_position = 0;
-        UINT64 first_audio_frame_timestamp = 0;
 
-        // Retrieve the amount of data in the capture endpoint buffer,
-        // replace it with silence if required, create callbacks for each
-        // packet and store non-delivered data for the next event.
-        hr = audio_capture_client_->GetBuffer(&data_ptr, &num_frames_to_read,
-                                              &flags, &device_position,
-                                              &first_audio_frame_timestamp);
-        if (FAILED(hr)) {
-          LOG(ERROR) << friendly_name_ << " Failed to get data from the capture buffer: 0x" << std::hex << hr << std::dec ;
-          continue;
-        }
-        QueryPerformanceCounter(&now_count);
+        while (true) {
+          // |audio_samples_ready_event_| has been set.
+          BYTE* data_ptr = NULL;
+          UINT32 num_frames_to_read = 0;
+          DWORD flags = 0;
+          UINT64 device_position = 0;
+          UINT64 first_audio_frame_timestamp = 0;
 
-        if (audio_clock) {
-          // The reported timestamp from GetBuffer is not as reliable as the
-          // clock from the client.  We've seen timestamps reported for
-          // USB audio devices, be off by several days.  Furthermore we've
-          // seen them jump back in time every 2 seconds or so.
-          audio_clock->GetPosition(&device_position,
-                                   &first_audio_frame_timestamp);
-        }
-
-        if (num_frames_to_read != 0) {
-          if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
-            fifo_->PushSilence(num_frames_to_read);
-          } else {
-            fifo_->Push(data_ptr, num_frames_to_read,
-                        format_.Format.wBitsPerSample / 8);
+          // Retrieve the amount of data in the capture endpoint buffer,
+          // replace it with silence if required, create callbacks for each
+          // packet and store non-delivered data for the next event.
+          hr = audio_capture_client_->GetBuffer(&data_ptr, &num_frames_to_read,
+                                                &flags, &device_position,
+                                                &first_audio_frame_timestamp);
+          if (hr == AUDCLNT_S_BUFFER_EMPTY) {
+            LOG(INFO) << friendly_name_ << " NO MORE AUDIO";
+            break;
           }
-          buffer_cnt++;
-          if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
-            if (late) {
-              late_cnt++;
+          if (FAILED(hr)) {
+            LOG(ERROR) << friendly_name_ << " Failed to get data from the capture buffer: 0x" << std::hex << hr << std::dec ;
+            break;
+          }
+          QueryPerformanceCounter(&now_count);
+
+          if (audio_clock) {
+            // The reported timestamp from GetBuffer is not as reliable as the
+            // clock from the client.  We've seen timestamps reported for
+            // USB audio devices, be off by several days.  Furthermore we've
+            // seen them jump back in time every 2 seconds or so.
+            audio_clock->GetPosition(&device_position,
+                                     &first_audio_frame_timestamp);
+          }
+
+          if (num_frames_to_read != 0) {
+            if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+              fifo_->PushSilence(num_frames_to_read);
             } else {
+              fifo_->Push(data_ptr, num_frames_to_read,
+                          format_.Format.wBitsPerSample / 8);
+            }
+            buffer_cnt++;
+            if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
+              LOG(INFO) << friendly_name_ << " GOT frames: " << num_frames_to_read << " with DISCONTINUITY";
               discont_cnt++;
+            } else {
+              LOG(INFO) << friendly_name_ << " GOT frames: " << num_frames_to_read;
+            }
+          }
+
+          hr = audio_capture_client_->ReleaseBuffer(num_frames_to_read);
+          DLOG_IF(ERROR, FAILED(hr)) << "Failed to release capture buffer";
+
+          // Derive a delay estimate for the captured audio packet.
+          // The value contains two parts (A+B), where A is the delay of the
+          // first audio frame in the packet and B is the extra delay
+          // contained in any stored data. Unit is in audio frames.
+          //QueryPerformanceCounter(&now_count);
+          // first_audio_frame_timestamp will be 0 if we didn't get a timestamp.
+          double audio_delay_frames =
+              first_audio_frame_timestamp == 0
+                  ? num_frames_to_read
+                  : ((perf_count_to_100ns_units_ * now_count.QuadPart -
+                      first_audio_frame_timestamp) /
+                     10000.0) *
+                            ms_to_frame_count_ +
+                        fifo_->GetAvailableFrames() - num_frames_to_read;
+
+          // Get a cached AGC volume level which is updated once every second
+          // on the audio manager thread. Note that, |volume| is also updated
+          // each time SetVolume() is called through IPC by the render-side AGC.
+          GetAgcVolume(&volume);
+
+          // Deliver captured data to the registered consumer using a packet
+          // size which was specified at construction.
+          uint32_t delay_frames = static_cast<uint32_t>(audio_delay_frames + 0.5);
+          while (fifo_->available_blocks()) {
+            if (converter_) {
+              if (imperfect_buffer_size_conversion_ &&
+                  fifo_->available_blocks() == 1) {
+                // Special case. We need to buffer up more audio before we can
+                // convert or else we'll suffer an underrun.
+                break;
+              }
+              converter_->ConvertWithDelay(delay_frames, convert_bus_.get());
+              sink_->OnData(this, convert_bus_.get(), delay_frames * frame_size_,
+                            volume);
+            } else {
+              sink_->OnData(this, fifo_->Consume(), delay_frames * frame_size_,
+                            volume);
+            }
+
+            if (delay_frames > packet_size_frames_) {
+              delay_frames -= packet_size_frames_;
+            } else {
+              delay_frames = 0;
             }
           }
         }
-
-        hr = audio_capture_client_->ReleaseBuffer(num_frames_to_read);
-        DLOG_IF(ERROR, FAILED(hr)) << "Failed to release capture buffer";
-
-        // Derive a delay estimate for the captured audio packet.
-        // The value contains two parts (A+B), where A is the delay of the
-        // first audio frame in the packet and B is the extra delay
-        // contained in any stored data. Unit is in audio frames.
-        //QueryPerformanceCounter(&now_count);
-        // first_audio_frame_timestamp will be 0 if we didn't get a timestamp.
-        double audio_delay_frames =
-            first_audio_frame_timestamp == 0
-                ? num_frames_to_read
-                : ((perf_count_to_100ns_units_ * now_count.QuadPart -
-                    first_audio_frame_timestamp) /
-                   10000.0) *
-                          ms_to_frame_count_ +
-                      fifo_->GetAvailableFrames() - num_frames_to_read;
-
-        // Get a cached AGC volume level which is updated once every second
-        // on the audio manager thread. Note that, |volume| is also updated
-        // each time SetVolume() is called through IPC by the render-side AGC.
-        GetAgcVolume(&volume);
-
-        // Deliver captured data to the registered consumer using a packet
-        // size which was specified at construction.
-        uint32_t delay_frames = static_cast<uint32_t>(audio_delay_frames + 0.5);
-        while (fifo_->available_blocks()) {
-          if (converter_) {
-            if (imperfect_buffer_size_conversion_ &&
-                fifo_->available_blocks() == 1) {
-              // Special case. We need to buffer up more audio before we can
-              // convert or else we'll suffer an underrun.
-              break;
-            }
-            converter_->ConvertWithDelay(delay_frames, convert_bus_.get());
-            sink_->OnData(this, convert_bus_.get(), delay_frames * frame_size_,
-                          volume);
-          } else {
-            sink_->OnData(this, fifo_->Consume(), delay_frames * frame_size_,
-                          volume);
-          }
-
-          if (delay_frames > packet_size_frames_) {
-            delay_frames -= packet_size_frames_;
-          } else {
-            delay_frames = 0;
-          }
-        }
-
-        QueryPerformanceCounter(&end_count);
-        end_count.QuadPart  = end_count.QuadPart - now_count.QuadPart;
-        end_count.QuadPart *= perf_count_to_100ns_units_;
-        if (end_count.QuadPart >= HNS_BUFFER_DURATION) {
-          late = true;
-        } else {
-          late = false;
-        }
-
       } break;
       default:
         error = true;
@@ -541,7 +534,7 @@ void WASAPIAudioInputStream::Run() {
     }
   }
 
-  LOG(INFO) << "WASAPI CAPTURE STATS - buffer_cnt: " << buffer_cnt << " late_cnt: " << late_cnt << " discont_cnt: " << discont_cnt << " pro_audio: " << mmcss_is_ok << " " << friendly_name_;
+  LOG(INFO) << "WASAPI CAPTURE STATS - buffer_cnt: " << buffer_cnt << " discont_cnt: " << discont_cnt << " pro_audio: " << mmcss_is_ok << " " << friendly_name_;
 
   if (recording && error) {
     // TODO(henrika): perhaps it worth improving the cleanup here by e.g.
