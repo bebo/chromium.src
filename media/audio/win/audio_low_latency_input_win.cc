@@ -624,6 +624,7 @@ HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
     hr = enumerator->GetDevice(base::UTF8ToUTF16(device_id_).c_str(),
                                endpoint_device_.GetAddressOf());
   }
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(endpoint_device_.Get());
 
   if (FAILED(hr)) {
     open_result_ = OPEN_RESULT_NO_ENDPOINT;

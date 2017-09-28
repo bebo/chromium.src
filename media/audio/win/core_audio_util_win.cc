@@ -165,10 +165,29 @@ static HRESULT GetDeviceFriendlyNameInternal(IMMDevice* device,
   if (FAILED(hr))
     return hr;
 
+  base::win::ScopedPropVariant device_desc_pv;
+  hr = properties->GetValue(PKEY_Device_DeviceDesc,
+                            device_desc_pv.Receive());
+  if (FAILED(hr))
+    return hr;
+
+  std::string name;
+  std::string desc;
+
+  if (device_desc_pv.get().vt == VT_LPWSTR &&
+      device_desc_pv.get().pwszVal) {
+    base::WideToUTF8(device_desc_pv.get().pwszVal,
+                     wcslen(device_desc_pv.get().pwszVal), &desc);
+    *friendly_name += "(";
+    *friendly_name += desc;
+    *friendly_name += ") ";
+  }
+
   if (friendly_name_pv.get().vt == VT_LPWSTR &&
       friendly_name_pv.get().pwszVal) {
     base::WideToUTF8(friendly_name_pv.get().pwszVal,
-                     wcslen(friendly_name_pv.get().pwszVal), friendly_name);
+                     wcslen(friendly_name_pv.get().pwszVal), &name);
+    *friendly_name += name;
   }
 
   return hr;
@@ -471,8 +490,13 @@ std::string CoreAudioUtil::GetFriendlyName(const std::string& device_id) {
   if (!audio_device.Get())
     return std::string();
 
+  return GetFriendlyName(audio_device.Get());
+}
+
+std::string CoreAudioUtil::GetFriendlyName(IMMDevice* audio_device) {
+
   AudioDeviceName device_name;
-  HRESULT hr = GetDeviceName(audio_device.Get(), &device_name);
+  HRESULT hr = GetDeviceName(audio_device, &device_name);
   if (FAILED(hr))
     return std::string();
 
