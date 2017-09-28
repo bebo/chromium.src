@@ -165,29 +165,10 @@ static HRESULT GetDeviceFriendlyNameInternal(IMMDevice* device,
   if (FAILED(hr))
     return hr;
 
-  base::win::ScopedPropVariant device_desc_pv;
-  hr = properties->GetValue(PKEY_Device_DeviceDesc,
-                            device_desc_pv.Receive());
-  if (FAILED(hr))
-    return hr;
-
-  std::string name;
-  std::string desc;
-
-  if (device_desc_pv.get().vt == VT_LPWSTR &&
-      device_desc_pv.get().pwszVal) {
-    base::WideToUTF8(device_desc_pv.get().pwszVal,
-                     wcslen(device_desc_pv.get().pwszVal), &desc);
-    *friendly_name += "(";
-    *friendly_name += desc;
-    *friendly_name += ") ";
-  }
-
   if (friendly_name_pv.get().vt == VT_LPWSTR &&
       friendly_name_pv.get().pwszVal) {
     base::WideToUTF8(friendly_name_pv.get().pwszVal,
-                     wcslen(friendly_name_pv.get().pwszVal), &name);
-    *friendly_name += name;
+                     wcslen(friendly_name_pv.get().pwszVal), friendly_name);
   }
 
   return hr;
