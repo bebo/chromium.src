@@ -73,6 +73,9 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   // Initializes and allocates memory for input and output samples.
   bool InitializeInputOutputSamples();
 
+  // Initialize Async Event Generator
+  bool InitializeEventGenerator();
+
   // Initializes encoder parameters for real-time use.
   bool SetEncoderModes();
 
@@ -86,6 +89,12 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
 
   // Encoding tasks to be run on |encoder_thread_|.
   void EncodeTask(scoped_refptr<VideoFrame> frame, bool force_keyframe);
+
+  void QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe);
+  bool DrainEvents();
+  void ProcessInput();
+  void ProcessEvent(base::win::ScopedComPtr<IMFMediaEvent> event);
+
 
   // Checks for and copies encoded output on |encoder_thread_|.
   void ProcessOutput();
@@ -117,6 +126,9 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   // EncodeOutput needs to be copied into a BitstreamBufferRef as a FIFO.
   std::deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
 
+  // Input samples waiting to be processed by the encoder
+  std::deque<base::win::ScopedComPtr<IMFSample>> input_sample_queue_;
+
   gfx::Size input_visible_size_;
   size_t bitstream_buffer_size_;
   uint32_t frame_rate_;
@@ -128,8 +140,14 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   size_t u_stride_;
   size_t v_stride_;
 
+  std::atomic<uint32_t> input_events_ = 0;
+  std::atomic<uint32_t> output_events_ = 0;
+
+  base::win::ScopedComPtr<IMFMediaEventGenerator> imf_media_event_generator_;
   base::win::ScopedComPtr<IMFTransform> encoder_;
   base::win::ScopedComPtr<ICodecAPI> codec_api_;
+
+  std::atomic<bool> alive_ = true;
 
   DWORD input_stream_id_;
   DWORD output_stream_id_;
@@ -139,6 +157,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
 
   base::win::ScopedComPtr<IMFSample> input_sample_;
   base::win::ScopedComPtr<IMFSample> output_sample_;
+  bool encoder_provides_samples_;
 
   // To expose client callbacks from VideoEncodeAccelerator.
   // NOTE: all calls to this object *MUST* be executed on
