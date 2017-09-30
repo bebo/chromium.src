@@ -124,6 +124,7 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   HRESULT SetCaptureDevice();
   HRESULT GetAudioEngineStreamFormat();
   bool DesiredFormatIsSupported();
+  void ResetFormat(WAVEFORMATEXTENSIBLE *format);
   HRESULT InitializeAudioEngine();
   void ReportOpenResult() const;
 
@@ -187,6 +188,7 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   // Note that AudioDeviceDescription::kDefaultDeviceId represents the default
   // device role and is not a valid ID as such.
   std::string device_id_;
+  bool is_loopback_device_;
 
   std::string friendly_name_;
 
@@ -255,6 +257,9 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   std::unique_ptr<AudioConverter> converter_;
   std::unique_ptr<AudioBus> convert_bus_;
   bool imperfect_buffer_size_conversion_ = false;
+
+
+  const AudioParameters params_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 
