@@ -102,6 +102,7 @@ class MEDIA_EXPORT CoreAudioUtil {
   // Gets the user-friendly name of the endpoint device which is represented
   // by a unique id in |device_id|.
   static std::string GetFriendlyName(const std::string& device_id);
+  static std::string GetFriendlyName(IMMDevice* device);
 
   // Returns true if the provided unique |device_id| corresponds to the current
   // default device for the specified by a data-flow direction and role.
