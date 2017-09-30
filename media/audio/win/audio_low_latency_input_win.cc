@@ -54,11 +54,13 @@ bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
 WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
                                                const AudioParameters& params,
                                                const std::string& device_id)
-    : manager_(manager), device_id_(device_id) {
+    : manager_(manager), device_id_(device_id), params_(params) {
   DCHECK(manager_);
   DCHECK(!device_id_.empty());
 
+  is_loopback_device_ = device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0;
   friendly_name_ = CoreAudioUtil::GetFriendlyName(device_id_);
+
 
   // Load the Avrt DLL if not already loaded. Required to support MMCSS.
   bool avrt_init = avrt::Initialize();
@@ -624,6 +626,7 @@ HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
     hr = enumerator->GetDevice(base::UTF8ToUTF16(device_id_).c_str(),
                                endpoint_device_.GetAddressOf());
   }
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(endpoint_device_.Get());
 
   if (FAILED(hr)) {
     open_result_ = OPEN_RESULT_NO_ENDPOINT;
@@ -699,14 +702,11 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
   // the audio engine can mix only PCM streams.
 
   LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::DesiredFormatIsSupported()";
-  /* base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> format_ex; */
-  // TODO handle return
 
   base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> closest_match;
   HRESULT hr;
 
-  bool is_loopback_device = device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0;
-  if (is_loopback_device) {
+  if (is_loopback_device_) {
     hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
 
     // Force PCM
@@ -736,7 +736,7 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
       << "Format is not supported but a closest match exists."; 
   }
 
-  if ((is_loopback_device || hr == S_FALSE) && IsSupportedFormatForConversion(*reinterpret_cast<WAVEFORMATEX*>(closest_match.get()))) {
+  if ((is_loopback_device_ || hr == S_FALSE) && IsSupportedFormatForConversion(*reinterpret_cast<WAVEFORMATEX*>(closest_match.get()))) {
     DVLOG(1) << "Audio capture data conversion needed.";
     LOG(INFO) << "Audio capture data conversion needed.";
     // Ideally, we want a 1:1 ratio between the buffers we get and the buffers
@@ -753,8 +753,8 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
     const auto output_layout = GuessChannelLayout(format_.Format.nChannels);
     DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, output_layout);
 
-    LOG(INFO) << "Input: nSamplesPerSec: " << closest_match->Format.nSamplesPerSec << ", wBitsPerSample: " << closest_match->Format.wBitsPerSample;
-    LOG(INFO) << "Output: nSamplesPerSec: " << format_.Format.nSamplesPerSec << ", wBitsPerSample: " << format_.Format.wBitsPerSample;
+    LOG(INFO) << "Input: nSamplesPerSec: " << closest_match->Format.nSamplesPerSec << ", wBitsPerSample: " << closest_match->Format.wBitsPerSample << ", Channels: " << closest_match->Format.nChannels;
+    LOG(INFO) << "Output: nSamplesPerSec: " << format_.Format.nSamplesPerSec << ", wBitsPerSample: " << format_.Format.wBitsPerSample << ", Channels: " << format_.Format.nChannels;
 
     const AudioParameters input(AudioParameters::AUDIO_PCM_LOW_LATENCY,
                                 input_layout,
@@ -815,6 +815,76 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
   return (hr == S_OK);
 }
 
+void WASAPIAudioInputStream::ResetFormat(WAVEFORMATEXTENSIBLE* request_format) {
+  DCHECK(!is_loopback_device_); 
+
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::ResetFormat()";
+
+  // Ideally, we want a 1:1 ratio between the buffers we get and the buffers
+  // we give to OnData so that each buffer we receive from the OS can be
+  // directly converted to a buffer that matches with what was asked for.
+  const double buffer_ratio =
+    format_.Format.nSamplesPerSec / static_cast<double>(packet_size_frames_);
+  double new_frames_per_buffer = request_format->Format.nSamplesPerSec / buffer_ratio;
+
+  LOG(INFO) << "buffer_ratio: " << buffer_ratio << ", new_frames_per_buffer: " << new_frames_per_buffer;
+
+  const auto input_layout = GuessChannelLayout(request_format->Format.nChannels);
+  DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, input_layout);
+  const auto output_layout = GuessChannelLayout(params_.channels());
+  DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, output_layout);
+
+  LOG(INFO) << "Input: nSamplesPerSec: " << request_format->Format.nSamplesPerSec << ", wBitsPerSample: " << request_format->Format.wBitsPerSample << ", Channels: " << request_format->Format.nChannels;
+  LOG(INFO) << "Output: nSamplesPerSec: " << params_.sample_rate() << ", wBitsPerSample: " << params_.bits_per_sample() << ", Channels: " << params_.channels();
+
+  const AudioParameters input(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      input_layout,
+      request_format->Format.nSamplesPerSec,
+      request_format->Format.wBitsPerSample,
+      static_cast<int>(new_frames_per_buffer));
+
+  const AudioParameters output(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      output_layout, params_.sample_rate(),
+      params_.bits_per_sample(), packet_size_frames_);
+
+  converter_.reset(new AudioConverter(input, output, false));
+  converter_->AddInput(this);
+  converter_->PrimeWithSilence();
+  convert_bus_ = AudioBus::Create(output);
+
+  // Now change the format we're going to ask for to better match with what
+  // the OS can provide.  If we succeed in opening the stream with these
+  // params, we can take care of the required resampling.
+  format_.Format.wBitsPerSample = request_format->Format.wBitsPerSample;
+  format_.Format.nSamplesPerSec = request_format->Format.nSamplesPerSec;
+  format_.Format.nChannels = request_format->Format.nChannels;
+  format_.Format.nBlockAlign = (format_.Format.wBitsPerSample / 8) * format_.Format.nChannels;
+  format_.Format.nAvgBytesPerSec = format_.Format.nSamplesPerSec * format_.Format.nBlockAlign;
+
+  format_.Samples.wValidBitsPerSample = request_format->Format.wBitsPerSample;
+
+  LOG(INFO) << "Will convert audio from: bits: " << format_.Format.wBitsPerSample
+    << ", sample rate: " << format_.Format.nSamplesPerSec
+    << ", channels: " << format_.Format.nChannels
+    << ", block align: " << format_.Format.nBlockAlign
+    << ", avg bytes per sec: " << format_.Format.nAvgBytesPerSec;
+
+  // Update our packet size assumptions based on the new format.
+  const auto new_bytes_per_buffer =
+    static_cast<int>(new_frames_per_buffer) * format_.Format.nBlockAlign;
+  packet_size_frames_ = new_bytes_per_buffer / format_.Format.nBlockAlign;
+  packet_size_bytes_ = new_bytes_per_buffer;
+  frame_size_ = format_.Format.nBlockAlign;
+  ms_to_frame_count_ = static_cast<double>(format_.Format.nSamplesPerSec) / 1000.0;
+
+  imperfect_buffer_size_conversion_ =
+    std::modf(new_frames_per_buffer, &new_frames_per_buffer) != 0.0;
+
+  if (imperfect_buffer_size_conversion_) {
+    LOG(INFO) << "Audio capture data conversion: Need to inject fifo";
+  }
+}
+
 HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   DCHECK_EQ(OPEN_RESULT_OK, open_result_);
   DWORD flags;
@@ -835,7 +905,6 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
   // buffer is never smaller than the minimum buffer size needed to ensure
   // that glitches do not occur between the periodic processing passes.
   // This setting should lead to lowest possible latency.
-
   HRESULT hr = audio_client_->Initialize(
       AUDCLNT_SHAREMODE_SHARED,
       flags,
@@ -845,6 +914,78 @@ HRESULT WASAPIAudioInputStream::InitializeAudioEngine() {
       device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
                        ? &kCommunicationsSessionId
                        : nullptr);
+
+  // loopback capture - workaround, some devices reports the wrong format back via GetMixFormat
+  // specifically, a workaround for Realtek Speaker loopback
+  // when it is configured with 2, 4, 6, 8 channels - GetMixFormat always return 8 channels.
+  if (is_loopback_device_ && (hr == AUDCLNT_E_UNSUPPORTED_FORMAT || hr == E_INVALIDARG)) {
+    int channelsMin = 1;
+    int channelsMax = 8;
+    int channelsCur = channelsMin;
+
+    base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> wfex;
+
+    HRESULT mfhr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&wfex));
+
+    while (mfhr == S_OK && (hr == AUDCLNT_E_UNSUPPORTED_FORMAT || hr == E_INVALIDARG) && channelsCur <= channelsMax) {
+      WAVEFORMATEX* closest_format = &wfex->Format;
+
+      // force PCM
+      closest_format->nChannels = channelsCur;
+      closest_format->wBitsPerSample = 16;
+      closest_format->nBlockAlign = (closest_format->wBitsPerSample / 8) * closest_format->nChannels;
+      closest_format->nAvgBytesPerSec = closest_format->nSamplesPerSec * closest_format->nBlockAlign;
+
+      wfex->Samples.wValidBitsPerSample = closest_format->wBitsPerSample;
+      wfex->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+
+      switch (channelsCur) {
+        case 1:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_MONO;
+          break;
+        case 2:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_STEREO;
+          break;
+        case 3:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_STEREO | SPEAKER_LOW_FREQUENCY;
+          break;
+        case 4:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_QUAD;
+          break;
+        case 5:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_5POINT1_SURROUND & SPEAKER_LOW_FREQUENCY;
+          break;
+        case 6:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_5POINT1_SURROUND;
+          break;
+        case 7:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_5POINT1_SURROUND | SPEAKER_BACK_CENTER;
+          break;
+        case 8:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND;
+          break;
+      }
+
+      LOG(INFO) << "Failed to init client. Trying with " << channelsCur << " channels";
+
+      hr = audio_client_->Initialize(
+          AUDCLNT_SHAREMODE_SHARED,
+          flags,
+          0,
+          0,
+          reinterpret_cast<WAVEFORMATEX*>(wfex.get()),
+          device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
+          ? &kCommunicationsSessionId
+          : nullptr);
+
+      if (SUCCEEDED(hr)) {
+        LOG(INFO) << "Successfully opened the audio client with " << channelsCur << " channels";
+        ResetFormat(wfex.get());
+        break;
+      }
+      channelsCur++;
+    }
+  }
 
   if (FAILED(hr)) {
     open_result_ = OPEN_RESULT_AUDIO_CLIENT_INIT_FAILED;
