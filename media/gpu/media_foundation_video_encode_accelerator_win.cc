@@ -370,6 +370,19 @@ bool MediaFoundationVideoEncodeAccelerator::TryToSetupEncodeOnSeparateThread(
 void MediaFoundationVideoEncodeAccelerator::PreSandboxInitialization() {
   for (const wchar_t* mfdll : kMediaFoundationVideoEncoderDLLs)
     ::LoadLibrary(mfdll);
+
+}
+
+std::string GuidToString(GUID *guid) {
+    char guid_string[37]; // 32 hex chars + 4 hyphens + null terminator
+    snprintf(
+          guid_string, sizeof(guid_string) / sizeof(guid_string[0]),
+          "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+          guid->Data1, guid->Data2, guid->Data3,
+          guid->Data4[0], guid->Data4[1], guid->Data4[2],
+          guid->Data4[3], guid->Data4[4], guid->Data4[5],
+          guid->Data4[6], guid->Data4[7]);
+    return guid_string;
 }
 
 bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
@@ -425,27 +438,31 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
 
   uint32_t index = 0;
 
+  std::wstring encoder_name;
+
   PROPVARIANT pvalue = {0};
   for (uint32_t j = 0; j < count; j++) {
-
-    LPWSTR transform_clsid;
-    UINT32 transform_clsid_size;
 
     hr = activate[j]->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
     if (hr != S_OK) {
       LOG(ERROR) << "Could not get friendly name";
     }
-    LOG(INFO) << "Available HW encoder: " << pvalue.pwszVal;
+    LOG(INFO) << "Available HW encoder[" << j << "]: " << pvalue.pwszVal;
+    if (j == 0) {
+      encoder_name = pvalue.pwszVal;
+    }
 
-    hr = activate[j]->GetAllocatedString(MFT_TRANSFORM_CLSID_Attribute, &transform_clsid, &transform_clsid_size);
-
-    if (hr != S_OK || transform_clsid == nullptr) {
+    GUID cls_id;
+    hr = activate[j]->GetGUID(MFT_TRANSFORM_CLSID_Attribute, &cls_id);
+    
+    if (hr != S_OK) {
+      LOG(ERROR) << "can't get MFT_TRANSFORM_CLSID: 0x" << std::hex << hr << std::dec;
       continue;
     }
 
-    CLSID cls_id;
-    CLSIDFromString(transform_clsid, &cls_id);
+    LOG(INFO) << "comparing " << GuidToString(&av_mft_transform_id) << " to " << GuidToString(&cls_id);
     if (IsEqualCLSID(av_mft_transform_id, cls_id)) {
+        encoder_name = pvalue.pwszVal;
         index = j;
         break;
     }
@@ -723,6 +740,9 @@ bool MediaFoundationVideoEncodeAccelerator::IsResolutionSupported(
     const gfx::Size& resolution) {
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
   DCHECK(encoder_);
+
+  LOG(INFO) << "trying resolution: "
+            << resolution.width() << "x" resolution.height();
 
   HRESULT hr =
       MFSetAttributeSize(imf_output_media_type_.Get(), MF_MT_FRAME_SIZE,
