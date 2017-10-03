@@ -402,8 +402,19 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
 
   uint32_t count = 0;
 
-#define USE_MFT_ENUM_EX
-#ifdef USE_MFT_ENUM_EX 
+  CLSID av_mft_transform_id;
+
+  RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
+  if (beboKey.Valid()) {
+    if (beboKey.HasValue(L"AV_MFT_TRANSFORM_ID")) {
+      std::wstring clsid_string;
+
+      beboKey.ReadValue(L"AV_MFT_TRANSFORM_ID", &clsid_string);
+      CLSIDFromString(clsid_string.c_str(), &av_mft_transform_id);
+      LOG(INFO) << "AV_MFT_TRANSFORM_ID: " << clsid_string;
+    }
+  }
+
   IMFActivate **activate = NULL;
   HRESULT hr = MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, flags, &input_info,
           &output_info, &activate, &count);
@@ -412,14 +423,41 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
   LOG(INFO) << "HW encoder(s) found: " << count;
   DVLOG(3) << "HW encoder(s) found: " << count;
 
-  hr = activate[0]->ActivateObject(IID_PPV_ARGS(&encoder_));
+  uint32_t index = 0;
+
+  PROPVARIANT pvalue = {0};
+  for (uint32_t j = 0; j < count; j++) {
+
+    LPWSTR transform_clsid;
+    UINT32 transform_clsid_size;
+
+    hr = activate[j]->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
+    if (hr != S_OK) {
+      LOG(ERROR) << "Could not get friendly name";
+    }
+    LOG(INFO) << "Available HW encoder: " << pvalue.pwszVal;
+
+    hr = activate[j]->GetAllocatedString(MFT_TRANSFORM_CLSID_Attribute, &transform_clsid, &transform_clsid_size);
+
+    if (hr != S_OK || transform_clsid == nullptr) {
+      continue;
+    }
+
+    CLSID cls_id;
+    CLSIDFromString(transform_clsid, &cls_id);
+    if (IsEqualCLSID(av_mft_transform_id, cls_id)) {
+        index = j;
+        break;
+    }
+  }
+    
+  LOG(INFO) << "Selected encoder: " << pvalue.pwszVal;
+
+  hr = activate[index]->ActivateObject(IID_PPV_ARGS(&encoder_));
 
   RETURN_ON_HR_FAILURE(hr, "Couldn't activate hardware encoder", false);
   RETURN_ON_FAILURE((encoder_.Get() != nullptr),
-                                           "No HW encoder instance created", false);
-  PROPVARIANT pvalue;
-  activate[0]->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
-  LOG(INFO) << "Current encoder: " << pvalue.pwszVal;
+                    "No HW encoder instance created", false);
   
   IMFAttributes *attributes;
   encoder_.Get()->GetAttributes(&attributes);
@@ -427,39 +465,6 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
   RETURN_ON_HR_FAILURE(hr, "Could not set sync", false);
   //FIXME - free all activate instances
   //
-#else
-
-  base::win::ScopedCoMem<CLSID> CLSIDs;
-  HRESULT hr = MFTEnum(MFT_CATEGORY_VIDEO_ENCODER, flags, &input_info,
-                       &output_info, NULL, &CLSIDs, &count);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't enumerate hardware encoder", false);
-  RETURN_ON_FAILURE((count > 0), "No HW encoder found", false);
-  DVLOG(3) << "HW encoder(s) found: " << count;
-  LOG(INFO) << "HW encoder(s) found: " << count;
-  hr = ::CoCreateInstance(CLSIDs[0], nullptr, CLSCTX_ALL,
-                          IID_PPV_ARGS(&encoder_));
-  RETURN_ON_HR_FAILURE(hr, "Couldn't activate hardware encoder", false);
-  RETURN_ON_FAILURE((encoder_.Get() != nullptr),
-                    "No HW encoder instance created", false);
-
-  std::string name;
-  char buff[512];
-
-  LPWSTR info_name;
-  MFTGetInfo(CLSIDs[0], &info_name, NULL, NULL, NULL, NULL, NULL);
-  std::snprintf(buff, sizeof(buff), "%S", info_name);
-  name = buff;
-  LOG(INFO) << "Current encoder name: " << name;
-
-  IMFAttributes *attributes;
-  encoder_.Get()->GetAttributes(&attributes);
-  // PROPVARIANT pvalue;
-  // attributes->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
-  // std::snprintf(buff, sizeof(buff), "%S", pvalue.pwszVal);
-  // name = buff;
-  // LOG(INFO) << "Current encoder friendly name : " << name;
-
-#endif
   return true;
 }
 
@@ -900,7 +905,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
 void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
 
-  LOG(INFO) << __func__ << " events: " << input_events_ << " queue empty: " << input_sample_queue_.empty() ;
+  VLOG(3) << __func__ << " events: " << input_events_ << " queue empty: " << input_sample_queue_.empty() ;
 
   while(! input_sample_queue_.empty() && input_events_ > 0) {
     ScopedComPtr<IMFSample> sample = std::move(input_sample_queue_.front());
@@ -917,7 +922,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
     // any more input data.
     if (hr == MF_E_NOTACCEPTING) {
       DVLOG(3) << "MF_E_NOTACCEPTING";
-      LOG(INFO) << "MF_E_NOTACCEPTING";
+      VLOG(3) << "MF_E_NOTACCEPTING";
       DrainEvents();
       ProcessOutput();
       hr = encoder_->ProcessInput(input_stream_id_, sample.Get(), 0);
@@ -941,7 +946,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
 
 void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
   DVLOG(3) << __func__;
-  LOG(INFO) << __func__ << " events: " << output_events_;
+  VLOG(3) << __func__ << " events: " << output_events_;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   while(output_events_ > 0) {
@@ -963,15 +968,15 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     hr = encoder_->ProcessOutput(output_stream_id_, 1, &output_data_buffer,
                                  &status);
     if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
-      LOG(INFO) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
+      VLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       DVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       return;
     }
     if (! SUCCEEDED(hr)) {
-      LOG(INFO) << "Couldn't get encoded data 0x" << std::hex << hr << std::dec;
+      LOG(ERROR) << "Couldn't get encoded data 0x" << std::hex << hr << std::dec;
     }
     RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
-    LOG(INFO) << "Got encoded data " << hr;
+    VLOG(3) << "Got encoded data " << hr;
     DVLOG(3) << "Got encoded data " << hr;
     
 		if (encoder_provides_samples_) {
@@ -1007,7 +1012,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     const bool keyframe = MFGetAttributeUINT32(
         sample.Get(), MFSampleExtension_CleanPoint, false);
-    LOG(INFO) << "We HAVE encoded data with size:" << size << " keyframe "
+    VLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
              << keyframe
              << " timestamp: "
              << sample_time;
@@ -1017,7 +1022,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     if (bitstream_buffer_queue_.empty()) {
       DVLOG(3) << "No bitstream buffers.";
-      LOG(INFO) << "No bitstream buffers.";
+      VLOG(3) << "No bitstream buffers.";
       // We need to copy the output so that encoding can continue.
       std::unique_ptr<EncodeOutput> encode_output(
           new EncodeOutput(size, keyframe, timestamp));
@@ -1038,7 +1043,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       memcpy(buffer_ref->shm->memory(), scoped_buffer.get(), size);
     }
 
-    LOG(INFO) << "Posted Frame";
+    VLOG(3) << "Posted Frame";
     encode_client_task_runner_->PostTask(
         FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
                               buffer_ref->id, size, keyframe, timestamp));
@@ -1110,7 +1115,7 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
 }
 
 void MediaFoundationVideoEncodeAccelerator::DestroyTask() {
-  LOG(INFO) << __func__;
+  VLOG(3) << __func__;
   DVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
   alive_ = false;
@@ -1122,6 +1127,12 @@ void MediaFoundationVideoEncodeAccelerator::DestroyTask() {
 }
 
 void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
+  LOG(INFO) << __func__;
+  // TODO: There are reports that some MFT's crash (AMD) if there are
+  // unprocessed samples, so we should probably drain all events and process
+  // all output, even if we send it to dev/null
+
+  MFShutdownObject(encoder_.Get()); // async MFT's must be shut down
   encoder_.Reset();
   codec_api_.Reset();
   imf_media_event_generator_.Reset();
