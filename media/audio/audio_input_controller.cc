@@ -316,7 +316,6 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   if (reconnect && stream_) {
-      audio_manager->RemoveOutputDeviceChangeListener(this);
       DoCloseForReconnect();
   } else {
     DCHECK(!stream_);
@@ -418,6 +417,10 @@ void AudioInputController::DoClose() {
   if (!stream_)
     return;
 
+  if (device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
+    audio_manager_->RemoveOutputDeviceChangeListener(this);
+  }
+
   check_muted_state_timer_.AbandonAndStop();
 
   std::string log_string;
@@ -490,6 +493,10 @@ void AudioInputController::DoCloseForReconnect() {
 
   if (!stream_)
     return;
+
+  if (device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
+    audio_manager_->RemoveOutputDeviceChangeListener(this);
+  }
 
   check_muted_state_timer_.AbandonAndStop();
 
