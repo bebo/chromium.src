@@ -50,7 +50,7 @@ constexpr const wchar_t* const kMediaFoundationVideoEncoderDLLs[] = {
 };
 
 // Resolutions that some platforms support, should be listed in ascending order.
-constexpr const gfx::Size kOptionalMaxResolutions[] = {gfx::Size(3840, 2176)};
+constexpr const gfx::Size kOptionalMaxResolutions[] = {gfx::Size(1280, 720), gfx::Size(1920, 1080), gfx::Size(3840, 2176)};
 
 
 
@@ -124,6 +124,7 @@ MediaFoundationVideoEncodeAccelerator::GetSupportedProfiles() {
     return profiles;
   }
 
+  // Intel MFT does not support this:
   gfx::Size highest_supported_resolution = input_visible_size_;
   for (const auto& resolution : kOptionalMaxResolutions) {
     DCHECK_GT(resolution.GetArea(), highest_supported_resolution.GetArea());
@@ -415,7 +416,8 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
 
   uint32_t count = 0;
 
-  CLSID av_mft_transform_id;
+  CLSID av_mft_transform_id = {0};
+//  CLSID av_mft_transform_id;
 
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   if (beboKey.Valid()) {
@@ -468,7 +470,7 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
     }
   }
     
-  LOG(INFO) << "Selected encoder: " << pvalue.pwszVal;
+  LOG(INFO) << "Selected encoder: " << encoder_name;
 
   hr = activate[index]->ActivateObject(IID_PPV_ARGS(&encoder_));
 
@@ -741,8 +743,8 @@ bool MediaFoundationVideoEncodeAccelerator::IsResolutionSupported(
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
   DCHECK(encoder_);
 
-  LOG(INFO) << "trying resolution: "
-            << resolution.width() << "x" resolution.height();
+  LOG(INFO) << "trying resolution: " << resolution.width()
+            << "x" << resolution.height();
 
   HRESULT hr =
       MFSetAttributeSize(imf_output_media_type_.Get(), MF_MT_FRAME_SIZE,
@@ -750,7 +752,10 @@ bool MediaFoundationVideoEncodeAccelerator::IsResolutionSupported(
   RETURN_ON_HR_FAILURE(hr, "Couldn't set frame size", false);
   hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
                                0);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set output media type", false);
+  if (hr != S_OK) {
+    LOG(INFO) << "IsResolutionSupported Couldn't set output media type";
+    return false;
+  }
 
   hr = MFSetAttributeSize(imf_input_media_type_.Get(), MF_MT_FRAME_SIZE,
                           resolution.width(), resolution.height());
