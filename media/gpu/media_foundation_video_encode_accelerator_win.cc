@@ -52,11 +52,7 @@ constexpr const wchar_t* const kMediaFoundationVideoEncoderDLLs[] = {
 // Resolutions that some platforms support, should be listed in ascending order.
 constexpr const gfx::Size kOptionalMaxResolutions[] = {gfx::Size(1280, 720), gfx::Size(1920, 1080), gfx::Size(3840, 2176)};
 
-
-
-
 }  // namespace
-
 
 
 class MediaFoundationVideoEncodeAccelerator::EncodeOutput {
@@ -776,7 +772,7 @@ void MediaFoundationVideoEncodeAccelerator::NotifyError(
 void MediaFoundationVideoEncodeAccelerator::EncodeTask(
     scoped_refptr<VideoFrame> frame,
     bool force_keyframe) {
-  LOG(INFO) << __func__;
+  VLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   // Probably easier to just use a drain strategy than to go full async right
@@ -810,10 +806,10 @@ void MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEv
 
 	if (SUCCEEDED(event_status)) {
 		if (media_event_type == METransformNeedInput) {
-      LOG(INFO) << "input event";
+      VLOG(3) << "input event";
 			input_events_++;
 		} else if (media_event_type == METransformHaveOutput) {
-      LOG(INFO) << "output event";
+      VLOG(3) << "output event";
 			output_events_++;
 		} else {
       LOG(ERROR) << "Unknown Media Event: " << media_event_type;
@@ -845,7 +841,7 @@ bool MediaFoundationVideoEncodeAccelerator::DrainEvents() {
 
 void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe) {
 
-  LOG(INFO) << __func__;
+  VLOG(3) << __func__;
 
   // TODO: multiple input/output samples / or at least not on the object
 
@@ -855,46 +851,6 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
   {
     MediaBufferScopedPointer scoped_buffer(input_buffer.Get());
     DCHECK(scoped_buffer.get());
-    /* libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane), */
-    /*                  frame->stride(VideoFrame::kYPlane), */
-    /*                  frame->visible_data(VideoFrame::kVPlane), */
-    /*                  frame->stride(VideoFrame::kVPlane), */
-    /*                  frame->visible_data(VideoFrame::kUPlane), */
-    /*                  frame->stride(VideoFrame::kUPlane), scoped_buffer.get(), */
-    /*                  y_stride_, scoped_buffer.get() + u_plane_offset_, */
-    /*                  u_stride_, scoped_buffer.get() + v_plane_offset_, */
-    /*                  v_stride_, input_visible_size_.width(), */
-    /*                  input_visible_size_.height()); */
-/* int I420Copy(const uint8* src_y, */
-/*              int src_stride_y, */
-/*              const uint8* src_u, */
-/*              int src_stride_u, */
-/*              const uint8* src_v, */
-/*              int src_stride_v, */
-/*              uint8* dst_y, */
-/*              int dst_stride_y, */
-/*              uint8* dst_u, */
-/*              int dst_stride_u, */
-/*              uint8* dst_v, */
-/*              int dst_stride_v, */
-/*              int width, */
-/*              int height) {" */
-
-/* int I420ToNV12(const uint8* src_y, */
-/*                int src_stride_y, */
-/*                const uint8* src_u, */
-/*                int src_stride_u, */
-/*                const uint8* src_v, */
-/*                int src_stride_v, */
-
-/*                uint8* dst_y, */
-/*                int dst_stride_y, */
-
-/*                uint8* dst_uv, */
-/*                int dst_stride_uv, */
-
-/*                int width, */
-/*                int height) { */
 
     libyuv::I420ToNV12(frame->visible_data(VideoFrame::kYPlane),
                      frame->stride(VideoFrame::kYPlane),
@@ -920,7 +876,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
   LONGLONG sample_time;
   input_sample_->GetSampleTime(&sample_time);
-  LOG(INFO) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
+  VLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
 	input_sample_queue_.push_back(std::move(input_sample_));
 
 
@@ -965,7 +921,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
     }
 
     DVLOG(3) << "Sent for encode " << hr;
-    LOG(INFO) << "ProcessInput  - Sent for encode - timestamp " << sample_time;
+    VLOG(3) << "ProcessInput  - Sent for encode - timestamp " << sample_time;
   }
 };
 
@@ -1012,7 +968,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     DWORD buffer_cnt = 0;
     sample->GetBufferCount(&buffer_cnt);
-    LOG(INFO) << "Sample Has Buffers: " << buffer_cnt;
+    VLOG(3) << "Sample Has Buffers: " << buffer_cnt;
 
     base::win::ScopedComPtr<IMFMediaBuffer> output_buffer;
     if (buffer_cnt == 1) {
