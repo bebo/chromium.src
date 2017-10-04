@@ -343,7 +343,7 @@ double WASAPIAudioInputStream::GetVolume() {
 bool WASAPIAudioInputStream::IsMuted() {
   DCHECK(opened_) << "Open() has not been called successfully";
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::IsMuted()";
+  VLOG(3) << friendly_name_ << " WASAPIAudioInputStream::IsMuted()";
   if (!opened_)
     return false;
 
@@ -626,12 +626,13 @@ HRESULT WASAPIAudioInputStream::SetCaptureDevice() {
     hr = enumerator->GetDevice(base::UTF8ToUTF16(device_id_).c_str(),
                                endpoint_device_.GetAddressOf());
   }
-  friendly_name_ = CoreAudioUtil::GetFriendlyName(endpoint_device_.Get());
 
   if (FAILED(hr)) {
     open_result_ = OPEN_RESULT_NO_ENDPOINT;
     return hr;
   }
+
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(endpoint_device_.Get());
 
   // Verify that the audio endpoint device is active, i.e., the audio
   // adapter that connects to the endpoint device is present and enabled.
