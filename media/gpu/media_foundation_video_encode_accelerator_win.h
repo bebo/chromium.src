@@ -13,6 +13,7 @@
 #include <deque>
 #include <memory>
 
+#include "base/atomic_ref_count.h"
 #include "base/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/single_thread_task_runner.h"
@@ -32,7 +33,7 @@ namespace media {
 // correct task runners. It starts an internal encoder thread on which
 // VideoEncodeAccelerator implementation tasks are posted.
 class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
-    : public VideoEncodeAccelerator {
+    : public VideoEncodeAccelerator, IMFAsyncCallback {
  public:
   MediaFoundationVideoEncodeAccelerator();
 
@@ -53,6 +54,13 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
       const base::WeakPtr<Client>& encode_client,
       const scoped_refptr<base::SingleThreadTaskRunner>& encode_task_runner)
       override;
+
+  // IMFAsyncCallback
+  ULONG STDMETHODCALLTYPE AddRef() override;
+  ULONG STDMETHODCALLTYPE Release() override;
+  STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override;
+  STDMETHODIMP GetParameters(DWORD * pdwFlags, DWORD * pdwQueue);
+  STDMETHODIMP Invoke(IMFAsyncResult * pAsyncResult);
 
   // Preload dlls required for encoding.
   static void PreSandboxInitialization();
@@ -95,9 +103,9 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   void ProcessInput();
   void ProcessEvent(base::win::ScopedComPtr<IMFMediaEvent> event);
 
-
   // Checks for and copies encoded output on |encoder_thread_|.
   void ProcessOutput();
+  void ProcessInputOutput();
 
   // Inserts the output buffers for reuse on |encoder_thread_|.
   void UseOutputBitstreamBufferTask(
@@ -182,6 +190,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   base::WeakPtrFactory<MediaFoundationVideoEncodeAccelerator>
       encoder_task_weak_factory_;
 
+  base::AtomicRefCount ref_count_;
   DISALLOW_COPY_AND_ASSIGN(MediaFoundationVideoEncodeAccelerator);
 };
 
