@@ -272,6 +272,9 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
     encode_client_ = main_client_;
   }
 
+  hr = imf_media_event_generator_->BeginGetEvent(this, NULL);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set BeginGetEvent", false);
+
   main_client_task_runner_->PostTask(
       FROM_HERE, base::Bind(&Client::RequireBitstreamBuffers, main_client_,
                             kNumInputBuffers, input_visible_size_,
@@ -777,25 +780,15 @@ void MediaFoundationVideoEncodeAccelerator::EncodeTask(
 
   // Probably easier to just use a drain strategy than to go full async right
   // now
-
   QueueFrame(frame, force_keyframe);
-  DrainEvents();
   ProcessOutput();
-  bool alive_ = true; // TODO: check if we have to have a way to exit this on error, end stream, ...
-  while(input_events_ == 0 && alive_) {
-    DrainEvents();
-    ProcessOutput();
-    if (input_events_ == 0 && alive_) {
-      Sleep(1);
-    }
-  }
   ProcessInput();
-  while(DrainEvents() && alive_) {
-    ProcessOutput();
-    ProcessInput();
-  }
 }
 
+void MediaFoundationVideoEncodeAccelerator::ProcessInputOutput() {
+  ProcessOutput();
+  ProcessInput();
+}
 
 void MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEvent> event) {
 
@@ -904,14 +897,14 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
     if (hr == MF_E_NOTACCEPTING) {
       DVLOG(3) << "MF_E_NOTACCEPTING";
       VLOG(3) << "MF_E_NOTACCEPTING";
-      DrainEvents();
       ProcessOutput();
       hr = encoder_->ProcessInput(input_stream_id_, sample.Get(), 0);
       if (!SUCCEEDED(hr)) {
-        LOG(ERROR) << "Coudn't encode 0x" << std::hex << hr << std:: dec;
+        LOG(ERROR) << "Coudn't encode 0x" << std::hex << hr << std:: dec << " try again later";
+        input_events_++;
         alive_ = false;
-        NotifyError(kPlatformFailureError);
-        RETURN_ON_HR_FAILURE(hr, "Couldn't encode", );
+        /* NotifyError(kPlatformFailureError); */
+        /* RETURN_ON_HR_FAILURE(hr, "Couldn't encode", ); */
       }
     } else if (!SUCCEEDED(hr)) {
       LOG(ERROR) << "Coudn't encode 0x" << std::hex << hr << std:: dec;
@@ -1121,6 +1114,69 @@ void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   imf_output_media_type_.Reset();
   input_sample_.Reset();
   output_sample_.Reset();
+}
+
+STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyncResult) {
+
+  DVLOG(3) << __func__;
+
+  HRESULT hr = S_OK;
+  base::win::ScopedComPtr<IMFMediaEvent> event;
+
+  // Get the event from the event queue.
+  // Assume that m_pEventGenerator is a valid pointer to the
+  // event generator's IMFMediaEventGenerator interface.
+  hr = imf_media_event_generator_->EndGetEvent(pAsyncResult, event.GetAddressOf());
+
+  // Get the event type.
+  if (! SUCCEEDED(hr))
+  {
+      LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
+  }
+
+  ProcessEvent(event);
+  encoder_thread_task_runner_->PostTask(
+      FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
+                            encoder_task_weak_factory_.GetWeakPtr()));
+
+  if (alive_)
+  {
+    hr = imf_media_event_generator_->BeginGetEvent(this, NULL);
+    if (hr != S_OK) {
+      LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
+    }
+  }
+
+	return S_OK;
+}
+
+
+STDMETHODIMP MediaFoundationVideoEncodeAccelerator::GetParameters(DWORD *pdwFlags, DWORD *pdwQueue) {
+	return E_NOTIMPL;
+}
+
+ULONG STDMETHODCALLTYPE MediaFoundationVideoEncodeAccelerator::AddRef() {
+  ref_count_.Increment();
+  return 1;
+}
+
+ULONG STDMETHODCALLTYPE MediaFoundationVideoEncodeAccelerator::Release() {
+  if (!ref_count_.Decrement()) {
+    delete this;
+    return 0;
+  }
+  return 1;
+}
+
+STDMETHODIMP MediaFoundationVideoEncodeAccelerator::QueryInterface(REFIID riid, void** ppv) {
+  if (riid == IID_IUnknown) {
+    *ppv = static_cast<IUnknown*>(this);
+    AddRef();
+    return S_OK;
+  }
+
+  *ppv = NULL;
+  return E_NOINTERFACE;
 }
 
 }  // namespace content
