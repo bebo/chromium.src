@@ -101,7 +101,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   void QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe);
   bool DrainEvents();
   void ProcessInput();
-  void ProcessEvent(base::win::ScopedComPtr<IMFMediaEvent> event);
+  bool ProcessEvent(base::win::ScopedComPtr<IMFMediaEvent> event);
 
   // Checks for and copies encoded output on |encoder_thread_|.
   void ProcessOutput();
@@ -154,6 +154,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   base::win::ScopedComPtr<IMFMediaEventGenerator> imf_media_event_generator_;
   base::win::ScopedComPtr<IMFTransform> encoder_;
   base::win::ScopedComPtr<ICodecAPI> codec_api_;
+  HANDLE drained_ = NULL;
 
   std::atomic<bool> alive_ = true;
 

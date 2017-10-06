@@ -89,7 +89,10 @@ struct MediaFoundationVideoEncodeAccelerator::BitstreamBufferRef {
 MediaFoundationVideoEncodeAccelerator::MediaFoundationVideoEncodeAccelerator()
     : main_client_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       encoder_thread_("MFEncoderThread"),
-      encoder_task_weak_factory_(this) {}
+      encoder_task_weak_factory_(this) {
+
+  drained_ = CreateEvent(NULL, FALSE, FALSE, NULL);
+}
 
 MediaFoundationVideoEncodeAccelerator::
     ~MediaFoundationVideoEncodeAccelerator() {
@@ -790,7 +793,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInputOutput() {
   ProcessInput();
 }
 
-void MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEvent> event) {
+bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEvent> event) {
 
   MediaEventType media_event_type = MEUnknown;
   HRESULT event_status = S_OK;
@@ -804,12 +807,19 @@ void MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEv
 		} else if (media_event_type == METransformHaveOutput) {
       VLOG(3) << "output event";
 			output_events_++;
+		} else if (media_event_type == METransformDrainComplete) {
+      VLOG(3) << "drain complete";
+      HRESULT hr = encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+      LOG_IF(ERROR, hr != S_OK) <<  "Error in ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH) 0x" << std::hex << hr << std::dec;
+      SetEvent(drained_);
+      return false; // don't post new task
 		} else {
       LOG(ERROR) << "Unknown Media Event: " << media_event_type;
     }
 	} else {
     LOG(ERROR) << "Bad Media Event Status 0x" << std::hex << event_status << std::dec;
   }
+  return true;
 }
 
 bool MediaFoundationVideoEncodeAccelerator::DrainEvents() {
@@ -946,10 +956,24 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       DVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       return;
     }
-    if (! SUCCEEDED(hr)) {
+    // quicksync...
+    if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
+      VLOG(3) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
+      hr = encoder_->GetOutputAvailableType(0, 0, imf_output_media_type_.GetAddressOf());
+      if (hr != S_OK) {
+        LOG(ERROR) << "MF_E_TRANSFORM_STREAM_CHANGE - Could not Get available output type 0x" << std::hex << hr << std::dec;
+      }
+      hr = encoder_->SetOutputType(0, imf_output_media_type_.Get(), 0);
+      if (hr != S_OK) {
+        LOG(ERROR) << "MF_E_TRANSFORM_STREAM_CHANGE - Could not set available output type 0x" << std::hex << hr << std::dec;
+      }
+      output_events_++;
+      continue; // try to get output again...
+
+    } else if (! SUCCEEDED(hr)) {
       LOG(ERROR) << "Couldn't get encoded data 0x" << std::hex << hr << std::dec;
+      RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
     }
-    RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
     VLOG(3) << "Got encoded data " << hr;
     DVLOG(3) << "Got encoded data " << hr;
     
@@ -1092,19 +1116,32 @@ void MediaFoundationVideoEncodeAccelerator::DestroyTask() {
   VLOG(3) << __func__;
   DVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
+
+  // There are reports that some MFT's crash (AMD) if there are
+  // unprocessed samples, so we should probably drain all events and process
+  // all output, even if we send it to dev/null
+
+  HRESULT hr = S_OK;
+  hr =  encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
+  LOG_IF(ERROR, hr != S_OK) <<  "DestroyTask - can't ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM) 0x" << std::hex << hr << std::dec;
+  hr =  encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
+  LOG_IF(ERROR, hr != S_OK) <<  "DestroyTask - can't ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN) 0x" << std::hex << hr << std::dec;
+
+  ProcessOutput();
+
+  encoder_task_weak_factory_.InvalidateWeakPtrs();
+  WaitForSingleObject(drained_, 1000);
+
+  ProcessOutput();
   alive_ = false;
 
   // Cancel all encoder thread callbacks.
-  encoder_task_weak_factory_.InvalidateWeakPtrs();
 
   ReleaseEncoderResources();
 }
 
 void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   LOG(INFO) << __func__;
-  // TODO: There are reports that some MFT's crash (AMD) if there are
-  // unprocessed samples, so we should probably drain all events and process
-  // all output, even if we send it to dev/null
 
   MFShutdownObject(encoder_.Get()); // async MFT's must be shut down
   encoder_.Reset();
@@ -1114,6 +1151,7 @@ void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   imf_output_media_type_.Reset();
   input_sample_.Reset();
   output_sample_.Reset();
+  CloseHandle(drained_);
 }
 
 STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyncResult) {
@@ -1134,11 +1172,12 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
       LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
   }
 
-  ProcessEvent(event);
-  encoder_thread_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
-                            encoder_task_weak_factory_.GetWeakPtr()));
+  if (ProcessEvent(event)) {
+    encoder_thread_task_runner_->PostTask(
+        FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
+                              encoder_task_weak_factory_.GetWeakPtr()));
 
+  }
   if (alive_)
   {
     hr = imf_media_event_generator_->BeginGetEvent(this, NULL);
@@ -1162,7 +1201,7 @@ ULONG STDMETHODCALLTYPE MediaFoundationVideoEncodeAccelerator::AddRef() {
 
 ULONG STDMETHODCALLTYPE MediaFoundationVideoEncodeAccelerator::Release() {
   if (!ref_count_.Decrement()) {
-    delete this;
+    // delete this; TODO: probably nicer way to do this - Shutting down the async MFT releases us 
     return 0;
   }
   return 1;
