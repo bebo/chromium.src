@@ -1048,6 +1048,16 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       memcpy(buffer_ref->shm->memory(), scoped_buffer.get(), size);
     }
 
+		if (encoder_provides_samples_) {
+      // MFT can either return input buffer (don't want to free that), or allocate one
+      if (output_data_buffer.pSample != input_sample_.Get()) {
+        LONG c = output_data_buffer.pSample->Release();
+        VLOG(3) << "not our buffer, were going to Release() the buffer: " << c;
+      } else {
+        VLOG(3) << "buffer, were going not going to delete the buffer";
+      }
+    }
+
     VLOG(3) << "Posted Frame";
     encode_client_task_runner_->PostTask(
         FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
