@@ -249,9 +249,9 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
   hr = encoder_->GetOutputStreamInfo(output_stream_id_, &output_stream_info);
   RETURN_ON_HR_FAILURE(hr, "Couldn't get output stream info", false);
 
-	encoder_provides_samples_ = output_stream_info.dwFlags &
-			       (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES |
-			        MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES);
+  encoder_provides_samples_ = output_stream_info.dwFlags &
+    (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES |
+     MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES);
 
   /* if (! encoder_provides_samples_ ) { */
     output_sample_ = mf::CreateEmptySampleWithBuffer(
@@ -260,7 +260,12 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
             : bitstream_buffer_size_ * kOutputSampleBufferSizeRatio,
         output_stream_info.cbAlignment);
   /* } */
+
   LOG(INFO) << "encoder_provides_samples_: " << encoder_provides_samples_ ;
+
+
+  // TODO: ProcessMessage and BeginGetEvent moves to processInput - lazy init
+  // to workaround quicksync can't change bitrate issues.
 
   hr = encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set ProcessMessage", false);
@@ -589,7 +594,7 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
 bool MediaFoundationVideoEncodeAccelerator::InitializeEventGenerator() {
   LOG(INFO) << __func__;
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
-	HRESULT hr = encoder_.Get()->QueryInterface(IID_IMFMediaEventGenerator, &imf_media_event_generator_);
+  HRESULT hr = encoder_.Get()->QueryInterface(IID_IMFMediaEventGenerator, &imf_media_event_generator_);
   return SUCCEEDED(hr);
 }
 
@@ -781,8 +786,6 @@ void MediaFoundationVideoEncodeAccelerator::EncodeTask(
   VLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
-  // Probably easier to just use a drain strategy than to go full async right
-  // now
   QueueFrame(frame, force_keyframe);
   ProcessOutput();
   ProcessInput();
@@ -880,8 +883,8 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
   LONGLONG sample_time;
   input_sample_->GetSampleTime(&sample_time);
   VLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
-	input_sample_queue_.push_back(std::move(input_sample_));
 
+  input_sample_queue_.push_back(std::move(input_sample_));
 
   // Release frame after input is copied.
   frame = nullptr;
@@ -910,11 +913,10 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
       ProcessOutput();
       hr = encoder_->ProcessInput(input_stream_id_, sample.Get(), 0);
       if (!SUCCEEDED(hr)) {
-        LOG(ERROR) << "Coudn't encode 0x" << std::hex << hr << std:: dec << " try again later";
-        input_events_++;
+        LOG(ERROR) << "Coudn't encode (after not accepting) 0x" << std::hex << hr << std:: dec;
         alive_ = false;
-        /* NotifyError(kPlatformFailureError); */
-        /* RETURN_ON_HR_FAILURE(hr, "Couldn't encode", ); */
+        NotifyError(kPlatformFailureError);
+        RETURN_ON_HR_FAILURE(hr, "Couldn't encode", );
       }
     } else if (!SUCCEEDED(hr)) {
       LOG(ERROR) << "Coudn't encode 0x" << std::hex << hr << std:: dec;
@@ -1048,7 +1050,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       memcpy(buffer_ref->shm->memory(), scoped_buffer.get(), size);
     }
 
-		if (encoder_provides_samples_) {
+    if (encoder_provides_samples_) {
       // MFT can either return input buffer (don't want to free that), or allocate one
       if (output_data_buffer.pSample != input_sample_.Get()) {
         LONG c = output_data_buffer.pSample->Release();
@@ -1210,6 +1212,7 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
                               encoder_task_weak_factory_.GetWeakPtr()));
 
   }
+
   if (alive_)
   {
     hr = imf_media_event_generator_->BeginGetEvent(this, NULL);
@@ -1218,7 +1221,7 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
     }
   }
 
-	return S_OK;
+  return S_OK;
 }
 
 
