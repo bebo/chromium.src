@@ -235,39 +235,34 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
     return false;
   }
 
-  MFT_INPUT_STREAM_INFO input_stream_info;
-  HRESULT hr = encoder_->GetInputStreamInfo(input_stream_id_, &input_stream_info);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't get input stream info", false);
-  LOG(INFO) << "input sample size: " << input_stream_info.cbSize;
-  input_sample_ = mf::CreateEmptySampleWithBuffer(
-      input_stream_info.cbSize
-          ? input_stream_info.cbSize
-          : VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_),
-      input_stream_info.cbAlignment);
+  /* MFT_INPUT_STREAM_INFO input_stream_info; */
+  /* HRESULT hr = encoder_->GetInputStreamInfo(input_stream_id_, &input_stream_info); */
+  /* RETURN_ON_HR_FAILURE(hr, "Couldn't get input stream info", false); */
+  /* LOG(INFO) << "input sample size: " << input_stream_info.cbSize; */
+  /* input_sample_ = mf::CreateEmptySampleWithBuffer( */
+  /*     input_stream_info.cbSize */
+  /*         ? input_stream_info.cbSize */
+  /*         : VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_), */
+  /*     input_stream_info.cbAlignment); */
 
-  MFT_OUTPUT_STREAM_INFO output_stream_info;
-  hr = encoder_->GetOutputStreamInfo(output_stream_id_, &output_stream_info);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't get output stream info", false);
+  /* MFT_OUTPUT_STREAM_INFO output_stream_info; */
+  /* hr = encoder_->GetOutputStreamInfo(output_stream_id_, &output_stream_info); */
+  /* RETURN_ON_HR_FAILURE(hr, "Couldn't get output stream info", false); */
+  /* /1* if (! encoder_provides_samples_ ) { *1/ */
+  /*   output_sample_ = mf::CreateEmptySampleWithBuffer( */
+  /*       output_stream_info.cbSize */
+  /*           ? output_stream_info.cbSize */
+  /*           : bitstream_buffer_size_ * kOutputSampleBufferSizeRatio, */
+  /*       output_stream_info.cbAlignment); */
+  /* /1* } *1/ */
 
-  encoder_provides_samples_ = output_stream_info.dwFlags &
-    (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES |
-     MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES);
-
-  /* if (! encoder_provides_samples_ ) { */
-    output_sample_ = mf::CreateEmptySampleWithBuffer(
-        output_stream_info.cbSize
-            ? output_stream_info.cbSize
-            : bitstream_buffer_size_ * kOutputSampleBufferSizeRatio,
-        output_stream_info.cbAlignment);
-  /* } */
-
-  LOG(INFO) << "encoder_provides_samples_: " << encoder_provides_samples_ ;
+  /* LOG(INFO) << "encoder_provides_samples_: " << encoder_provides_samples_ ; */
 
 
   // TODO: ProcessMessage and BeginGetEvent moves to processInput - lazy init
   // to workaround quicksync can't change bitrate issues.
 
-  hr = encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL);
+  HRESULT hr = encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, NULL);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set ProcessMessage", false);
 
   hr = encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, NULL);
@@ -845,14 +840,78 @@ bool MediaFoundationVideoEncodeAccelerator::DrainEvents() {
   return had_events;
 }
 
+base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInputSample() {
+
+  for (const base::win::ScopedComPtr<IMFSample>& sample: input_sample_pool_) {
+    // If the buffer is in use, the ref count will be 2 or higher.
+    // If the ref count is 1 then the list we are looping over holds the only reference
+    // and it's safe to reuse.
+    sample.Get()->AddRef();
+    LONG c = sample.Get()->Release();
+    if (c == 1) {
+      return sample;
+    }
+  }
+
+  // Allocate new buffer.
+  base::win::ScopedComPtr<IMFSample> sample ;
+
+  MFT_INPUT_STREAM_INFO input_stream_info;
+  HRESULT hr = encoder_->GetInputStreamInfo(input_stream_id_, &input_stream_info);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't get input stream info", nullptr);
+  LOG(INFO) << "new input sample with size: " << input_stream_info.cbSize;
+
+  sample = mf::CreateEmptySampleWithBuffer(
+      input_stream_info.cbSize
+          ? input_stream_info.cbSize
+          : VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_),
+      input_stream_info.cbAlignment);
+
+  input_sample_pool_.push_back(sample);
+  return sample;
+}
+
+base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOutputSample() {
+
+  for (const base::win::ScopedComPtr<IMFSample>& sample: output_sample_pool_) {
+    // If the buffer is in use, the ref count will be 2 or higher.
+    // If the ref count is 1 then the list we are looping over holds the only reference
+    // and it's safe to reuse.
+    sample.Get()->AddRef();
+    LONG c = sample.Get()->Release();
+    if (c == 1) {
+      return sample;
+    }
+  }
+
+  MFT_OUTPUT_STREAM_INFO output_stream_info;
+  HRESULT hr = encoder_->GetOutputStreamInfo(output_stream_id_, &output_stream_info);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't get output stream info", nullptr);
+  LOG(INFO) << "new output sample with size: " << output_stream_info.cbSize;
+
+  encoder_provides_samples_ = output_stream_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES;
+     /* MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES); */
+  LOG(INFO) << "encoder_provides_samples_: " << encoder_provides_samples_ ;
+
+  base::win::ScopedComPtr<IMFSample> sample ;
+  sample = mf::CreateEmptySampleWithBuffer(
+        output_stream_info.cbSize
+            ? output_stream_info.cbSize
+            : bitstream_buffer_size_ * kOutputSampleBufferSizeRatio,
+        output_stream_info.cbAlignment);
+
+  input_sample_pool_.push_back(sample);
+  return sample;
+}
+
 void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe) {
 
   VLOG(3) << __func__;
 
-  // TODO: multiple input/output samples / or at least not on the object
-
   base::win::ScopedComPtr<IMFMediaBuffer> input_buffer;
-  input_sample_->GetBufferByIndex(0, input_buffer.GetAddressOf());
+  base::win::ScopedComPtr<IMFSample> input_sample = std::move(GetInputSample());
+
+  input_sample->GetBufferByIndex(0, input_buffer.GetAddressOf());
 
   {
     MediaBufferScopedPointer scoped_buffer(input_buffer.Get());
@@ -873,18 +932,18 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
   }
 
-  input_sample_->SetSampleTime(frame->timestamp().InMicroseconds() *
+  input_sample->SetSampleTime(frame->timestamp().InMicroseconds() *
                                kOneMicrosecondInMFSampleTimeUnits);
   UINT64 sample_duration = 1;
   HRESULT hr = MFFrameRateToAverageTimePerFrame(frame_rate_, 1, &sample_duration);
   RETURN_ON_HR_FAILURE(hr, "Couldn't calculate sample duration", );
-  input_sample_->SetSampleDuration(sample_duration);
+  input_sample->SetSampleDuration(sample_duration);
 
   LONGLONG sample_time;
-  input_sample_->GetSampleTime(&sample_time);
+  input_sample->GetSampleTime(&sample_time);
   VLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
 
-  input_sample_queue_.push_back(std::move(input_sample_));
+  input_sample_queue_.push_back(std::move(input_sample));
 
   // Release frame after input is copied.
   frame = nullptr;
@@ -947,7 +1006,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     if (encoder_provides_samples_) {
       output_data_buffer.pSample = NULL;
     } else {
-      output_data_buffer.pSample = output_sample_.Get();
+      output_data_buffer.pSample = GetOutputSample().Get();
     }
     DWORD status = 0;
     HRESULT hr;
@@ -986,11 +1045,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     VLOG(3) << "Got encoded data " << hr;
     DVLOG(3) << "Got encoded data " << hr;
     
-		if (encoder_provides_samples_) {
-      sample = output_data_buffer.pSample;
-    } else {
-      sample = output_sample_.Get();
-    }
+    sample = output_data_buffer.pSample;
 
     DWORD buffer_cnt = 0;
     sample->GetBufferCount(&buffer_cnt);
@@ -1038,6 +1093,8 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
         memcpy(encode_output->memory(), scoped_buffer.get(), size);
       }
       encoder_output_queue_.push_back(std::move(encode_output));
+      LONG c = output_data_buffer.pSample->Release();
+      VLOG(3) << "Release() the buffer: " << c;
       return;
     }
 
@@ -1050,15 +1107,8 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       memcpy(buffer_ref->shm->memory(), scoped_buffer.get(), size);
     }
 
-    if (encoder_provides_samples_) {
-      // MFT can either return input buffer (don't want to free that), or allocate one
-      if (output_data_buffer.pSample != input_sample_.Get()) {
-        LONG c = output_data_buffer.pSample->Release();
-        VLOG(3) << "not our buffer, were going to Release() the buffer: " << c;
-      } else {
-        VLOG(3) << "buffer, were going not going to delete the buffer";
-      }
-    }
+    LONG c = output_data_buffer.pSample->Release();
+    VLOG(3) << "Release() the buffer: " << c;
 
     VLOG(3) << "Posted Frame";
     encode_client_task_runner_->PostTask(
@@ -1183,8 +1233,18 @@ void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   imf_media_event_generator_.Reset();
   imf_input_media_type_.Reset();
   imf_output_media_type_.Reset();
-  input_sample_.Reset();
-  output_sample_.Reset();
+  for (auto &it: input_sample_pool_) {
+    unsigned long c = it.Reset();
+    VLOG(3) << "Releasing input sample - " << c;
+  }
+  input_sample_pool_.clear();
+
+  for (auto &it: output_sample_pool_) {
+    unsigned long c = it.Reset();
+    VLOG(3) << "Releasing output sample - " << c;
+  }
+  output_sample_pool_.clear();
+
   CloseHandle(drained_);
 }
 

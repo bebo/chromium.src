@@ -164,8 +164,12 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   base::win::ScopedComPtr<IMFMediaType> imf_input_media_type_;
   base::win::ScopedComPtr<IMFMediaType> imf_output_media_type_;
 
-  base::win::ScopedComPtr<IMFSample> input_sample_;
-  base::win::ScopedComPtr<IMFSample> output_sample_;
+  base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInputSample();
+  base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOutputSample();
+
+  std::list<base::win::ScopedComPtr<IMFSample>> input_sample_pool_;
+  std::list<base::win::ScopedComPtr<IMFSample>> output_sample_pool_;
+
   bool encoder_provides_samples_;
 
   // To expose client callbacks from VideoEncodeAccelerator.
