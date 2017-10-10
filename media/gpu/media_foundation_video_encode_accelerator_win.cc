@@ -889,8 +889,8 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOut
   RETURN_ON_HR_FAILURE(hr, "Couldn't get output stream info", nullptr);
   LOG(INFO) << "new output sample with size: " << output_stream_info.cbSize;
 
-  encoder_provides_samples_ = output_stream_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES;
-     /* MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES); */
+  encoder_provides_samples_ = output_stream_info.dwFlags & 
+    (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES);
   LOG(INFO) << "encoder_provides_samples_: " << encoder_provides_samples_ ;
 
   base::win::ScopedComPtr<IMFSample> sample ;
