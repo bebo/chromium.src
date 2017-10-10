@@ -997,7 +997,6 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
   while(output_events_ > 0) {
     output_events_--;
 
-    base::win::ScopedComPtr<IMFSample> sample;
 
     MFT_OUTPUT_DATA_BUFFER output_data_buffer = {0};
     output_data_buffer.dwStreamID = 0;
@@ -1045,18 +1044,19 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     VLOG(3) << "Got encoded data " << hr;
     DVLOG(3) << "Got encoded data " << hr;
     
-    sample = output_data_buffer.pSample;
+    // base::win::ScopedComPtr<IMFSample> sample;
+    // sample = output_data_buffer.pSample;
 
     DWORD buffer_cnt = 0;
-    sample->GetBufferCount(&buffer_cnt);
+    output_data_buffer.pSample->GetBufferCount(&buffer_cnt);
     VLOG(3) << "Sample Has Buffers: " << buffer_cnt;
 
     base::win::ScopedComPtr<IMFMediaBuffer> output_buffer;
     if (buffer_cnt == 1) {
-      hr = sample->GetBufferByIndex(0, output_buffer.GetAddressOf());
+      hr = output_data_buffer.pSample->GetBufferByIndex(0, output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer by index", );
     } else {
-      hr = sample->ConvertToContiguousBuffer(output_buffer.GetAddressOf());
+      hr = output_data_buffer.pSample->ConvertToContiguousBuffer(output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get contiguous buffer", );
     }
 
@@ -1066,14 +1066,14 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     base::TimeDelta timestamp;
     LONGLONG sample_time;
-    hr = sample->GetSampleTime(&sample_time);
+    hr = output_data_buffer.pSample->GetSampleTime(&sample_time);
     if (SUCCEEDED(hr)) {
       timestamp = base::TimeDelta::FromMicroseconds(
           sample_time / kOneMicrosecondInMFSampleTimeUnits);
     }
 
     const bool keyframe = MFGetAttributeUINT32(
-        sample.Get(), MFSampleExtension_CleanPoint, false);
+        output_data_buffer.pSample, MFSampleExtension_CleanPoint, false);
     VLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
              << keyframe
              << " timestamp: "
@@ -1093,8 +1093,19 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
         memcpy(encode_output->memory(), scoped_buffer.get(), size);
       }
       encoder_output_queue_.push_back(std::move(encode_output));
-      LONG c = output_data_buffer.pSample->Release();
-      VLOG(3) << "Release() the buffer: " << c;
+
+      if (output_data_buffer.pEvents) {
+        LONG ce = output_data_buffer.pEvents->Release();
+        VLOG(3) << "Release() the events: " << ce;
+      }
+
+      if (output_data_buffer.pSample) {
+        output_data_buffer.pSample->RemoveAllBuffers();
+
+        LONG c = output_data_buffer.pSample->Release();
+        VLOG(3) << "Release() the buffer: " << c;
+      }
+
       return;
     }
 
@@ -1107,8 +1118,19 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       memcpy(buffer_ref->shm->memory(), scoped_buffer.get(), size);
     }
 
-    LONG c = output_data_buffer.pSample->Release();
-    VLOG(3) << "Release() the buffer: " << c;
+
+    if (output_data_buffer.pEvents) {
+      LONG ce = output_data_buffer.pEvents->Release();
+      VLOG(3) << "Release() the events: " << ce;
+    }
+
+    if (output_data_buffer.pSample) {
+      output_data_buffer.pSample->RemoveAllBuffers();
+
+      LONG c = output_data_buffer.pSample->Release();
+      VLOG(3) << "Release() the buffer: " << c;
+    }
+
 
     VLOG(3) << "Posted Frame";
     encode_client_task_runner_->PostTask(
