@@ -64,11 +64,13 @@ static_assert(arraysize(kBlacklistedCameraNames) == BLACKLISTED_CAMERA_MAX + 1,
               "BlacklistedCameraNames enum");
 
 enum WhitelistedFilterNames {
-  WHITELISTED_FILTER_BEBO_CAPTURE = 0,
-  WHITELISTED_FILTER_MAX = WHITELISTED_FILTER_BEBO_CAPTURE,
+  WHITELISTED_FILTER_BEBO_CAPTURE_GAME = 0,
+  WHITELISTED_FILTER_BEBO_CAPTURE_DESKTOP = 1,
+  WHITELISTED_FILTER_BEBO_CAPTURE_WINDOW = 2,
+  WHITELISTED_FILTER_MAX = WHITELISTED_FILTER_BEBO_CAPTURE_WINDOW,
 };
 static const char* const kWhitelistedFilterNames[] = {
-  "bebo-game-capture",
+  "bebo-capture-game", "bebo-capture-desktop", "bebo-capture-window"
 };
 static_assert(arraysize(kWhitelistedFilterNames) == WHITELISTED_FILTER_MAX + 1,
               "kWhitelistedFilterNames should be same size as "
@@ -484,7 +486,7 @@ bool VideoCaptureDeviceFactoryWin::PlatformSupportsMediaFoundation() {
 }
 
 VideoCaptureDeviceFactoryWin::VideoCaptureDeviceFactoryWin()
-    : use_media_foundation_(base::CommandLine::ForCurrentProcess()->HasSwitch(
+     : use_media_foundation_(base::CommandLine::ForCurrentProcess()->HasSwitch(
                                 switches::kForceMediaFoundationVideoCapture)) {}
 
 std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(

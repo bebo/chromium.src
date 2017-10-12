@@ -23,17 +23,28 @@ using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
 
-GUID kBeboGameCaptureCLSID = {0x1f1383ef,
+GUID kBeboCaptureGameCLSID = {0x1f1383ef,
                           0x8019,
                           0x4f96,
                           {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x63}};
+GUID kBeboCaptureDesktopCLSID = {0x1f1383ef,
+                          0x8019,
+                          0x4f96,
+                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x64}};
+GUID kBeboCaptureWindowCLSID = {0x1f1383ef,
+                          0x8019,
+                          0x4f96,
+                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x65}};
+
 enum FILTER {
-  FILTER_BEBO_GAME_CAPTUIRE = 0,
-  FILTER_MAX = FILTER_BEBO_GAME_CAPTUIRE,
+  FILTER_BEBO_CAPTURE_GAME = 0,
+  FILTER_BEBO_CAPTURE_DESKTOP = 1,
+  FILTER_BEBO_CAPTURE_WINDOW = 2,
+  FILTER_MAX = FILTER_BEBO_CAPTURE_WINDOW,
 };
 const int kFilterSize = FILTER_MAX + 1;
-const GUID kFilterArray[kFilterSize] = {kBeboGameCaptureCLSID};
-const std::string kFilterArrayName[kFilterSize] = {"bebo-game-capture"};
+const GUID kFilterArray[kFilterSize] = {kBeboCaptureGameCLSID, kBeboCaptureDesktopCLSID,kBeboCaptureWindowCLSID};
+const std::string kFilterArrayName[kFilterSize] = {"bebo-capture-game", "bebo-capture-desktop", "bebo-capture-window"};
 
 namespace media {
 
@@ -419,6 +430,10 @@ void VideoCaptureDeviceWin::AllocateAndStart(
       std::min(params.requested_format.frame_rate,
                found_capability.supported_format.frame_rate);
 
+  LOG(INFO) << "frame_rate: " << frame_rate;
+  LOG(INFO) << "params.requested_format.frame_rate: " << params.requested_format.frame_rate;
+  LOG(INFO) << "found_capability.supported_format.frame_rate: " << found_capability.supported_format.frame_rate;
+
   ScopedComPtr<IAMStreamConfig> stream_config;
   HRESULT hr = output_capture_pin_.CopyTo(stream_config.GetAddressOf());
   if (FAILED(hr)) {
@@ -450,7 +465,10 @@ void VideoCaptureDeviceWin::AllocateAndStart(
         reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
     if (frame_rate > 0)
       h->AvgTimePerFrame = kSecondsToReferenceTime / frame_rate;
+
+    LOG(INFO) << "h->AvgTimePerFrame: " << h->AvgTimePerFrame;
   }
+
   // Set the sink filter to request this format.
   sink_filter_->SetRequestedMediaFormat(
       found_capability.supported_format.pixel_format, frame_rate,
