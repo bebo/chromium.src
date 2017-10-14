@@ -231,6 +231,15 @@ void GpuVideoEncodeAccelerator::NotifyError(
   }
 }
 
+void GpuVideoEncodeAccelerator::SetImplementationName(
+    const std::string& implementation_name) {
+  LOG(INFO) << "fpn SetImplementationName " << implementation_name;
+  if (!Send(new AcceleratedVideoEncoderHostMsg_SetImplementationName(host_route_id_,
+                                                           implementation_name))) {
+    DLOG(ERROR) << __func__ << " failed.";
+  }
+}
+
 void GpuVideoEncodeAccelerator::OnWillDestroyStub() {
   DVLOG(2) << __func__;
   DCHECK(main_task_runner_->BelongsToCurrentThread());
@@ -268,6 +277,7 @@ void GpuVideoEncodeAccelerator::OnWillDestroyStub() {
 gpu::VideoEncodeAcceleratorSupportedProfiles
 GpuVideoEncodeAccelerator::GetSupportedProfiles(
     const gpu::GpuPreferences& gpu_preferences) {
+  LOG(INFO) << "fpn " << __func__;
   return GpuVideoAcceleratorUtil::ConvertMediaToGpuEncodeProfiles(
       GpuVideoEncodeAcceleratorFactory::GetSupportedProfiles(gpu_preferences));
 }

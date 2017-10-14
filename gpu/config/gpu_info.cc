@@ -35,8 +35,10 @@ void EnumerateVideoDecodeAcceleratorSupportedProfile(
 void EnumerateVideoEncodeAcceleratorSupportedProfile(
     const gpu::VideoEncodeAcceleratorSupportedProfile& profile,
     gpu::GPUInfo::Enumerator* enumerator) {
+  LOG(INFO) << "fpn " << __func__;
   enumerator->BeginVideoEncodeAcceleratorSupportedProfile();
   enumerator->AddInt("profile", profile.profile);
+  enumerator->AddString("codecImplementationName", profile.codec_implementation_name);
   enumerator->AddInt("maxResolutionWidth", profile.max_resolution.width());
   enumerator->AddInt("maxResolutionHeight", profile.max_resolution.height());
   enumerator->AddInt("maxFramerateNumerator", profile.max_framerate_numerator);

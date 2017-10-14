@@ -196,6 +196,7 @@ webrtc::VideoEncoder* WebrtcDummyVideoEncoderFactory::CreateVideoEncoder(
 
 const std::vector<cricket::VideoCodec>&
 WebrtcDummyVideoEncoderFactory::supported_codecs() const {
+  LOG(INF) << "fpn " << __func__;
   return codecs_;
 }
 

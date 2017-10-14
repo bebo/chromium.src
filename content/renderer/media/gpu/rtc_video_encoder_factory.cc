@@ -23,6 +23,7 @@ void VEAToWebRTCCodecs(
     std::vector<cricket::VideoCodec>* codecs,
     const media::VideoEncodeAccelerator::SupportedProfile& profile) {
   DCHECK_EQ(profile.max_framerate_denominator, 1U);
+  LOG(INFO) << "fpn " << __func__ << " " << profile.codec_implementation_name;
 
   if (profile.profile >= media::VP8PROFILE_MIN &&
       profile.profile <= media::VP8PROFILE_MAX) {
@@ -42,7 +43,13 @@ void VEAToWebRTCCodecs(
     if (webrtc_h264_sw_enabled ||
         base::FeatureList::IsEnabled(features::kWebRtcHWH264Encoding)) {
       // TODO(magjed): Propagate H264 profile information.
-      codecs->push_back(cricket::VideoCodec("H264"));
+      //codecs->push_back(cricket::VideoCodec("H264"));
+      cricket::VideoCodec codec = cricket::VideoCodec("H264");
+      codec.SetParam("codecImplementationName", profile.codec_implementation_name); 
+      std::string name;
+      codec.GetParam("codecImplementationName", &name);
+      LOG(INFO) << "fpn " << __func__ << " pushback " << name;
+      codecs->push_back(codec);
     }
   }
 }
@@ -52,6 +59,7 @@ void VEAToWebRTCCodecs(
 RTCVideoEncoderFactory::RTCVideoEncoderFactory(
     media::GpuVideoAcceleratorFactories* gpu_factories)
     : gpu_factories_(gpu_factories) {
+  LOG(INFO) << "fpn " << __func__;
   const media::VideoEncodeAccelerator::SupportedProfiles& profiles =
       gpu_factories_->GetVideoEncodeAcceleratorSupportedProfiles();
   for (const auto& profile : profiles)
@@ -62,6 +70,7 @@ RTCVideoEncoderFactory::~RTCVideoEncoderFactory() {}
 
 webrtc::VideoEncoder* RTCVideoEncoderFactory::CreateVideoEncoder(
     const cricket::VideoCodec& codec) {
+  LOG(INFO) << "fpn CreateVideoEncoder";
   for (const cricket::VideoCodec& supported_codec : supported_codecs_) {
     if (cricket::CodecNamesEq(codec.name, supported_codec.name)) {
       webrtc::VideoCodecType type = webrtc::PayloadNameToCodecType(codec.name)
@@ -74,6 +83,7 @@ webrtc::VideoEncoder* RTCVideoEncoderFactory::CreateVideoEncoder(
 
 const std::vector<cricket::VideoCodec>&
 RTCVideoEncoderFactory::supported_codecs() const {
+  LOG(INFO) << "fpn " << __func__;
   return supported_codecs_;
 }
 

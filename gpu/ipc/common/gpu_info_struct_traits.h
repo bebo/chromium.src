@@ -115,6 +115,11 @@ struct StructTraits<gpu::mojom::VideoEncodeAcceleratorSupportedProfileDataView,
     return input.profile;
   }
 
+  static const std::string& codec_implementation_name(
+      const gpu::VideoEncodeAcceleratorSupportedProfile& input) {
+    return input.codec_implementation_name;
+  }
+
   static const gfx::Size& max_resolution(
       const gpu::VideoEncodeAcceleratorSupportedProfile& input) {
     return input.max_resolution;

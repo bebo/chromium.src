@@ -93,6 +93,7 @@ struct GPU_EXPORT VideoDecodeAcceleratorCapabilities {
 struct GPU_EXPORT VideoEncodeAcceleratorSupportedProfile {
   VideoCodecProfile profile;
   gfx::Size max_resolution;
+  std::string codec_implementation_name;
   uint32_t max_framerate_numerator;
   uint32_t max_framerate_denominator;
 };

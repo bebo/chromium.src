@@ -73,6 +73,7 @@ struct VideoDecodeAcceleratorCapabilities {
 struct VideoEncodeAcceleratorSupportedProfile {
   VideoCodecProfile profile;
   gfx.mojom.Size max_resolution;
+  string codec_implementation_name;
   uint32 max_framerate_numerator;
   uint32 max_framerate_denominator;
 };

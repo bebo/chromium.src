@@ -24,11 +24,15 @@
 #include "base/win/windows_version.h"
 #include "media/base/win/mf_helpers.h"
 #include "media/base/win/mf_initializer.h"
+#include "media/base/win/mf_initializer.h"
+#include "base/strings/utf_string_conversions.h"
 #include "third_party/libyuv/include/libyuv.h"
 
 using base::win::ScopedComPtr;
 using media::mf::MediaBufferScopedPointer;
 using base::win::RegKey;
+
+#define BVLOG DVLOG
 
 namespace media {
 
@@ -140,7 +144,9 @@ MediaFoundationVideoEncodeAccelerator::GetSupportedProfiles() {
   profile.max_framerate_numerator = kMaxFrameRateNumerator;
   profile.max_framerate_denominator = kMaxFrameRateDenominator;
   profile.max_resolution = highest_supported_resolution;
+  profile.codec_implementation_name = "FIXME fpn";
   profiles.push_back(profile);
+  LOG(INFO) << "fpn " << __func__ <<  profile.codec_implementation_name;
   return profiles;
 }
 
@@ -254,6 +260,11 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
   hr = imf_media_event_generator_->BeginGetEvent(this, NULL);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set BeginGetEvent", false);
 
+  main_client_task_runner_->PostTask(
+      FROM_HERE, base::Bind(&Client::SetImplementationName, main_client_,
+      implementation_name_));
+
+  LOG(INFO) << "fpn Posting SetImplementationName: " << implementation_name_;
   main_client_task_runner_->PostTask(
       FROM_HERE, base::Bind(&Client::RequireBitstreamBuffers, main_client_,
                             kNumInputBuffers, input_visible_size_,
@@ -449,6 +460,7 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
   }
     
   LOG(INFO) << "Selected encoder: " << encoder_name;
+  implementation_name_ = base::WideToUTF8(encoder_name);
 
   hr = activate[index]->ActivateObject(IID_PPV_ARGS(&encoder_));
 
@@ -754,7 +766,7 @@ void MediaFoundationVideoEncodeAccelerator::NotifyError(
 void MediaFoundationVideoEncodeAccelerator::EncodeTask(
     scoped_refptr<VideoFrame> frame,
     bool force_keyframe) {
-  VLOG(3) << __func__;
+  BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   QueueFrame(frame, force_keyframe);
@@ -776,13 +788,13 @@ bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEv
 
 	if (SUCCEEDED(event_status)) {
 		if (media_event_type == METransformNeedInput) {
-      VLOG(3) << "input event";
+      BVLOG(3) << "input event";
 			input_events_++;
 		} else if (media_event_type == METransformHaveOutput) {
-      VLOG(3) << "output event";
+      BVLOG(3) << "output event";
 			output_events_++;
 		} else if (media_event_type == METransformDrainComplete) {
-      VLOG(3) << "drain complete";
+      BVLOG(3) << "drain complete";
       HRESULT hr = encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
       LOG_IF(ERROR, hr != S_OK) <<  "Error in ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH) 0x" << std::hex << hr << std::dec;
       SetEvent(drained_);
@@ -889,12 +901,12 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOut
 
 void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe) {
 
-  VLOG(3) << __func__;
+  BVLOG(3) << __func__;
 
   base::win::ScopedComPtr<IMFMediaBuffer> input_buffer;
   base::win::ScopedComPtr<IMFSample> input_sample = std::move(GetInputSample());
   if (input_sample == nullptr) {
-    VLOG(3) << "Dropping Input Buffer - Queue full";
+    BVLOG(3) << "Dropping Input Buffer - Queue full";
     frame = nullptr;
     return;
   }
@@ -929,7 +941,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
   LONGLONG sample_time;
   input_sample->GetSampleTime(&sample_time);
-  VLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
+  BVLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
 
   input_sample_queue_.push_back(std::move(input_sample));
 
@@ -939,7 +951,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
 void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
 
-  VLOG(3) << __func__ << " events: " << input_events_ << " queue empty: " << input_sample_queue_.empty() ;
+  BVLOG(3) << __func__ << " events: " << input_events_ << " queue empty: " << input_sample_queue_.empty() ;
 
   while(! input_sample_queue_.empty() && input_events_ > 0) {
     ScopedComPtr<IMFSample> sample = std::move(input_sample_queue_.front());
@@ -955,8 +967,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
     // processing the output. This error indicates that encoder does not accept
     // any more input data.
     if (hr == MF_E_NOTACCEPTING) {
-      DVLOG(3) << "MF_E_NOTACCEPTING";
-      VLOG(3) << "MF_E_NOTACCEPTING";
+      BVLOG(3) << "MF_E_NOTACCEPTING";
       ProcessOutput();
       hr = encoder_->ProcessInput(input_stream_id_, sample.Get(), 0);
       if (!SUCCEEDED(hr)) {
@@ -972,14 +983,12 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
       RETURN_ON_HR_FAILURE(hr, "Couldn't encode", );
     }
 
-    DVLOG(3) << "Sent for encode " << hr;
-    VLOG(3) << "ProcessInput  - Sent for encode - timestamp " << sample_time;
+    BVLOG(3) << "ProcessInput  - Sent for encode - timestamp " << sample_time;
   }
 };
 
 void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
-  DVLOG(3) << __func__;
-  VLOG(3) << __func__ << " events: " << output_events_;
+  BVLOG(3) << __func__ << " events: " << output_events_;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   while(output_events_ > 0) {
@@ -1000,13 +1009,12 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     hr = encoder_->ProcessOutput(output_stream_id_, 1, &output_data_buffer,
                                  &status);
     if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
-      VLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
-      DVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
+      BVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       return;
     }
     // quicksync...
     if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
-      VLOG(3) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
+      BVLOG(3) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
       hr = encoder_->GetOutputAvailableType(0, 0, imf_output_media_type_.GetAddressOf());
       if (hr != S_OK) {
         LOG(ERROR) << "MF_E_TRANSFORM_STREAM_CHANGE - Could not Get available output type 0x" << std::hex << hr << std::dec;
@@ -1029,15 +1037,14 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       LOG(ERROR) << "Couldn't get encoded data 0x" << std::hex << hr << std::dec;
       RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
     }
-    VLOG(3) << "Got encoded data " << hr;
-    DVLOG(3) << "Got encoded data " << hr;
+    BVLOG(3) << "Got encoded data " << hr;
     
     // base::win::ScopedComPtr<IMFSample> sample;
     // sample = output_data_buffer.pSample;
 
     DWORD buffer_cnt = 0;
     output_data_buffer.pSample->GetBufferCount(&buffer_cnt);
-    VLOG(3) << "Sample Has Buffers: " << buffer_cnt;
+    BVLOG(3) << "Sample Has Buffers: " << buffer_cnt;
 
     base::win::ScopedComPtr<IMFMediaBuffer> output_buffer;
     if (buffer_cnt == 1) {
@@ -1062,17 +1069,13 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     const bool keyframe = MFGetAttributeUINT32(
         output_data_buffer.pSample, MFSampleExtension_CleanPoint, false);
-    VLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
+    BVLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
              << keyframe
              << " timestamp: "
              << sample_time;
 
-    DVLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
-             << keyframe;
-
     if (bitstream_buffer_queue_.empty()) {
-      DVLOG(3) << "No bitstream buffers.";
-      VLOG(3) << "No bitstream buffers.";
+      BVLOG(3) << "No bitstream buffers.";
       // We need to copy the output so that encoding can continue.
       std::unique_ptr<EncodeOutput> encode_output(
           new EncodeOutput(size, keyframe, timestamp));
@@ -1084,14 +1087,14 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
       if (output_data_buffer.pEvents) {
         LONG ce = output_data_buffer.pEvents->Release();
-        VLOG(3) << "Release() the events: " << ce;
+        BVLOG(3) << "Release() the events: " << ce;
       }
 
       if (output_data_buffer.pSample) {
         output_data_buffer.pSample->RemoveAllBuffers();
 
         LONG c = output_data_buffer.pSample->Release();
-        VLOG(3) << "Release() the buffer: " << c;
+        BVLOG(3) << "Release() the buffer: " << c;
       }
 
       return;
@@ -1109,18 +1112,18 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     if (output_data_buffer.pEvents) {
       LONG ce = output_data_buffer.pEvents->Release();
-      VLOG(3) << "Release() the events: " << ce;
+      BVLOG(3) << "Release() the events: " << ce;
     }
 
     if (output_data_buffer.pSample) {
       output_data_buffer.pSample->RemoveAllBuffers();
 
       LONG c = output_data_buffer.pSample->Release();
-      VLOG(3) << "Release() the buffer: " << c;
+      BVLOG(3) << "Release() the buffer: " << c;
     }
 
 
-    VLOG(3) << "Posted Frame";
+    BVLOG(3) << "Posted Frame";
     encode_client_task_runner_->PostTask(
         FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
                               buffer_ref->id, size, keyframe, timestamp));
@@ -1129,7 +1132,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
 void MediaFoundationVideoEncodeAccelerator::UseOutputBitstreamBufferTask(
     std::unique_ptr<BitstreamBufferRef> buffer_ref) {
-  DVLOG(3) << __func__;
+  BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   // If there is already EncodeOutput waiting, copy its output first.
@@ -1163,7 +1166,7 @@ void MediaFoundationVideoEncodeAccelerator::ReturnBitstreamBuffer(
 void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     uint32_t bitrate,
     uint32_t framerate) {
-  DVLOG(3) << __func__;
+  BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   frame_rate_ =
@@ -1206,8 +1209,7 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
 }
 
 void MediaFoundationVideoEncodeAccelerator::DestroyTask() {
-  VLOG(3) << __func__;
-  DVLOG(3) << __func__;
+  BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   // There are reports that some MFT's crash (AMD) if there are
@@ -1245,13 +1247,13 @@ void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   imf_output_media_type_.Reset();
   for (auto &it: input_sample_pool_) {
     unsigned long c = it.Reset();
-    VLOG(3) << "Releasing input sample - " << c;
+    BVLOG(3) << "Releasing input sample - " << c;
   }
   input_sample_pool_.clear();
 
   for (auto &it: output_sample_pool_) {
     unsigned long c = it.Reset();
-    VLOG(3) << "Releasing output sample - " << c;
+    BVLOG(3) << "Releasing output sample - " << c;
   }
   output_sample_pool_.clear();
 

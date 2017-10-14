@@ -94,6 +94,7 @@ GpuVideoAcceleratorUtil::ConvertMediaToGpuDecodeProfiles(
 VideoEncodeAccelerator::SupportedProfiles
 GpuVideoAcceleratorUtil::ConvertGpuToMediaEncodeProfiles(
     const gpu::VideoEncodeAcceleratorSupportedProfiles& gpu_profiles) {
+  LOG(INFO) << "fpn " << __func__;
   VideoEncodeAccelerator::SupportedProfiles profiles;
   for (const auto& gpu_profile : gpu_profiles) {
     VideoEncodeAccelerator::SupportedProfile profile;
@@ -101,6 +102,8 @@ GpuVideoAcceleratorUtil::ConvertGpuToMediaEncodeProfiles(
     profile.max_resolution = gpu_profile.max_resolution;
     profile.max_framerate_numerator = gpu_profile.max_framerate_numerator;
     profile.max_framerate_denominator = gpu_profile.max_framerate_denominator;
+    profile.codec_implementation_name = gpu_profile.codec_implementation_name;
+    LOG(INFO) << "fpn " << __func__ << profile.codec_implementation_name;
     profiles.push_back(profile);
   }
   return profiles;
@@ -110,6 +113,7 @@ GpuVideoAcceleratorUtil::ConvertGpuToMediaEncodeProfiles(
 gpu::VideoEncodeAcceleratorSupportedProfiles
 GpuVideoAcceleratorUtil::ConvertMediaToGpuEncodeProfiles(
     const VideoEncodeAccelerator::SupportedProfiles& media_profiles) {
+  LOG(INFO) << "fpn " << __func__;
   gpu::VideoEncodeAcceleratorSupportedProfiles profiles;
   for (const auto& media_profile : media_profiles) {
     gpu::VideoEncodeAcceleratorSupportedProfile profile;
@@ -118,6 +122,8 @@ GpuVideoAcceleratorUtil::ConvertMediaToGpuEncodeProfiles(
     profile.max_resolution = media_profile.max_resolution;
     profile.max_framerate_numerator = media_profile.max_framerate_numerator;
     profile.max_framerate_denominator = media_profile.max_framerate_denominator;
+    profile.codec_implementation_name = media_profile.codec_implementation_name;
+    LOG(INFO) << "fpn " << __func__ << profile.codec_implementation_name;
     profiles.push_back(profile);
   }
   return profiles;
@@ -144,16 +150,21 @@ void GpuVideoAcceleratorUtil::InsertUniqueDecodeProfiles(
 void GpuVideoAcceleratorUtil::InsertUniqueEncodeProfiles(
     const VideoEncodeAccelerator::SupportedProfiles& new_profiles,
     VideoEncodeAccelerator::SupportedProfiles* media_profiles) {
+  LOG(INFO) << "fpn " << __func__;
   for (const auto& profile : new_profiles) {
     bool duplicate = false;
     for (const auto& media_profile : *media_profiles) {
       if (media_profile.profile == profile.profile) {
+        LOG(INFO) << "fpn duplicate " << __func__ << profile.codec_implementation_name << " " << media_profile.codec_implementation_name;
         duplicate = true;
         break;
       }
     }
-    if (!duplicate)
+    if (!duplicate) {
+
+      LOG(INFO) << "fpn pushback " << __func__ << profile.codec_implementation_name;
       media_profiles->push_back(profile);
+    }
   }
 }
 

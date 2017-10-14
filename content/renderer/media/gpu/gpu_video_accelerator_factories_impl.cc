@@ -339,6 +339,7 @@ GpuVideoAcceleratorFactoriesImpl::GetVideoDecodeAcceleratorCapabilities() {
 
 media::VideoEncodeAccelerator::SupportedProfiles
 GpuVideoAcceleratorFactoriesImpl::GetVideoEncodeAcceleratorSupportedProfiles() {
+  LOG(INFO) << "fpn " << __func__;
   return media::GpuVideoAcceleratorUtil::ConvertGpuToMediaEncodeProfiles(
       gpu_channel_host_->gpu_info()
           .video_encode_accelerator_supported_profiles);

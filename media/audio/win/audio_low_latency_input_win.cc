@@ -383,7 +383,7 @@ void WASAPIAudioInputStream::Run() {
   // enough but in case we get buffers that don't match exactly, we'll go with
   // two. Same applies if we need to resample and the buffer ratio is perfect.
   // However if the buffer ratio is imperfect, we will need 3 buffers to safely
-  // be able to buffer up data in cases where a conversion requires two audio
+  // be able to buffer up data in cases where a Vconversion requires two audio
   // buffers (and we need to be able to write to the third one).
   size_t capture_buffer_size =
       std::max(2 * endpoint_buffer_size_frames_ * frame_size_,
@@ -785,11 +785,11 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
 
 
     /* DVLOG(1) << "Will convert audio from: \nbits: " << format_.wBitsPerSample */
-    LOG(INFO) << "Will convert audio from: \nbits: " << format_.Format.wBitsPerSample
-             << "\nsample rate: " << format_.Format.nSamplesPerSec
-             << "\nchannels: " << format_.Format.nChannels
-             << "\nblock align: " << format_.Format.nBlockAlign
-             << "\navg bytes per sec: " << format_.Format.nAvgBytesPerSec;
+    LOG(INFO) << "Will convert audio from: bits: " << format_.Format.wBitsPerSample
+              << " sample rate: " << format_.Format.nSamplesPerSec
+              << " channels: " << format_.Format.nChannels
+              << " block align: " << format_.Format.nBlockAlign
+              << " avg bytes per sec: " << format_.Format.nAvgBytesPerSec;
 
     // Update our packet size assumptions based on the new format.
     const auto new_bytes_per_buffer =

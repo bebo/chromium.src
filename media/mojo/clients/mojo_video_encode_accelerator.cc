@@ -92,6 +92,7 @@ MojoVideoEncodeAccelerator::MojoVideoEncodeAccelerator(
 
 VideoEncodeAccelerator::SupportedProfiles
 MojoVideoEncodeAccelerator::GetSupportedProfiles() {
+  LOG(INFO) << "fpn " << __func__;
   DVLOG(1) << __func__;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
