@@ -575,6 +575,7 @@ void RTCVideoEncoder::Impl::NotifyError(
       retval = WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
       break;
     default:
+      LOG(ERROR) << "RTCVideoEncoder::Impl::NotifyError" << error;
       retval = WEBRTC_VIDEO_CODEC_ERROR;
   }
 
