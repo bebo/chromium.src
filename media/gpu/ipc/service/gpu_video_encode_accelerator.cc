@@ -293,7 +293,7 @@ void GpuVideoEncodeAccelerator::OnEncode(
     return;
 
   if (params.frame_id < 0) {
-    DLOG(ERROR) << __func__ << " invalid frame_id=" << params.frame_id;
+    LOG(ERROR) << __func__ << " invalid frame_id=" << params.frame_id;
     NotifyError(VideoEncodeAccelerator::kPlatformFailureError);
     return;
   }
@@ -315,11 +315,13 @@ void GpuVideoEncodeAccelerator::OnUseOutputBitstreamBuffer(
     return;
   if (buffer_id < 0) {
     DLOG(ERROR) << __func__ << " invalid buffer_id=" << buffer_id;
+    LOG(ERROR) << __func__ << " invalid buffer_id=" << buffer_id;
     NotifyError(VideoEncodeAccelerator::kPlatformFailureError);
     return;
   }
   if (buffer_size < output_buffer_size_) {
     DLOG(ERROR) << __func__ << " buffer too small for buffer_id=" << buffer_id;
+    LOG(ERROR) << __func__ << " buffer too small for buffer_id=" << buffer_id;
     NotifyError(VideoEncodeAccelerator::kPlatformFailureError);
     return;
   }
@@ -361,6 +363,7 @@ void GpuVideoEncodeAccelerator::CreateEncodeFrameOnEncoderWorker(
 
   if (!map_offset.IsValid() || !map_size.IsValid()) {
     DLOG(ERROR) << __func__ << "  invalid map_offset or map_size";
+    LOG(ERROR) << __func__ << "  invalid map_offset or map_size";
     encode_task_runner_->PostTask(
         FROM_HERE,
         base::Bind(&GpuVideoEncodeAccelerator::NotifyError, weak_this_,
@@ -370,6 +373,7 @@ void GpuVideoEncodeAccelerator::CreateEncodeFrameOnEncoderWorker(
 
   if (!shm->MapAt(map_offset.ValueOrDie(), map_size.ValueOrDie())) {
     DLOG(ERROR) << __func__ << " could not map frame_id=" << params.frame_id;
+    LOG(ERROR) << __func__ << " could not map frame_id=" << params.frame_id;
     encode_task_runner_->PostTask(
         FROM_HERE,
         base::Bind(&GpuVideoEncodeAccelerator::NotifyError, weak_this_,
@@ -385,6 +389,7 @@ void GpuVideoEncodeAccelerator::CreateEncodeFrameOnEncoderWorker(
       params.buffer_offset, params.timestamp);
   if (!frame) {
     DLOG(ERROR) << __func__ << " could not create a frame";
+    LOG(ERROR) << __func__ << " could not create a frame";
     encode_task_runner_->PostTask(
         FROM_HERE,
         base::Bind(&GpuVideoEncodeAccelerator::NotifyError, weak_this_,
@@ -419,6 +424,7 @@ void GpuVideoEncodeAccelerator::OnEncodeFrameCreated(
 
   if (!frame) {
     DLOG(ERROR) << __func__ << " could not create a frame";
+    LOG(ERROR) << __func__ << " could not create a frame";
     NotifyError(VideoEncodeAccelerator::kPlatformFailureError);
     return;
   }

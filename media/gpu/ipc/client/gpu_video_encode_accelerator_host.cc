@@ -223,8 +223,8 @@ void GpuVideoEncodeAcceleratorHost::PostNotifyError(
     Error error,
     const std::string& message) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DLOG(ERROR) << "Error from " << location.ToString() << ", " << message
-              << " (error = " << error << ")";
+  LOG(ERROR) << "Error from " << location.ToString() << ", " << message
+             << " (error = " << error << ")";
   // Post the error notification back to this thread, to avoid re-entrancy.
   media_task_runner_->PostTask(
       FROM_HERE, base::Bind(&GpuVideoEncodeAcceleratorHost::OnNotifyError,
@@ -291,6 +291,7 @@ void GpuVideoEncodeAcceleratorHost::OnBitstreamBufferReady(
 void GpuVideoEncodeAcceleratorHost::OnNotifyError(Error error) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DLOG(ERROR) << __func__ << " error=" << error;
+  LOG(ERROR) << __func__ << " error=" << error;
   if (!client_)
     return;
   weak_this_factory_.InvalidateWeakPtrs();

@@ -600,6 +600,7 @@ void RTCVideoEncoder::Impl::LogAndNotifyError(
       arraysize(kErrorNames) == media::VideoEncodeAccelerator::kErrorMax + 1,
       "Different number of errors and textual descriptions");
   DLOG(ERROR) << location.ToString() << kErrorNames[error] << " - " << str;
+  LOG(ERROR) << location.ToString() << kErrorNames[error] << " - " << str;
   NotifyError(error);
 }
 
