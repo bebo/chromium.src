@@ -376,6 +376,7 @@ void RTCVideoEncoder::Impl::Enqueue(const webrtc::VideoFrame* input_frame,
   // Besides, webrtc will drop a frame if Encode() blocks too long.
   if (input_buffers_free_.empty() && output_buffers_free_count_ == 0) {
     DVLOG(2) << "Run out of input and output buffers. Drop the frame.";
+    LOG(ERROR) << "Run out of input and output buffers. Drop the frame.";
     SignalAsyncWaiter(WEBRTC_VIDEO_CODEC_ERROR);
     return;
   }
@@ -617,7 +618,8 @@ void RTCVideoEncoder::Impl::EncodeOneFrame() {
   input_next_frame_keyframe_ = false;
 
   if (!video_encoder_) {
-    SignalAsyncWaiter(WEBRTC_VIDEO_CODEC_ERROR);
+    LOG(ERROR) << "help video_encoder_ does not exist";
+    SignalAsyncWaiter(WEBRTC_VIDEO_CODEC_ERROR); // FIXME - is this even the right code?
     return;
   }
 
@@ -768,7 +770,7 @@ void RTCVideoEncoder::Impl::ReturnEncodedImage(
     case webrtc::kVideoCodecH264:
       if (!GetRTPFragmentationHeaderH264(&header, image._buffer,
                                          image._length)) {
-        DLOG(ERROR) << "Failed to get RTP fragmentation header for H264";
+        LOG(ERROR) << "Failed to get RTP fragmentation header for H264";
         NotifyError(
             (media::VideoEncodeAccelerator::Error)WEBRTC_VIDEO_CODEC_ERROR);
         return;
