@@ -95,6 +95,7 @@ std::unique_ptr<CommandBufferProxyImpl> CommandBufferProxyImpl::Create(
 }
 
 CommandBufferProxyImpl::~CommandBufferProxyImpl() {
+  LOG(INFO) << "CommandBufferProxyImpl::~CommandBufferProxyImpl()";
   for (auto& observer : deletion_observers_)
     observer.OnWillDeleteImpl();
   DisconnectChannel();

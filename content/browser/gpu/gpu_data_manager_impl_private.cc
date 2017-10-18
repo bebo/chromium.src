@@ -939,6 +939,7 @@ void GpuDataManagerImplPrivate::AddLogMessage(
 
 void GpuDataManagerImplPrivate::ProcessCrashed(
     base::TerminationStatus exit_code) {
+  LOG(ERROR) << "GpuDataManagerImplPrivate::ProcessCrashed: " << exit_code;
   if (!BrowserThread::CurrentlyOn(BrowserThread::UI)) {
     // Unretained is ok, because it's posted to UI thread, the thread
     // where the singleton GpuDataManagerImpl lives until the end.
