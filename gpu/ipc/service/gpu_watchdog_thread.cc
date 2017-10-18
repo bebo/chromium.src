@@ -416,6 +416,7 @@ void GpuWatchdogThread::DeliberatelyTerminateToRecoverFromHang() {
   if (handler)
     handler(logging::LOG_ERROR, __FILE__, __LINE__, 0, message);
   DLOG(ERROR) << message;
+  LOG(ERROR) << message;
 
   // Deliberately crash the process to create a crash dump.
   *((volatile int*)0) = 0x1337;
