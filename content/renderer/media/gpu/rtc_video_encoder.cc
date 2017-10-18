@@ -565,6 +565,7 @@ void RTCVideoEncoder::Impl::NotifyError(
     media::VideoEncodeAccelerator::Error error) {
   DCHECK(thread_checker_.CalledOnValidThread());
   int32_t retval = WEBRTC_VIDEO_CODEC_ERROR;
+  LOG(ERROR) << "RTCVideoEncoder::Impl::NotifyError" << error;
   switch (error) {
     case media::VideoEncodeAccelerator::kInvalidArgumentError:
       retval = WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
