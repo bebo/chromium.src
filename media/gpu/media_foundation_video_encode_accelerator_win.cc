@@ -30,6 +30,8 @@ using base::win::ScopedComPtr;
 using media::mf::MediaBufferScopedPointer;
 using base::win::RegKey;
 
+#define BVLOG VLOG
+
 namespace media {
 
 namespace {
@@ -279,7 +281,7 @@ void MediaFoundationVideoEncodeAccelerator::UseOutputBitstreamBuffer(
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
 
   if (buffer.size() < bitstream_buffer_size_) {
-    DLOG(ERROR) << "Output BitstreamBuffer isn't big enough: " << buffer.size()
+    LOG(ERROR) << "Output BitstreamBuffer isn't big enough: " << buffer.size()
                 << " vs. " << bitstream_buffer_size_;
     NotifyError(kInvalidArgumentError);
     return;
@@ -288,7 +290,7 @@ void MediaFoundationVideoEncodeAccelerator::UseOutputBitstreamBuffer(
   std::unique_ptr<base::SharedMemory> shm(
       new base::SharedMemory(buffer.handle(), false));
   if (!shm->Map(buffer.size())) {
-    DLOG(ERROR) << "Failed mapping shared memory.";
+    LOG(ERROR) << "Failed mapping shared memory.";
     NotifyError(kPlatformFailureError);
     return;
   }
@@ -894,7 +896,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
   base::win::ScopedComPtr<IMFMediaBuffer> input_buffer;
   base::win::ScopedComPtr<IMFSample> input_sample = std::move(GetInputSample());
   if (input_sample == nullptr) {
-    VLOG(3) << "Dropping Input Buffer - Queue full";
+    BVLOG(3) << "Dropping Input Buffer - Queue full";
     frame = nullptr;
     return;
   }
@@ -929,7 +931,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
   LONGLONG sample_time;
   input_sample->GetSampleTime(&sample_time);
-  VLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
+  BVLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
 
   input_sample_queue_.push_back(std::move(input_sample));
 
@@ -956,7 +958,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
     // any more input data.
     if (hr == MF_E_NOTACCEPTING) {
       DVLOG(3) << "MF_E_NOTACCEPTING";
-      VLOG(3) << "MF_E_NOTACCEPTING";
+      BVLOG(3) << "MF_E_NOTACCEPTING";
       ProcessOutput();
       hr = encoder_->ProcessInput(input_stream_id_, sample.Get(), 0);
       if (!SUCCEEDED(hr)) {
@@ -979,7 +981,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
 
 void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
   DVLOG(3) << __func__;
-  VLOG(3) << __func__ << " events: " << output_events_;
+  BVLOG(3) << __func__ << " events: " << output_events_;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   while(output_events_ > 0) {
@@ -1000,13 +1002,13 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     hr = encoder_->ProcessOutput(output_stream_id_, 1, &output_data_buffer,
                                  &status);
     if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
-      VLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
+      BVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       DVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       return;
     }
     // quicksync...
     if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
-      VLOG(3) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
+      BVLOG(3) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
       hr = encoder_->GetOutputAvailableType(0, 0, imf_output_media_type_.GetAddressOf());
       if (hr != S_OK) {
         LOG(ERROR) << "MF_E_TRANSFORM_STREAM_CHANGE - Could not Get available output type 0x" << std::hex << hr << std::dec;
@@ -1062,7 +1064,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
 
     const bool keyframe = MFGetAttributeUINT32(
         output_data_buffer.pSample, MFSampleExtension_CleanPoint, false);
-    VLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
+    BVLOG(3) << "We HAVE encoded data with size:" << size << " keyframe "
              << keyframe
              << " timestamp: "
              << sample_time;
@@ -1071,8 +1073,8 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
              << keyframe;
 
     if (bitstream_buffer_queue_.empty()) {
-      DVLOG(3) << "No bitstream buffers.";
-      VLOG(3) << "No bitstream buffers.";
+      LOG(ERROR) << "No bitstream buffers.";
+      BVLOG(3) << "No bitstream buffers.";
       // We need to copy the output so that encoding can continue.
       std::unique_ptr<EncodeOutput> encode_output(
           new EncodeOutput(size, keyframe, timestamp));
@@ -1105,7 +1107,6 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       MediaBufferScopedPointer scoped_buffer(output_buffer.Get());
       memcpy(buffer_ref->shm->memory(), scoped_buffer.get(), size);
     }
-
 
     if (output_data_buffer.pEvents) {
       LONG ce = output_data_buffer.pEvents->Release();
