@@ -61,6 +61,7 @@ bool GpuVideoEncodeAcceleratorHost::OnMessageReceived(
 
 void GpuVideoEncodeAcceleratorHost::OnChannelError() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  LOG(ERROR) << "OnChannelError";
   if (channel_) {
     if (encoder_route_id_ != MSG_ROUTING_NONE)
       channel_->RemoveRoute(encoder_route_id_);
@@ -179,6 +180,7 @@ void GpuVideoEncodeAcceleratorHost::Destroy() {
 }
 
 void GpuVideoEncodeAcceleratorHost::OnWillDeleteImpl() {
+  LOG(ERROR) << "OnWillDeleteImpl";
   base::AutoLock lock(impl_lock_);
   impl_ = nullptr;
 
