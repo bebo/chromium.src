@@ -52,6 +52,7 @@ void ServiceIPCServer::OnChannelConnected(int32_t peer_pid) {
 }
 
 void ServiceIPCServer::OnChannelError() {
+  LOG(ERROR) << "ServiceIPCServer::OnChannelError";
   // When an IPC client (typically a browser process) disconnects, the pipe is
   // closed and we get an OnChannelError. If we want to keep servicing requests,
   // we will recreate the channel.
