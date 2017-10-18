@@ -575,7 +575,7 @@ void RTCVideoEncoder::Impl::NotifyError(
       retval = WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
       break;
     default:
-      LOG(ERROR) << "RTCVideoEncoder::Impl::NotifyError" << error;
+      LOG(ERROR) << "RTCVideoEncoder::Impl::NotifyError: " << error;
       retval = WEBRTC_VIDEO_CODEC_ERROR;
   }
 
@@ -598,6 +598,7 @@ void RTCVideoEncoder::Impl::LogAndNotifyError(
       arraysize(kErrorNames) == media::VideoEncodeAccelerator::kErrorMax + 1,
       "Different number of errors and textual descriptions");
   DLOG(ERROR) << location.ToString() << kErrorNames[error] << " - " << str;
+  LOG(ERROR) << location.ToString() << kErrorNames[error] << " - " << str;
   NotifyError(error);
 }
 
