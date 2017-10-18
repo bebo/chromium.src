@@ -265,6 +265,7 @@ void GpuVideoEncodeAcceleratorHost::OnNotifyInputDone(int32_t frame_id) {
   scoped_refptr<VideoFrame> frame = frame_map_[frame_id];
   if (!frame_map_.erase(frame_id)) {
     DLOG(ERROR) << __func__ << " invalid frame_id=" << frame_id;
+    LOG(ERROR) << __func__ << " invalid frame_id=" << frame_id;
     // See OnNotifyError for why this needs to be the last thing in this
     // function.
     OnNotifyError(kPlatformFailureError);
