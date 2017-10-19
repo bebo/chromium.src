@@ -148,6 +148,11 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   size_t u_stride_;
   size_t v_stride_;
 
+  // debug counters
+  uint64_t dropped_input_cnt_ = 0;
+
+
+  /* std::atomic<uint32_t> kill_cnt_ = 0; */
   std::atomic<uint32_t> input_events_ = 0;
   std::atomic<uint32_t> output_events_ = 0;
 
