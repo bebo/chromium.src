@@ -150,6 +150,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
 
   // debug counters
   uint64_t dropped_input_cnt_ = 0;
+  uint64_t dropped_bitstream_queue_cnt_ = 0;
 
 
   /* std::atomic<uint32_t> kill_cnt_ = 0; */
