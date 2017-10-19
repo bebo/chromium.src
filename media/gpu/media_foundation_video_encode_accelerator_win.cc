@@ -188,7 +188,6 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
     return false;
   }
 
-
   main_client_weak_factory_.reset(new base::WeakPtrFactory<Client>(client));
   main_client_ = main_client_weak_factory_->GetWeakPtr();
   input_visible_size_ = input_visible_size;
@@ -321,7 +320,6 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChange(
 void MediaFoundationVideoEncodeAccelerator::Destroy() {
   DVLOG(3) << __func__;
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
-
 
   // Cancel all callbacks.
   main_client_weak_factory_.reset();
@@ -552,14 +550,12 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
                                         MFVideoInterlace_Progressive);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set interlace mode", false);
 
-
   hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
                                0);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set output media type", false);
 
   hr = encoder_->SetInputType(input_stream_id_, imf_input_media_type_.Get(), 0);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set input media type", false);
-
 
   return SUCCEEDED(hr);
 }
@@ -776,6 +772,11 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInputOutput() {
 
 bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEvent> event) {
 
+  if (event.Get() == nullptr) {
+    LOG(ERROR) << "invalid event (null)";
+    return false;
+  }
+
   MediaEventType media_event_type = MEUnknown;
   HRESULT event_status = S_OK;
 	event->GetType(&media_event_type);
@@ -803,26 +804,6 @@ bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEv
   return true;
 }
 
-bool MediaFoundationVideoEncodeAccelerator::DrainEvents() {
-  bool had_events = false;
-  HRESULT hr = S_OK;
-
-	while (true) {
-    base::win::ScopedComPtr<IMFMediaEvent> event;
-	  hr = imf_media_event_generator_->GetEvent(MF_EVENT_FLAG_NO_WAIT, event.GetAddressOf());
-    if (hr == MF_E_NO_EVENTS_AVAILABLE ) {
-      break;
-    }
-    if (hr != S_OK) {
-      LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
-      break;
-    }
-    ProcessEvent(event);
-    had_events = true;
-  }
-  return had_events;
-}
-
 base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInputSample() {
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
@@ -848,12 +829,14 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInp
   MFT_INPUT_STREAM_INFO input_stream_info;
   HRESULT hr = encoder_->GetInputStreamInfo(input_stream_id_, &input_stream_info);
   RETURN_ON_HR_FAILURE(hr, "Couldn't get input stream info", nullptr);
-  LOG(INFO) << "new input sample with size: " << input_stream_info.cbSize;
+  uint32_t buffer_length = input_stream_info.cbSize ? input_stream_info.cbSize
+    : VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_);
+
+  LOG(INFO) << "new input sample with buffer length: " << buffer_length
+            << " aligned: " << input_stream_info.cbAlignment;
 
   sample = mf::CreateEmptySampleWithBuffer(
-      input_stream_info.cbSize
-          ? input_stream_info.cbSize
-          : VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_),
+      buffer_length,
       input_stream_info.cbAlignment);
 
   input_sample_pool_.push_back(sample);
@@ -883,11 +866,16 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOut
     (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES);
   LOG(INFO) << "encoder_provides_samples_: " << encoder_provides_samples_ ;
 
+  uint32_t buffer_length = output_stream_info.cbSize
+        ? output_stream_info.cbSize
+        : bitstream_buffer_size_ * kOutputSampleBufferSizeRatio;
+
+  LOG(INFO) << "new output sample with buffer length: " << buffer_length
+            << " aligned: " << output_stream_info.cbAlignment;
+
   base::win::ScopedComPtr<IMFSample> sample ;
   sample = mf::CreateEmptySampleWithBuffer(
-        output_stream_info.cbSize
-            ? output_stream_info.cbSize
-            : bitstream_buffer_size_ * kOutputSampleBufferSizeRatio,
+        buffer_length,
         output_stream_info.cbAlignment);
 
   input_sample_pool_.push_back(sample);
@@ -901,7 +889,11 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
   base::win::ScopedComPtr<IMFMediaBuffer> input_buffer;
   base::win::ScopedComPtr<IMFSample> input_sample = std::move(GetInputSample());
   if (input_sample == nullptr) {
+    dropped_input_cnt_++;
     BVLOG(3) << "Dropping Input Buffer - Queue full";
+    if ((dropped_input_cnt_++ % frame_rate_) == 1) {
+      LOG(WARNING) << "Dropping Input Buffer - Queue full - cnt: " << dropped_input_cnt_;
+    }
     frame = nullptr;
     return;
   }
@@ -909,8 +901,11 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
   input_sample->GetBufferByIndex(0, input_buffer.GetAddressOf());
 
   {
+    // TODO: MediaBufferScopedPointer doesn't handle errors when lock can not be aquired...
     MediaBufferScopedPointer scoped_buffer(input_buffer.Get());
     DCHECK(scoped_buffer.get());
+
+    // TODO: check that frame size is smaller than what we expect...
 
     libyuv::I420ToNV12(frame->visible_data(VideoFrame::kYPlane),
                      frame->stride(VideoFrame::kYPlane),
@@ -925,6 +920,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
                      input_visible_size_.width(),
                      input_visible_size_.height());
 
+    // TODO: WTF: - shouldn't we buffer->SetCurrentLength( correct size ? );
   }
 
   input_sample->SetSampleTime(frame->timestamp().InMicroseconds() *
@@ -963,7 +959,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
     // any more input data.
     if (hr == MF_E_NOTACCEPTING) {
       DVLOG(3) << "MF_E_NOTACCEPTING";
-      BVLOG(3) << "MF_E_NOTACCEPTING";
+      LOG(ERROR) << "MF_E_NOTACCEPTING"; // don't expect this on async
       ProcessOutput();
       hr = encoder_->ProcessInput(input_stream_id_, sample.Get(), 0);
       if (!SUCCEEDED(hr)) {
@@ -992,7 +988,6 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
   while(output_events_ > 0) {
     output_events_--;
 
-
     MFT_OUTPUT_DATA_BUFFER output_data_buffer = {0};
     output_data_buffer.dwStreamID = 0;
     output_data_buffer.dwStatus = 0;
@@ -1007,7 +1002,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     hr = encoder_->ProcessOutput(output_stream_id_, 1, &output_data_buffer,
                                  &status);
     if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
-      BVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
+      LOG(ERROR) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status; // not expected for async
       DVLOG(3) << "MF_E_TRANSFORM_NEED_MORE_INPUT" << status;
       return;
     }
@@ -1036,22 +1031,21 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       LOG(ERROR) << "Couldn't get encoded data 0x" << std::hex << hr << std::dec;
       RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
     }
-    VLOG(3) << "Got encoded data " << hr;
-    DVLOG(3) << "Got encoded data " << hr;
+    BVLOG(3) << "Got encoded data " << hr;
     
     // base::win::ScopedComPtr<IMFSample> sample;
     // sample = output_data_buffer.pSample;
 
     DWORD buffer_cnt = 0;
     output_data_buffer.pSample->GetBufferCount(&buffer_cnt);
-    VLOG(3) << "Sample Has Buffers: " << buffer_cnt;
+    BVLOG(3) << "Sample Has Buffers: " << buffer_cnt;
 
     base::win::ScopedComPtr<IMFMediaBuffer> output_buffer;
     if (buffer_cnt == 1) {
       hr = output_data_buffer.pSample->GetBufferByIndex(0, output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer by index", );
     } else {
-      LOG(INFO) << "Unexpected large buffer converting: " << buffer_cnt;
+      LOG(WARNING) << "Unexpected large buffer converting: " << buffer_cnt;
       hr = output_data_buffer.pSample->ConvertToContiguousBuffer(output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get contiguous buffer", );
     }
@@ -1125,7 +1119,6 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       LONG c = output_data_buffer.pSample->Release();
       VLOG(3) << "Release() the buffer: " << c;
     }
-
 
     VLOG(3) << "Posted Frame";
     encode_client_task_runner_->PostTask(
@@ -1273,6 +1266,7 @@ void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   CloseHandle(drained_);
 }
 
+/* #pragma warning (disable: 4723) */
 STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyncResult) {
 
   DVLOG(3) << __func__;
@@ -1285,16 +1279,21 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
   // event generator's IMFMediaEventGenerator interface.
   hr = imf_media_event_generator_->EndGetEvent(pAsyncResult, event.GetAddressOf());
 
-  // Get the event type.
-  if (! SUCCEEDED(hr))
-  {
-      LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
-  }
+  /* kill_cnt_++; */
+  /* if (kill_cnt_ > (30 * 30)) { */
+  /*   kill_cnt_ = kill_cnt_ / 0; // die */
+  /* } */
 
-  if (ProcessEvent(event)) {
-    encoder_thread_task_runner_->PostTask(
-        FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
-                              encoder_task_weak_factory_.GetWeakPtr()));
+  // Get the event type.
+  if (SUCCEEDED(hr))
+  {
+    if (ProcessEvent(event)) {
+      encoder_thread_task_runner_->PostTask(
+          FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
+                                encoder_task_weak_factory_.GetWeakPtr()));
+    }
+  } else {
+    LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
   }
 
   if (alive_)
