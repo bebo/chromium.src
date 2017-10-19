@@ -715,7 +715,11 @@ void RTCVideoEncoder::Impl::RegisterAsyncWaiter(base::WaitableEvent* waiter,
 void RTCVideoEncoder::Impl::SignalAsyncWaiter(int32_t retval) {
   DCHECK(thread_checker_.CalledOnValidThread());
   *async_retval_ = retval;
-  async_waiter_->Signal();
+  if (async_waiter_ != nullptr) {
+    async_waiter_->Signal();
+  } else {
+    LOG(ERROR) << "No Async Waiter Registerd";
+  }
   async_retval_ = NULL;
   async_waiter_ = NULL;
 }

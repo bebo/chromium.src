@@ -759,6 +759,11 @@ void MediaFoundationVideoEncodeAccelerator::EncodeTask(
   VLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
+  if (!alive_) {
+    LOG(WARNING) << "not alive - got a an encode task - dropping frame";
+    return;
+  }
+
   QueueFrame(frame, force_keyframe);
   ProcessOutput();
   ProcessInput();
@@ -1008,7 +1013,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     }
     // quicksync...
     if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
-      BVLOG(3) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
+      LOG(INFO) << "encoder signaled MF_E_TRANSFORM_STREAM_CHANGE";
       hr = encoder_->GetOutputAvailableType(0, 0, imf_output_media_type_.GetAddressOf());
       if (hr != S_OK) {
         LOG(ERROR) << "MF_E_TRANSFORM_STREAM_CHANGE - Could not Get available output type 0x" << std::hex << hr << std::dec;
@@ -1046,6 +1051,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
       hr = output_data_buffer.pSample->GetBufferByIndex(0, output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer by index", );
     } else {
+      LOG(INFO) << "Unexpected large buffer converting: " << buffer_cnt;
       hr = output_data_buffer.pSample->ConvertToContiguousBuffer(output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get contiguous buffer", );
     }
@@ -1214,8 +1220,13 @@ void MediaFoundationVideoEncodeAccelerator::DestroyTask() {
   // There are reports that some MFT's crash (AMD) if there are
   // unprocessed samples, so we should probably drain all events and process
   // all output, even if we send it to dev/null
-
   HRESULT hr = S_OK;
+ 
+  for (auto &it: input_sample_queue_) {
+    it.Reset();
+  }
+  input_sample_queue_.clear();
+
   hr =  encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
   LOG_IF(ERROR, hr != S_OK) <<  "DestroyTask - can't ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM) 0x" << std::hex << hr << std::dec;
   hr =  encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
@@ -1230,20 +1241,23 @@ void MediaFoundationVideoEncodeAccelerator::DestroyTask() {
   alive_ = false;
 
   // Cancel all encoder thread callbacks.
-
+  
   ReleaseEncoderResources();
 }
 
 void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
   LOG(INFO) << __func__;
 
-  MFShutdownObject(encoder_.Get()); // async MFT's must be shut down
+  if (encoder_.Get() != nullptr) {
+    MFShutdownObject(encoder_.Get()); // async MFT's must be shut down
+  }
   encoder_.Reset();
   LOG_IF(ERROR,!ref_count_.IsZero()) << "MFT still has a reference to us!";
   codec_api_.Reset();
   imf_media_event_generator_.Reset();
   imf_input_media_type_.Reset();
   imf_output_media_type_.Reset();
+
   for (auto &it: input_sample_pool_) {
     unsigned long c = it.Reset();
     VLOG(3) << "Releasing input sample - " << c;
@@ -1281,7 +1295,6 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
     encoder_thread_task_runner_->PostTask(
         FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
                               encoder_task_weak_factory_.GetWeakPtr()));
-
   }
 
   if (alive_)
