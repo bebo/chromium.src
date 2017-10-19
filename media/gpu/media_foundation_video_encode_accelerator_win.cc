@@ -886,12 +886,27 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
   VLOG(3) << __func__;
 
+  if (encoder_output_queue_.size() > 3) {
+    dropped_bitstream_queue_cnt_++;
+    if ((dropped_bitstream_queue_cnt_ % frame_rate_) == 1) {
+      LOG(WARNING) << "Dropping Input Buffer - output bitream queue > 3 - cnt: " << dropped_bitstream_queue_cnt_;
+    }
+    frame = nullptr;
+    return;
+  }
+
+  const gfx::Rect& frame_size = frame->visible_rect();
+  if (frame_size.height() > input_visible_size_.height() ||
+      frame_size.width() > input_visible_size_.width()) {
+    LOG(WARNING) << "frame is larger than expected visible input size " << frame_size.width() << "x" << frame_size.height();
+  }
+
   base::win::ScopedComPtr<IMFMediaBuffer> input_buffer;
   base::win::ScopedComPtr<IMFSample> input_sample = std::move(GetInputSample());
   if (input_sample == nullptr) {
     dropped_input_cnt_++;
     BVLOG(3) << "Dropping Input Buffer - Queue full";
-    if ((dropped_input_cnt_++ % frame_rate_) == 1) {
+    if ((dropped_input_cnt_ % frame_rate_) == 1) {
       LOG(WARNING) << "Dropping Input Buffer - Queue full - cnt: " << dropped_input_cnt_;
     }
     frame = nullptr;
@@ -905,8 +920,6 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
     MediaBufferScopedPointer scoped_buffer(input_buffer.Get());
     DCHECK(scoped_buffer.get());
 
-    // TODO: check that frame size is smaller than what we expect...
-
     libyuv::I420ToNV12(frame->visible_data(VideoFrame::kYPlane),
                      frame->stride(VideoFrame::kYPlane),
                      frame->visible_data(VideoFrame::kUPlane),
@@ -919,14 +932,15 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
                      u_stride_,
                      input_visible_size_.width(),
                      input_visible_size_.height());
-
-    // TODO: WTF: - shouldn't we buffer->SetCurrentLength( correct size ? );
   }
+  uint32_t current_length = VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_);
+  HRESULT hr = input_buffer.Get()->SetCurrentLength(current_length);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set current length", );
 
   input_sample->SetSampleTime(frame->timestamp().InMicroseconds() *
                                kOneMicrosecondInMFSampleTimeUnits);
   UINT64 sample_duration = 1;
-  HRESULT hr = MFFrameRateToAverageTimePerFrame(frame_rate_, 1, &sample_duration);
+  hr = MFFrameRateToAverageTimePerFrame(frame_rate_, 1, &sample_duration);
   RETURN_ON_HR_FAILURE(hr, "Couldn't calculate sample duration", );
   input_sample->SetSampleDuration(sample_duration);
 
