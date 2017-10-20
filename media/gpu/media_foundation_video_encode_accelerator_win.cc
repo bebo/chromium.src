@@ -765,7 +765,7 @@ void MediaFoundationVideoEncodeAccelerator::EncodeTask(
   ProcessInput();
 }
 
-void MediaFoundationVideoEncodeAccelerator::ProcessInputOutput() {
+void MediaFoundationVideoEncodeAccelerator::ProcessInputOutput(uint64_t dummy) {
   ProcessOutput();
   ProcessInput();
 }
@@ -1304,7 +1304,7 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
     if (ProcessEvent(event)) {
       encoder_thread_task_runner_->PostTask(
           FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
-                                encoder_task_weak_factory_.GetWeakPtr()));
+                                encoder_task_weak_factory_.GetWeakPtr(), 42));
     }
   } else {
     LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
