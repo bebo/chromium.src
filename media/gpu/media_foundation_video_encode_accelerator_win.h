@@ -105,7 +105,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
 
   // Checks for and copies encoded output on |encoder_thread_|.
   void ProcessOutput();
-  void ProcessInputOutput();
+  void ProcessInputOutput(uint64_t dummy);
 
   // Inserts the output buffers for reuse on |encoder_thread_|.
   void UseOutputBitstreamBufferTask(
