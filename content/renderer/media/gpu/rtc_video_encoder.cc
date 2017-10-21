@@ -170,6 +170,7 @@ class RTCVideoEncoder::Impl
                             bool key_frame,
                             base::TimeDelta timestamp) override;
   void NotifyError(media::VideoEncodeAccelerator::Error error) override;
+  void SetImplementationName(const std::string& implementation_name) override;
 
  private:
   friend class base::RefCountedThreadSafe<Impl>;
@@ -277,6 +278,8 @@ class RTCVideoEncoder::Impl
   // The video codec type, as reported to WebRTC.
   const webrtc::VideoCodecType video_codec_type_;
 
+  const char * implementation_name_ ;
+
   // Protect |status_|. |status_| is read or written on |gpu_task_runner_| in
   // Impl. It can be read in RTCVideoEncoder on other threads.
   mutable base::Lock status_lock_;
@@ -302,6 +305,7 @@ RTCVideoEncoder::Impl::Impl(media::GpuVideoAcceleratorFactories* gpu_factories,
       last_capture_time_ms_(-1),
       encoded_image_callback_(nullptr),
       video_codec_type_(video_codec_type),
+      implementation_name_(nullptr),
       status_(WEBRTC_VIDEO_CODEC_UNINITIALIZED) {
   thread_checker_.DetachFromThread();
   // Picture ID should start on a random number.
@@ -588,7 +592,18 @@ void RTCVideoEncoder::Impl::NotifyError(
     SignalAsyncWaiter(retval);
 }
 
-RTCVideoEncoder::Impl::~Impl() { DCHECK(!video_encoder_); }
+void RTCVideoEncoder::Impl::SetImplementationName(const std::string& implementation_name) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  if (implementation_name_ != nullptr) {
+    delete[] implementation_name_;
+  }
+  implementation_name_ = strdup(implementation_name.c_str());
+}
+
+RTCVideoEncoder::Impl::~Impl() {
+  DCHECK(!video_encoder_);
+  delete[] implementation_name_;
+}
 
 void RTCVideoEncoder::Impl::LogAndNotifyError(
     const tracked_objects::Location& location,
@@ -794,6 +809,11 @@ void RTCVideoEncoder::Impl::ReturnEncodedImage(
     info.codecSpecific.VP8.pictureId = picture_id;
     info.codecSpecific.VP8.tl0PicIdx = -1;
     info.codecSpecific.VP8.keyIdx = -1;
+  }
+  if (implementation_name_ != nullptr) {
+    info.codec_name = implementation_name_;
+  } else {
+    info.codec_name = "unknown exernal";
   }
 
   const auto result =

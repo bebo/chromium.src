@@ -231,6 +231,15 @@ void GpuVideoEncodeAccelerator::NotifyError(
   }
 }
 
+void GpuVideoEncodeAccelerator::SetImplementationName(
+    const std::string& implementation_name) {
+  DVLOG(3) << "SetImplementationName: " << implementation_name;
+  if (!Send(new AcceleratedVideoEncoderHostMsg_SetImplementationName(host_route_id_,
+                                                           implementation_name))) {
+    DLOG(ERROR) << __func__ << " failed.";
+  }
+}
+
 void GpuVideoEncodeAccelerator::OnWillDestroyStub() {
   DVLOG(2) << __func__;
   DCHECK(main_task_runner_->BelongsToCurrentThread());

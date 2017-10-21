@@ -51,6 +51,8 @@ bool GpuVideoEncodeAcceleratorHost::OnMessageReceived(
                         OnBitstreamBufferReady)
     IPC_MESSAGE_HANDLER(AcceleratedVideoEncoderHostMsg_NotifyError,
                         OnNotifyError)
+    IPC_MESSAGE_HANDLER(AcceleratedVideoEncoderHostMsg_SetImplementationName,
+                        OnSetImplementationName)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
   DCHECK(handled);
@@ -289,6 +291,14 @@ void GpuVideoEncodeAcceleratorHost::OnBitstreamBufferReady(
     return;
   client_->BitstreamBufferReady(bitstream_buffer_id, payload_size, key_frame,
                                 timestamp);
+}
+
+void GpuVideoEncodeAcceleratorHost::OnSetImplementationName(const std::string& implementation_name) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DVLOG(3) << __func__ << " implementation_name=" << implementation_name;
+  if (!client_)
+    return;
+  client_->SetImplementationName(implementation_name);
 }
 
 void GpuVideoEncodeAcceleratorHost::OnNotifyError(Error error) {

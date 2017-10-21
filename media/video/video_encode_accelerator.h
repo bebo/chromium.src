@@ -33,6 +33,7 @@ class MEDIA_EXPORT VideoEncodeAccelerator {
     ~SupportedProfile();
     VideoCodecProfile profile;
     gfx::Size max_resolution;
+    std::string codec_implementation_name;
     uint32_t max_framerate_numerator;
     uint32_t max_framerate_denominator;
   };
@@ -91,6 +92,8 @@ class MEDIA_EXPORT VideoEncodeAccelerator {
     // reported here, but will instead be indicated by a false return value
     // there.
     virtual void NotifyError(Error error) = 0;
+
+    virtual void SetImplementationName(const std::string& implementation_name) {};
 
    protected:
     // Clients are not owned by VEA instances and should not be deleted through

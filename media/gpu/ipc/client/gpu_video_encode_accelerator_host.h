@@ -94,6 +94,7 @@ class GpuVideoEncodeAcceleratorHost
                               uint32_t payload_size,
                               bool key_frame,
                               base::TimeDelta timestamp);
+  void OnSetImplementationName(const std::string& implementation_name);
   void OnNotifyError(Error error);
 
   scoped_refptr<gpu::GpuChannelHost> channel_;
