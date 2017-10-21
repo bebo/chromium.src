@@ -201,6 +201,8 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   base::WeakPtrFactory<MediaFoundationVideoEncodeAccelerator>
       encoder_task_weak_factory_;
 
+  std::string implementation_name_;
+
   base::AtomicRefCount ref_count_;
   DISALLOW_COPY_AND_ASSIGN(MediaFoundationVideoEncodeAccelerator);
 };
