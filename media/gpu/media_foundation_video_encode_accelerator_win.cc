@@ -606,8 +606,8 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
     if (beboKey.HasValue(L"AVEncAdaptiveMode")) {
        beboKey.ReadValueDW(L"AVEncAdaptiveMode", &AVEncAdaptiveMode);
     }
-    if (beboKey.HasValue(L"AVEncVideoMinQP ")) {
-       beboKey.ReadValueDW(L"AVEncVideoMinQP ", &AVEncVideoMinQP);
+    if (beboKey.HasValue(L"AVEncVideoMinQP")) {
+       beboKey.ReadValueDW(L"AVEncVideoMinQP", &AVEncVideoMinQP);
     }
     if (beboKey.HasValue(L"AVLowLatencyMode")) {
        beboKey.ReadValueDW(L"AVLowLatencyMode", &AVLowLatencyMode);
@@ -643,11 +643,6 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonRateControlMode", false);
   LOG(INFO) << "CODECAPI_AVEncCommonRateControlMode: " << AVEncCommonRateControlMode;
 
-  var.vt = VT_UI4;
-  var.ulVal = target_bitrate_;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
-  LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
 
   if (AVEncCommonQuality) {
     var.vt = VT_UI4;
@@ -658,11 +653,22 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   }
 
   if (AVEncCommonMaxBitRate_) {
-    var.vt = VT_UI4;
-    var.ulVal = target_bitrate_ * AVEncCommonMaxBitRate_ * 100;
-    hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", false);
-    LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << target_bitrate_ * AVEncCommonMaxBitRate_ * 100;
+      var.vt = VT_UI4;
+      var.ulVal = target_bitrate_;
+      HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", false);
+      LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << var.ulVal;
+
+      var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
+      hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+      LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
+  } else {
+      var.vt = VT_UI4;
+      var.ulVal = target_bitrate_;
+      hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+      LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
   }
 
   if (AVEncVideoEncodeQP) {
@@ -1203,9 +1209,6 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     var.vt = VT_UI4;
     var.ulVal = target_bitrate_;
 
-    HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
-    LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
 
     /* hr = imf_output_media_type_->SetUINT32(MF_MT_AVG_BITRATE, target_bitrate_); */
     /* RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", ); */
@@ -1217,10 +1220,20 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
 
     if (AVEncCommonMaxBitRate_) {
       var.vt = VT_UI4;
-      var.ulVal = target_bitrate_ * AVEncCommonMaxBitRate_ * 100;
-      hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
+      var.ulVal = target_bitrate_;
+      HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
       RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", );
-      LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << target_bitrate_ * AVEncCommonMaxBitRate_ * 100;
+      LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << var.ulVal;
+
+      var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
+      hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+      LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
+
+    } else {
+        HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+        RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+        LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
     }
   }
 }
