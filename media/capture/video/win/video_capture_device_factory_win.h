@@ -12,6 +12,8 @@
 
 namespace media {
 
+bool IsDeviceWhiteListed(const std::string& name);
+
 // Extension of VideoCaptureDeviceFactory to create and manipulate Windows
 // devices, via either DirectShow or MediaFoundation APIs.
 class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
