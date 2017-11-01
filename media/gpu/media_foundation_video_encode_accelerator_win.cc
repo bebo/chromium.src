@@ -518,9 +518,9 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
   RETURN_ON_HR_FAILURE(hr, "Couldn't set media type", false);
   hr = imf_output_media_type_->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set video format", false);
-  hr = imf_output_media_type_->SetUINT32(MF_MT_AVG_BITRATE, target_bitrate_);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
-  LOG(INFO) << "MF_MT_AVG_BITRATE: " << target_bitrate_;
+  // hr = imf_output_media_type_->SetUINT32(MF_MT_AVG_BITRATE, target_bitrate_);
+  // RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+  // LOG(INFO) << "MF_MT_AVG_BITRATE: " << target_bitrate_;
   hr = MFSetAttributeRatio(imf_output_media_type_.Get(), MF_MT_FRAME_RATE,
                            frame_rate_, 1);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate", false);
@@ -664,10 +664,10 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
       RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", false);
       LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << var.ulVal;
 
-      var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
-      hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
-      LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
+      // var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
+      // hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+      // RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
+      // LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
   } else {
       var.vt = VT_UI4;
       var.ulVal = target_bitrate_;
@@ -1243,10 +1243,10 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
       RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", );
       LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << var.ulVal;
 
-      var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
-      hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
-      LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
+      // var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
+      // hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+      // RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+      // LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
 
     } else {
         HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
