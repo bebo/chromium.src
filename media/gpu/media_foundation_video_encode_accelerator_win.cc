@@ -1192,15 +1192,36 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
   BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
-  frame_rate_ =
-      framerate
-          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
-          : 1;
 
   if (bitrate == 300000) {
     // TODO figure out where this comes from
     LOG(INFO) << "ignoring initial wrong bitrate - CODECAPI_AVEncCommonMeanBitRate: " << bitrate;
     return;
+  }
+
+  // NVIDIA MFT sends half the expected bitrate if MF_MT_FRAME_RATE is set to 60 and actual is 30
+  uint32_t old_frame_rate = frame_rate_;
+  frame_rate_ =
+      framerate
+          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
+          : 1;
+
+  if (old_frame_rate != frame_rate_) {
+
+    HRESULT hr = MFSetAttributeRatio(imf_output_media_type_.Get(), MF_MT_FRAME_RATE,
+                             frame_rate_, 1);
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate",);
+    hr = MFSetAttributeRatio(imf_input_media_type_.Get(), MF_MT_FRAME_RATE,
+                             frame_rate_, 1);
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate",);
+    hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
+                                 0);
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set output media type", );
+
+    hr = encoder_->SetInputType(input_stream_id_, imf_input_media_type_.Get(), 0);
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set input media type", );
+
+    LOG(INFO) << "FPS: " << frame_rate_;
   }
 
   if (target_bitrate_ != bitrate) {
@@ -1231,9 +1252,9 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
       // LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " <<  var.ulVal;
 
     } else {
-        HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-        RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
-        LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
+      HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+      LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
     }
   }
 }
