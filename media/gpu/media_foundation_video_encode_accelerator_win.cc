@@ -597,6 +597,7 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   DWORD AVEncAdaptiveMode = eAVEncAdaptiveMode_Resolution;
   DWORD AVEncVideoMinQP = 0;
   DWORD AVLowLatencyMode = true;
+  DWORD AVEncVideoTemporalLayerCount = 1;
   int64_t AVEncVideoEncodeQP = 0x0;
 
   if (beboKey.Valid()) {
@@ -635,6 +636,9 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
     if (beboKey.HasValue(L"AVEncH264CABACEnable")) {
        beboKey.ReadValueDW(L"AVEncH264CABACEnable", &AVEncH264CABACEnable);
     }
+    if (beboKey.HasValue(L"AVEncVideoTemporalLayerCount")) {
+       beboKey.ReadValueDW(L"AVEncVideoTemporalLayerCount", &AVEncVideoTemporalLayerCount);
+    }
   }
 
   var.vt = VT_UI4;
@@ -642,7 +646,6 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonRateControlMode, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonRateControlMode", false);
   LOG(INFO) << "CODECAPI_AVEncCommonRateControlMode: " << AVEncCommonRateControlMode;
-
 
   if (AVEncCommonQuality) {
     var.vt = VT_UI4;
@@ -724,6 +727,12 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMinQP, &var);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoMinQP", false);
   LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP;
+
+  var.vt = VT_UI4;
+  var.ulVal = AVEncVideoTemporalLayerCount;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncVideoTemporalLayerCount, &var);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoTemporalLayerCount", false);
+  LOG(INFO) << "CODECAPI_AVEncVideoTemporalLayerCount: " << AVEncVideoTemporalLayerCount;
 
   return SUCCEEDED(hr);
 
