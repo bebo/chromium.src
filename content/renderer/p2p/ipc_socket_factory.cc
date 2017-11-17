@@ -182,7 +182,10 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   // from the browser process) are made, the value is increased back. This
   // allows short bursts of high-rate sending without dropping packets, but
   // quickly restricts the client to a sustainable steady-state rate.
+  //
+  // when the app sets P2P_SOCKET_OPT_SNDBUF we adjust max_send_bytes_available_
   size_t send_bytes_available_;
+  size_t max_send_bytes_available_;
 
   // Used to detect when browser doesn't send SendComplete message for some
   // packets. In normal case, the first packet should be the one that we're
@@ -240,6 +243,7 @@ IpcPacketSocket::IpcPacketSocket()
     : type_(P2P_SOCKET_UDP),
       state_(IS_UNINITIALIZED),
       send_bytes_available_(kMaximumInFlightBytes),
+      max_send_bytes_available_(kMaximumInFlightBytes),
       writable_signal_expected_(false),
       error_(0),
       max_discard_bytes_sequence_(0),
@@ -521,7 +525,26 @@ int IpcPacketSocket::SetOption(rtc::Socket::Option option, int value) {
   // on turn make the send buffer bigger so we don't drop packets when there is
   // packet loss and back pressure
   if (IsTcpClientSocket(type_) && p2p_socket_option == P2P_SOCKET_OPT_SNDBUF) {
-      value =  1024 * 1024;
+      
+      // Quoting Microsoft Here:
+      //
+      // When a Windows Sockets implementation supports the SO_RCVBUF and
+      // SO_SNDBUF options, an application can request different buffer sizes
+      // (larger or smaller). The call to setsockopt can succeed even when the
+      // implementation did not provide the whole amount requested. An
+      // application must call getsockopt with the same option to check the
+      // buffer size actually provided.
+      //
+      // sadly GetOption doesn't seem to be implemented here, so punting that
+      // for now
+
+      // In an ideal world it it would be 2 * rtt * bitrate, seems to work
+      // better with 2 * that for whatever reason, static for right now
+      value = 512 * 1024;
+      if (max_send_bytes_available_ != value) {
+         send_bytes_available_ += value - max_send_bytes_available_;
+         max_send_bytes_available_ = value;
+      }
   }
 
   options_[p2p_socket_option] = value;
@@ -624,7 +647,7 @@ void IpcPacketSocket::OnSendComplete(const P2PSendPacketMetrics& send_metrics) {
 
   send_bytes_available_ += record.packet_size;
 
-  DCHECK_LE(send_bytes_available_, kMaximumInFlightBytes);
+  DCHECK_LE(send_bytes_available_, max_send_bytes_available_);
 
   in_flight_packet_records_.pop_front();
   TraceSendThrottlingState();
