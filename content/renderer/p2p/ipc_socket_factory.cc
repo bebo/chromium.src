@@ -415,6 +415,9 @@ int IpcPacketSocket::SendTo(const void *data, size_t data_size,
       WebRtcLogMessage(base::StringPrintf(
           "IpcPacketSocket: sending is blocked. %d packets_in_flight.",
           static_cast<int>(in_flight_packet_records_.size())));
+      LOG(WARNING) << base::StringPrintf(
+            "IpcPacketSocket: sending is blocked. %d packets_in_flight.",
+            static_cast<int>(in_flight_packet_records_.size()));
 
       writable_signal_expected_ = true;
     }
@@ -513,6 +516,12 @@ int IpcPacketSocket::SetOption(rtc::Socket::Option option, int value) {
   if (!JingleSocketOptionToP2PSocketOption(option, &p2p_socket_option)) {
     // Option is not supported.
     return -1;
+  }
+
+  // on turn make the send buffer bigger so we don't drop packets when there is
+  // packet loss and back pressure
+  if (IsTcpClientSocket(type_) && p2p_socket_option == P2P_SOCKET_OPT_SNDBUF) {
+      value =  1024 * 1024;
   }
 
   options_[p2p_socket_option] = value;
@@ -632,6 +641,8 @@ void IpcPacketSocket::OnSendComplete(const P2PSendPacketMetrics& send_metrics) {
     WebRtcLogMessage(base::StringPrintf(
         "IpcPacketSocket: sending is unblocked. %d packets in flight.",
         static_cast<int>(in_flight_packet_records_.size())));
+    LOG(WARNING) << base::StringPrintf("IpcPacketSocket: sending is unblocked. %d packets in flight.",
+        static_cast<int>(in_flight_packet_records_.size()));
 
     SignalReadyToSend(this);
     writable_signal_expected_ = false;
