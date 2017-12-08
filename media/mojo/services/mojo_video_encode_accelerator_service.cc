@@ -211,5 +211,13 @@ void MojoVideoEncodeAcceleratorService::NotifyError(
 
   vea_client_->NotifyError(error);
 }
+void MojoVideoEncodeAcceleratorService::SetImplementationName(
+    const std::string& implementation_name) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!vea_client_)
+    return;
+
+  vea_client_->SetImplementationName(implementation_name);
+}
 
 }  // namespace media

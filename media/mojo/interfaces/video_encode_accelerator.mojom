@@ -72,5 +72,7 @@ interface VideoEncodeAcceleratorClient {
   BitstreamBufferReady(int32 bitstream_buffer_id, uint32 payload_size,
                        bool key_frame, mojo.common.mojom.TimeDelta timestamp);
 
+  SetImplementationName(string implementation_name);
+
   NotifyError(VideoEncodeAccelerator.Error error);
 };
