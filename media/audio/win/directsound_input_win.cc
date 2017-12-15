@@ -1,0 +1,1275 @@
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "media/audio/win/directsound_input_win.h"
+
+#include <objbase.h>
+
+#include <algorithm>
+#include <cmath>
+#include <memory>
+
+#include "base/logging.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/trace_event/trace_event.h"
+#include "media/audio/audio_device_description.h"
+#include "media/audio/win/audio_manager_win.h"
+#include "media/audio/win/avrt_wrapper_win.h"
+#include "media/audio/win/core_audio_util_win.h"
+#include "media/base/audio_block_fifo.h"
+#include "media/base/audio_bus.h"
+#include "media/base/audio_timestamp_helper.h"
+#include "media/base/channel_layout.h"
+#include "media/base/limits.h"
+#include "media/base/timestamp_constants.h"
+
+using base::win::ScopedCoMem;
+using base::win::ScopedComPtr;
+using base::win::ScopedCOMInitializer;
+using base::win::ScopedVariant;
+
+// TODO:  replace with Elgato
+GUID kBeboGameCaptureCLSID = {0x1f1383ef,
+                          0x8019,
+                          0x4f96,
+                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x63}};
+enum FILTER {
+  FILTER_BEBO_GAME_CAPTUIRE = 0,
+  FILTER_MAX = FILTER_BEBO_GAME_CAPTUIRE,
+};
+const int kFilterSize = FILTER_MAX + 1;
+const GUID kFilterArray[kFilterSize] = {kBeboGameCaptureCLSID};
+const std::string kFilterArrayName[kFilterSize] = {"bebo-game-capture"};
+
+
+namespace media {
+namespace {
+bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
+  if (format.nSamplesPerSec < limits::kMinSampleRate ||
+      format.nSamplesPerSec > limits::kMaxSampleRate) {
+    return false;
+  }
+
+  switch (format.wBitsPerSample) {
+    case 8:
+    case 16:
+    case 32:
+      break;
+    default:
+      return false;
+  }
+
+  if (GuessChannelLayout(format.nChannels) == CHANNEL_LAYOUT_UNSUPPORTED) {
+    LOG(ERROR) << "Hardware configuration not supported for audio conversion";
+    return false;
+  }
+
+  return true;
+}
+}  // namespace
+
+// Check if a Pin matches a category.
+bool PinMatchesCategory(IPin* pin, REFGUID category) {
+  DCHECK(pin);
+  bool found = false;
+  ScopedComPtr<IKsPropertySet> ks_property;
+  HRESULT hr = pin->QueryInterface(IID_PPV_ARGS(&ks_property));
+  if (SUCCEEDED(hr)) {
+    GUID pin_category;
+    DWORD return_value;
+    hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
+                          &pin_category, sizeof(pin_category), &return_value);
+    if (SUCCEEDED(hr) && (return_value == sizeof(pin_category))) {
+      found = (pin_category == category);
+    }
+  }
+  return found;
+}
+
+// Check if a Pin's MediaType matches a given |major_type|.
+bool PinMatchesMajorType(IPin* pin, REFGUID major_type) {
+  DCHECK(pin);
+  AM_MEDIA_TYPE connection_media_type;
+  const HRESULT hr = pin->ConnectionMediaType(&connection_media_type);
+  return SUCCEEDED(hr) && connection_media_type.majortype == major_type;
+}
+
+
+DirectSoundAudioInputStream::DirectSoundAudioInputStream(AudioManagerWin* manager,
+                                               const AudioParameters& params,
+                                               const std::string& device_id)
+    : manager_(manager), device_id_(device_id), params_(params) {
+  DCHECK(manager_);
+  DCHECK(!device_id_.empty());
+
+  is_loopback_device_ = device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0;
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(device_id_);
+
+
+  // Load the Avrt DLL if not already loaded. Required to support MMCSS.
+  bool avrt_init = avrt::Initialize();
+  DCHECK(avrt_init) << "Failed to load the Avrt.dll";
+
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::DirectSoundAudioInputStream "
+    << params.AsHumanReadableString();
+
+  // Set up the desired capture format specified by the client.
+  WAVEFORMATEX* format = &format_.Format;
+  format->wFormatTag = WAVE_FORMAT_PCM;
+  format->nSamplesPerSec = params.sample_rate();
+  format->wBitsPerSample = params.bits_per_sample();
+  format->nChannels = params.channels();
+  format->nBlockAlign = (format->wBitsPerSample / 8) * format->nChannels;
+  format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
+  format->cbSize = 0;
+
+  // Size in bytes of each audio frame.
+  frame_size_ = format->nBlockAlign;
+  // Store size of audio packets which we expect to get from the audio
+  // endpoint device in each capture event.
+  packet_size_frames_ = params.GetBytesPerBuffer() / format->nBlockAlign;
+  packet_size_bytes_ = params.GetBytesPerBuffer();
+  DVLOG(1) << "Number of bytes per audio frame  : " << frame_size_;
+  DVLOG(1) << "Number of audio frames per packet: " << packet_size_frames_;
+  LOG(INFO) << friendly_name_ << " Number of bytes per audio frame  : " << frame_size_;
+  LOG(INFO) << friendly_name_ << " Number of audio frames per packet: " << packet_size_frames_;
+
+  // All events are auto-reset events and non-signaled initially.
+
+  // Create the event which the audio engine will signal each time
+  // a buffer becomes ready to be processed by the client.
+  audio_samples_ready_event_.Set(CreateEvent(NULL, FALSE, FALSE, NULL));
+  DCHECK(audio_samples_ready_event_.IsValid());
+
+  // Create the event which will be set in Stop() when capturing shall stop.
+  stop_capture_event_.Set(CreateEvent(NULL, FALSE, FALSE, NULL));
+  DCHECK(stop_capture_event_.IsValid());
+}
+
+DirectSoundAudioInputStream::~DirectSoundAudioInputStream() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+}
+
+// Finds and creates a DirectShow Video Capture filter matching the |device_id|.
+// static
+HRESULT DirectSoundAudioInputStream::GetDeviceFilter(const std::string& device_id,
+                                               IBaseFilter** filter) {
+  DCHECK(filter);
+
+  // go through our whitelisted filters first (bebo-game-capture, capture cards)
+  // so that we won't fail on the shortcircuit for when no camera exist in the OS
+  ScopedComPtr<IBaseFilter> capture_filter;
+  for (int i = 0; i < kFilterSize; i++) {
+    GUID guid = kFilterArray[i];
+    std::string name = kFilterArrayName[i];
+
+    if (name.compare(device_id) == 0) {
+
+      HRESULT hr = ::CoCreateInstance(guid, NULL, CLSCTX_INPROC_SERVER,
+          IID_PPV_ARGS(&capture_filter));
+
+      if (SUCCEEDED(hr)) {
+        *filter = capture_filter.Detach();
+        return hr;
+      }
+    }
+  }
+
+  return E_NOTFOUND;
+}
+
+
+
+bool DirectSoundAudioInputStream::Open() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK_EQ(OPEN_RESULT_OK, open_result_);
+
+  // TODO: Connect DirectShow graph
+#if 0
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Open()";
+  // Verify that we are not already opened.
+  if (opened_)
+    return false;
+
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Open() - stream is not opened yet";
+
+  // Obtain a reference to the IMMDevice interface of the capturing
+  // device with the specified unique identifier or role which was
+  // set at construction.
+  HRESULT hr = SetCaptureDevice();
+  if (FAILED(hr)) {
+    LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Open() - failed to set capture device";
+    ReportOpenResult();
+    return false;
+  }
+
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Open() - successfully set capture device";
+
+  // Obtain an IAudioClient interface which enables us to create and initialize
+  // an audio stream between an audio application and the audio engine.
+  hr = endpoint_device_->Activate(__uuidof(IAudioClient), CLSCTX_INPROC_SERVER,
+                                  NULL, &audio_client_);
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_ACTIVATION_FAILED;
+    ReportOpenResult();
+    return false;
+  }
+
+//#ifndef NDEBUG
+  // Retrieve the stream format which the audio engine uses for its internal
+  // processing/mixing of shared-mode streams. This function call is for
+  // diagnostic purposes only and only in debug mode.
+  hr = GetAudioEngineStreamFormat();
+//#endif
+
+  // Verify that the selected audio endpoint supports the specified format
+  // set during construction.
+  if (!DesiredFormatIsSupported()) {
+    open_result_ = OPEN_RESULT_FORMAT_NOT_SUPPORTED;
+    ReportOpenResult();
+    return false;
+  }
+
+  // Initialize the audio stream between the client and the device using
+  // shared mode and a lowest possible glitch-free latency.
+  hr = InitializeAudioEngine();
+  if (SUCCEEDED(hr) && converter_)
+    open_result_ = OPEN_RESULT_OK_WITH_RESAMPLING;
+  ReportOpenResult();  // Report before we assign a value to |opened_|.
+  opened_ = SUCCEEDED(hr);
+#endif
+
+  return opened_;
+}
+
+void DirectSoundAudioInputStream::Start(AudioInputCallback* callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(callback);
+  DLOG_IF(ERROR, !opened_) << "Open() has not been called successfully";
+
+  // TODO: media_control_->run()
+#if 0
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Start()";
+  if (!opened_) {
+    LOG(ERROR) << friendly_name_ << " DirectSoundAudioInputStream::Start() - Open() has not been called successfully";
+    return;
+  }
+
+  if (started_)
+    return;
+
+  if (device_id_ == AudioDeviceDescription::kLoopbackWithMuteDeviceId &&
+      system_audio_volume_) {
+    BOOL muted = false;
+    system_audio_volume_->GetMute(&muted);
+
+    // If the system audio is muted at the time of capturing, then no need to
+    // mute it again, and later we do not unmute system audio when stopping
+    // capturing.
+    if (!muted) {
+      system_audio_volume_->SetMute(true, NULL);
+      mute_done_ = true;
+    }
+  }
+
+  DCHECK(!sink_);
+  sink_ = callback;
+
+  // Starts periodic AGC microphone measurements if the AGC has been enabled
+  // using SetAutomaticGainControl().
+  StartAgc();
+
+  // Create and start the thread that will drive the capturing by waiting for
+  // capture events.
+  DCHECK(!capture_thread_.get());
+  capture_thread_.reset(new base::DelegateSimpleThread(
+      this, "wasapi_capture_thread",
+      base::SimpleThread::Options(base::ThreadPriority::REALTIME_AUDIO)));
+  capture_thread_->Start();
+
+  // Start streaming data between the endpoint buffer and the audio engine.
+  HRESULT hr = audio_client_->Start();
+  DLOG_IF(ERROR, FAILED(hr)) << "Failed to start input streaming.";
+
+  if (SUCCEEDED(hr) && audio_render_client_for_loopback_.Get())
+    hr = audio_render_client_for_loopback_->Start();
+
+  started_ = SUCCEEDED(hr);
+#endif
+}
+
+void DirectSoundAudioInputStream::Stop() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DVLOG(1) << "DirectSoundAudioInputStream::Stop()";
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Stop()";
+  if (!started_)
+    return;
+
+  // We have muted system audio for capturing, so we need to unmute it when
+  // capturing stops.
+  if (device_id_ == AudioDeviceDescription::kLoopbackWithMuteDeviceId &&
+      mute_done_) {
+    DCHECK(system_audio_volume_);
+    if (system_audio_volume_) {
+      system_audio_volume_->SetMute(false, NULL);
+      mute_done_ = false;
+    }
+  }
+
+  // Stops periodic AGC microphone measurements.
+  StopAgc();
+
+  // Shut down the capture thread.
+  if (stop_capture_event_.IsValid()) {
+    SetEvent(stop_capture_event_.Get());
+  }
+
+  // Stop the input audio streaming.
+  HRESULT hr = audio_client_->Stop();
+  if (FAILED(hr)) {
+    LOG(ERROR) << friendly_name_ << " Failed to stop input streaming.";
+  }
+
+  // Wait until the thread completes and perform cleanup.
+  if (capture_thread_) {
+    SetEvent(stop_capture_event_.Get());
+    capture_thread_->Join();
+    capture_thread_.reset();
+  }
+
+  started_ = false;
+  sink_ = NULL;
+}
+
+void DirectSoundAudioInputStream::Close() {
+  DVLOG(1) << "DirectSoundAudioInputStream::Close()";
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Close()";
+  // It is valid to call Close() before calling open or Start().
+  // It is also valid to call Close() after Start() has been called.
+  Stop();
+
+  if (converter_)
+    converter_->RemoveInput(this);
+
+  // Inform the audio manager that we have been closed. This will cause our
+  // destruction.
+  manager_->ReleaseInputStream(this);
+}
+
+double DirectSoundAudioInputStream::GetMaxVolume() {
+  // Verify that Open() has been called succesfully, to ensure that an audio
+  // session exists and that an ISimpleAudioVolume interface has been created.
+  DLOG_IF(ERROR, !opened_) << "Open() has not been called successfully";
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::GetMaxVolume()";
+  if (!opened_)
+    return 0.0;
+
+  // The effective volume value is always in the range 0.0 to 1.0, hence
+  // we can return a fixed value (=1.0) here.
+  return 1.0;
+}
+
+void DirectSoundAudioInputStream::SetVolume(double volume) {
+  DVLOG(1) << "SetVolume(volume=" << volume << ")";
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK_GE(volume, 0.0);
+  DCHECK_LE(volume, 1.0);
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::SetVolume(" << volume << ")";
+
+  DLOG_IF(ERROR, !opened_) << "Open() has not been called successfully";
+  if (!opened_)
+    return;
+
+  // Set a new master volume level. Valid volume levels are in the range
+  // 0.0 to 1.0. Ignore volume-change events.
+  HRESULT hr =
+      simple_audio_volume_->SetMasterVolume(static_cast<float>(volume), NULL);
+  if (FAILED(hr))
+    DLOG(WARNING) << "Failed to set new input master volume.";
+
+  // Update the AGC volume level based on the last setting above. Note that,
+  // the volume-level resolution is not infinite and it is therefore not
+  // possible to assume that the volume provided as input parameter can be
+  // used directly. Instead, a new query to the audio hardware is required.
+  // This method does nothing if AGC is disabled.
+  UpdateAgcVolume();
+}
+
+double DirectSoundAudioInputStream::GetVolume() {
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::GetVolume()";
+  DCHECK(opened_) << "Open() has not been called successfully";
+  if (!opened_)
+    return 0.0;
+
+  // Retrieve the current volume level. The value is in the range 0.0 to 1.0.
+  float level = 0.0f;
+  HRESULT hr = simple_audio_volume_->GetMasterVolume(&level);
+  if (FAILED(hr))
+    DLOG(WARNING) << "Failed to get input master volume.";
+
+  return static_cast<double>(level);
+}
+
+bool DirectSoundAudioInputStream::IsMuted() {
+  DCHECK(opened_) << "Open() has not been called successfully";
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  VLOG(3) << friendly_name_ << " DirectSoundAudioInputStream::IsMuted()";
+  if (!opened_)
+    return false;
+
+  // Retrieves the current muting state for the audio session.
+  BOOL is_muted = FALSE;
+  HRESULT hr = simple_audio_volume_->GetMute(&is_muted);
+  if (FAILED(hr))
+    DLOG(WARNING) << "Failed to get input master volume.";
+
+  return is_muted != FALSE;
+}
+
+#if 0
+void DirectSoundAudioInputStream::Run() {
+  ScopedCOMInitializer com_init(ScopedCOMInitializer::kMTA);
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Run()";
+
+  // Enable MMCSS to ensure that this thread receives prioritized access to
+  // CPU resources.
+  DWORD task_index = 0;
+  HANDLE mm_task =
+      avrt::AvSetMmThreadCharacteristics(L"Pro Audio", &task_index);
+  bool mmcss_is_ok =
+      (mm_task && avrt::AvSetMmThreadPriority(mm_task, AVRT_PRIORITY_CRITICAL));
+  if (!mmcss_is_ok) {
+    // Failed to enable MMCSS on this thread. It is not fatal but can lead
+    // to reduced QoS at high load.
+    DWORD err = GetLastError();
+    LOG(WARNING) << friendly_name_ << "Failed to enable MMCSS (error code=" << err << ").";
+  }
+
+  // Allocate a buffer with a size that enables us to take care of cases like:
+  // 1) The recorded buffer size is smaller, or does not match exactly with,
+  //    the selected packet size used in each callback.
+  // 2) The selected buffer size is larger than the recorded buffer size in
+  //    each event.
+  // In the case where no resampling is required, a single buffer should be
+  // enough but in case we get buffers that don't match exactly, we'll go with
+  // two. Same applies if we need to resample and the buffer ratio is perfect.
+  // However if the buffer ratio is imperfect, we will need 3 buffers to safely
+  // be able to buffer up data in cases where a conversion requires two audio
+  // buffers (and we need to be able to write to the third one).
+  size_t capture_buffer_size =
+      std::max(2 * endpoint_buffer_size_frames_ * frame_size_,
+               2 * packet_size_frames_ * frame_size_);
+  int buffers_required = capture_buffer_size / packet_size_bytes_;
+  if (converter_ && imperfect_buffer_size_conversion_)
+    ++buffers_required;
+
+  DCHECK(!fifo_);
+  fifo_.reset(new AudioBlockFifo(format_.Format.nChannels, packet_size_frames_,
+                                 buffers_required));
+
+  DVLOG(1) << "AudioBlockFifo buffer count: " << buffers_required;
+  LOG(INFO) << friendly_name_ << "AudioBlockFifo buffer count: " << buffers_required;
+
+  bool recording = true;
+  bool error = false;
+  double volume = GetVolume();
+  HANDLE wait_array[2] = {stop_capture_event_.Get(),
+                          audio_samples_ready_event_.Get()};
+
+  base::win::ScopedComPtr<IAudioClock> audio_clock;
+  audio_client_->GetService(IID_PPV_ARGS(&audio_clock));
+  if (!audio_clock)
+    LOG(WARNING) << "IAudioClock unavailable, capture times may be inaccurate.";
+
+  UINT64 buffer_cnt = 0;
+  INT64 discont_cnt = -1;
+
+  while (recording && !error) {
+    HRESULT hr = S_FALSE;
+
+    // Wait for a close-down event or a new capture event.
+    DWORD wait_result = WaitForMultipleObjects(2, wait_array, FALSE, INFINITE);
+    switch (wait_result) {
+      case WAIT_FAILED:
+        error = true;
+        break;
+      case WAIT_OBJECT_0 + 0:
+        // |stop_capture_event_| has been set.
+        recording = false;
+        break;
+      case WAIT_OBJECT_0 + 1: {
+        TRACE_EVENT0("audio", "DirectSoundAudioInputStream::Run_0");
+
+
+        // Quote from Microsofts WindowsAudioSession Sample:
+        //
+        // A word on why we have a loop here;
+        // Suppose it has been 10 milliseconds or so since the last time
+        // this routine was invoked, and that we're capturing 48000 samples per second.
+        //
+        // The audio engine can be reasonably expected to have accumulated about that much
+        // audio data - that is, about 480 samples.
+        //
+        // However, the audio engine is free to accumulate this in various ways:
+        // a. as a single packet of 480 samples, OR
+        // b. as a packet of 80 samples plus a packet of 400 samples, OR
+        // c. as 48 packets of 10 samples each.
+        //
+        // In particular, there is no guarantee that this routine will be
+        // run once for each packet.
+        //
+        // So every time this routine runs, we need to read ALL the packets
+        // that are now available;
+        //
+        // We do this by calling IAudioCaptureClient::GetNextPacketSize
+        // over and over again until it indicates there are no more packets remaining.
+        //
+        // In our case we loop / wait - but the same applies - there are many
+        // devices which occasionally have extra data and they don't handle it
+        // gracefully if we don't read all data, specifically he have seen the
+        // Logitech G430 go into a mode where it never recovers
+
+        while (true) {
+
+          // |audio_samples_ready_event_| has been set.
+          BYTE* data_ptr = NULL;
+          UINT32 num_frames_to_read = 0;
+          DWORD flags = 0;
+          UINT64 device_position = 0;
+
+          //
+          // Note: The units on this are 100ns intervals. Both GetBuffer() and
+          // GetPosition() will handle the translation from the QPC value, so we
+          // just need to convert from 100ns units into us. Which is just dividing
+          // by 10.0 since 10x100ns = 1us.
+            UINT64 capture_time_100ns = 0;
+
+          // Retrieve the amount of data in the capture endpoint buffer,
+          // replace it with silence if required, create callbacks for each
+          // packet and store non-delivered data for the next event.
+          hr = audio_capture_client_->GetBuffer(&data_ptr, &num_frames_to_read,
+                                                &flags, &device_position,
+                                                &capture_time_100ns);
+          if (hr == AUDCLNT_S_BUFFER_EMPTY) {
+            // LOG(INFO) << friendly_name_ << " NO MORE AUDIO";
+            break;
+          }
+          if (FAILED(hr)) {
+            LOG(ERROR) << friendly_name_ << " Failed to get data from the capture buffer: 0x" << std::hex << hr << std::dec ;
+            break;
+          }
+
+          // TODO(dalecurtis, olka): Is this ever false?
+          if (audio_clock) {
+            // The reported timestamp from GetBuffer is not as reliable as the
+            // clock from the client.  We've seen timestamps reported for
+            // USB audio devices, be off by several days.  Furthermore we've
+            // seen them jump back in time every 2 seconds or so.
+            audio_clock->GetPosition(&device_position, &capture_time_100ns);
+          }
+
+          base::TimeTicks capture_time;
+          if (capture_time_100ns) {
+            // See conversion notes on |capture_time_100ns|.
+            capture_time +=
+                base::TimeDelta::FromMicroseconds(capture_time_100ns / 10.0);
+          } else {
+            // We may not have an IAudioClock or GetPosition() may return zero.
+            capture_time = base::TimeTicks::Now();
+          }
+
+          // Adjust |capture_time| for the FIFO before pushing.
+          capture_time -= AudioTimestampHelper::FramesToTime(
+              fifo_->GetAvailableFrames(), format_.Format.nSamplesPerSec);
+
+          if (num_frames_to_read != 0) {
+            if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+              fifo_->PushSilence(num_frames_to_read);
+            } else {
+              fifo_->Push(data_ptr, num_frames_to_read,
+                          format_.Format.wBitsPerSample / 8);
+            }
+          }
+
+          hr = audio_capture_client_->ReleaseBuffer(num_frames_to_read);
+          DLOG_IF(ERROR, FAILED(hr)) << "Failed to release capture buffer";
+
+          // Get a cached AGC volume level which is updated once every second
+          // on the audio manager thread. Note that, |volume| is also updated
+          // each time SetVolume() is called through IPC by the render-side AGC.
+          GetAgcVolume(&volume);
+
+          // Deliver captured data to the registered consumer using a packet
+          // size which was specified at construction.
+          while (fifo_->available_blocks()) {
+            if (converter_) {
+              if (imperfect_buffer_size_conversion_ &&
+                  fifo_->available_blocks() == 1) {
+                // Special case. We need to buffer up more audio before we can
+                // convert or else we'll suffer an underrun.
+                break;
+              }
+              converter_->Convert(convert_bus_.get());
+              sink_->OnData(convert_bus_.get(), capture_time, volume);
+
+              // Move the capture time forward for each vended block.
+              capture_time += AudioTimestampHelper::FramesToTime(
+                  convert_bus_->frames(), format_.Format.nSamplesPerSec);
+            } else {
+              sink_->OnData(fifo_->Consume(), capture_time, volume);
+
+              // Move the capture time forward for each vended block.
+              capture_time += AudioTimestampHelper::FramesToTime(
+                  packet_size_frames_, format_.Format.nSamplesPerSec);
+            }
+          }
+        }
+      }  break;
+      default:
+        error = true;
+        break;
+    }
+  }
+
+  LOG(INFO) << "WASAPI CAPTURE STATS - buffer_cnt: " << buffer_cnt << " discont_cnt: " << discont_cnt << " pro_audio: " << mmcss_is_ok << " " << friendly_name_;
+
+  if (recording && error) {
+    // TODO(henrika): perhaps it worth improving the cleanup here by e.g.
+    // stopping the audio client, joining the thread etc.?
+    NOTREACHED() << "WASAPI capturing failed with error code "
+                 << GetLastError();
+  }
+
+  // Disable MMCSS.
+  if (mm_task && !avrt::AvRevertMmThreadCharacteristics(mm_task)) {
+    PLOG(WARNING) << "Failed to disable MMCSS";
+  }
+
+  fifo_.reset();
+}
+#endif
+
+void DirectSoundAudioInputStream::HandleError(HRESULT err) {
+  NOTREACHED() << "Error code: " << err;
+  if (sink_)
+    sink_->OnError();
+}
+
+HRESULT DirectSoundAudioInputStream::SetCaptureDevice() {
+  DCHECK_EQ(OPEN_RESULT_OK, open_result_);
+  DCHECK(!endpoint_device_.Get());
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::SetCaptureDevice()";
+
+  ScopedComPtr<IMMDeviceEnumerator> enumerator;
+  HRESULT hr =
+      ::CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL,
+                         CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&enumerator));
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_CREATE_INSTANCE;
+    return hr;
+  }
+
+  // Retrieve the IMMDevice by using the specified role or the specified
+  // unique endpoint device-identification string.
+
+  if (device_id_ == AudioDeviceDescription::kDefaultDeviceId) {
+    // Retrieve the default capture audio endpoint for the specified role.
+    // Note that, in Windows Vista, the MMDevice API supports device roles
+    // but the system-supplied user interface programs do not.
+    hr = enumerator->GetDefaultAudioEndpoint(eCapture, eConsole,
+                                             endpoint_device_.GetAddressOf());
+  } else if (device_id_ == AudioDeviceDescription::kCommunicationsDeviceId) {
+    hr = enumerator->GetDefaultAudioEndpoint(eCapture, eCommunications,
+                                             endpoint_device_.GetAddressOf());
+  } else if (device_id_ == AudioDeviceDescription::kLoopbackWithMuteDeviceId) {
+    // Capture the default playback stream.
+    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole,
+                                             endpoint_device_.GetAddressOf());
+
+    if (SUCCEEDED(hr)) {
+      endpoint_device_->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL,
+                                 NULL, &system_audio_volume_);
+    }
+  } else if (device_id_ == AudioDeviceDescription::kLoopbackInputDeviceId) {
+    // Capture the default playback stream.
+    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole,
+                                             endpoint_device_.GetAddressOf());
+  } else {
+    hr = enumerator->GetDevice(base::UTF8ToUTF16(device_id_).c_str(),
+                               endpoint_device_.GetAddressOf());
+  }
+
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_NO_ENDPOINT;
+    return hr;
+  }
+
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(endpoint_device_.Get());
+
+  // Verify that the audio endpoint device is active, i.e., the audio
+  // adapter that connects to the endpoint device is present and enabled.
+  DWORD state = DEVICE_STATE_DISABLED;
+  hr = endpoint_device_->GetState(&state);
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_NO_STATE;
+    return hr;
+  }
+
+  if (!(state & DEVICE_STATE_ACTIVE)) {
+    DLOG(ERROR) << "Selected capture device is not active.";
+    open_result_ = OPEN_RESULT_DEVICE_NOT_ACTIVE;
+    hr = E_ACCESSDENIED;
+  }
+
+  return hr;
+}
+
+HRESULT DirectSoundAudioInputStream::GetAudioEngineStreamFormat() {
+  HRESULT hr = S_OK;
+//#ifndef NDEBUG
+  // The GetMixFormat() method retrieves the stream format that the
+  // audio engine uses for its internal processing of shared-mode streams.
+  // The method always uses a WAVEFORMATEXTENSIBLE structure, instead
+  // of a stand-alone WAVEFORMATEX structure, to specify the format.
+  // An WAVEFORMATEXTENSIBLE structure can specify both the mapping of
+  // channels to speakers and the number of bits of precision in each sample.
+  base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> format_ex;
+  hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&format_ex));
+
+  // See http://msdn.microsoft.com/en-us/windows/hardware/gg463006#EFH
+  // for details on the WAVE file format.
+  WAVEFORMATEX format = format_ex->Format;
+  LOG(INFO) << friendly_name_ << " WAVEFORMATEX:";
+  LOG(INFO) << friendly_name_ << "   wFormatTags    : 0x" << std::hex << format.wFormatTag;
+  LOG(INFO) << friendly_name_ << "   nChannels      : " << format.nChannels;
+  LOG(INFO) << friendly_name_ << "   nSamplesPerSec : " << format.nSamplesPerSec;
+  LOG(INFO) << friendly_name_ << "   nAvgBytesPerSec: " << format.nAvgBytesPerSec;
+  LOG(INFO) << friendly_name_ << "   nBlockAlign    : " << format.nBlockAlign;
+  LOG(INFO) << friendly_name_ << "   wBitsPerSample : " << format.wBitsPerSample;
+  LOG(INFO) << friendly_name_ << "   cbSize         : " << format.cbSize;
+
+  LOG(INFO) << friendly_name_ << " WAVEFORMATEXTENSIBLE:";
+  LOG(INFO) << friendly_name_ << "  wValidBitsPerSample: "
+           << format_ex->Samples.wValidBitsPerSample;
+  LOG(INFO) << friendly_name_ << "  dwChannelMask      : 0x" << std::hex
+           << format_ex->dwChannelMask;
+  if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_PCM)
+    LOG(INFO) << friendly_name_ << "  SubFormat          : KSDATAFORMAT_SUBTYPE_PCM";
+  else if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
+    LOG(INFO) << friendly_name_ << "  SubFormat          : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT";
+  else if (format_ex->SubFormat == KSDATAFORMAT_SUBTYPE_WAVEFORMATEX)
+    LOG(INFO) << friendly_name_ << "  SubFormat          : KSDATAFORMAT_SUBTYPE_WAVEFORMATEX";
+//#endif
+  return hr;
+}
+
+bool DirectSoundAudioInputStream::DesiredFormatIsSupported() {
+  // An application that uses WASAPI to manage shared-mode streams can rely
+  // on the audio engine to perform only limited format conversions. The audio
+  // engine can convert between a standard PCM sample size used by the
+  // application and the floating-point samples that the engine uses for its
+  // internal processing. However, the format for an application stream
+  // typically must have the same number of channels and the same sample
+  // rate as the stream format used by CHANNEL_LAYOUT_UNSUPPORTED the device.
+  // Many audio devices support both PCM and non-PCM stream formats. However,
+  // the audio engine can mix only PCM streams.
+
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::DesiredFormatIsSupported()";
+
+  base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> closest_match;
+  HRESULT hr;
+
+  if (is_loopback_device_) {
+    hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
+
+    // Force PCM
+    closest_match->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+    closest_match->Samples.wValidBitsPerSample = 16;
+
+    closest_match->Format.wBitsPerSample = 16;
+    closest_match->Format.nBlockAlign = closest_match->Format.nChannels * closest_match->Format.wBitsPerSample / 8;
+    closest_match->Format.nAvgBytesPerSec = closest_match->Format.nBlockAlign * closest_match->Format.nSamplesPerSec;
+
+    WAVEFORMATEX* format = &format_.Format;
+    format->cbSize = 22;
+    format->wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+
+    format_.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+    format_.Samples.wValidBitsPerSample = closest_match->Format.wBitsPerSample;
+    format_.dwChannelMask = closest_match->dwChannelMask;
+
+  } else {
+    WAVEFORMATEX* format = &format_.Format;
+
+    hr = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
+        format,
+        reinterpret_cast<WAVEFORMATEX**>(&closest_match));
+
+    DLOG_IF(ERROR, hr == S_FALSE) 
+      << "Format is not supported but a closest match exists."; 
+  }
+
+  if ((is_loopback_device_ || hr == S_FALSE) && IsSupportedFormatForConversion(*reinterpret_cast<WAVEFORMATEX*>(closest_match.get()))) {
+    DVLOG(1) << "Audio capture data conversion needed.";
+    LOG(INFO) << "Audio capture data conversion needed.";
+    // Ideally, we want a 1:1 ratio between the buffers we get and the buffers
+    // we give to OnData so that each buffer we receive from the OS can be
+    // directly converted to a buffer that matches with what was asked for.
+    const double buffer_ratio =
+        format_.Format.nSamplesPerSec / static_cast<double>(packet_size_frames_);
+    double new_frames_per_buffer = closest_match->Format.nSamplesPerSec / buffer_ratio;
+
+    LOG(INFO) << "buffer_ratio: " << buffer_ratio << ", new_frames_per_buffer: " << new_frames_per_buffer;
+
+    const auto input_layout = GuessChannelLayout(closest_match->Format.nChannels);
+    DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, input_layout);
+    const auto output_layout = GuessChannelLayout(format_.Format.nChannels);
+    DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, output_layout);
+
+    LOG(INFO) << "Input: nSamplesPerSec: " << closest_match->Format.nSamplesPerSec << ", wBitsPerSample: " << closest_match->Format.wBitsPerSample << ", Channels: " << closest_match->Format.nChannels;
+    LOG(INFO) << "Output: nSamplesPerSec: " << format_.Format.nSamplesPerSec << ", wBitsPerSample: " << format_.Format.wBitsPerSample << ", Channels: " << format_.Format.nChannels;
+
+    const AudioParameters input(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                                input_layout,
+                                closest_match->Format.nSamplesPerSec,
+                                closest_match->Format.wBitsPerSample,
+                                static_cast<int>(new_frames_per_buffer));
+
+    const AudioParameters output(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                                 output_layout, format_.Format.nSamplesPerSec,
+                                 format_.Format.wBitsPerSample, packet_size_frames_);
+
+    converter_.reset(new AudioConverter(input, output, false));
+    converter_->AddInput(this);
+    converter_->PrimeWithSilence();
+    convert_bus_ = AudioBus::Create(output);
+
+    // Now change the format we're going to ask for to better match with what
+    // the OS can provide.  If we succeed in opening the stream with these
+    // params, we can take care of the required resampling.
+    format_.Format.wBitsPerSample = closest_match->Format.wBitsPerSample;
+    format_.Format.nSamplesPerSec = closest_match->Format.nSamplesPerSec;
+    format_.Format.nChannels = closest_match->Format.nChannels;
+    format_.Format.nBlockAlign = (format_.Format.wBitsPerSample / 8) * format_.Format.nChannels;
+    format_.Format.nAvgBytesPerSec = format_.Format.nSamplesPerSec * format_.Format.nBlockAlign;
+
+    format_.Samples.wValidBitsPerSample = closest_match->Format.wBitsPerSample;
+
+
+    /* DVLOG(1) << "Will convert audio from: \nbits: " << format_.wBitsPerSample */
+    LOG(INFO) << "Will convert audio from: \nbits: " << format_.Format.wBitsPerSample
+             << "\nsample rate: " << format_.Format.nSamplesPerSec
+             << "\nchannels: " << format_.Format.nChannels
+             << "\nblock align: " << format_.Format.nBlockAlign
+             << "\navg bytes per sec: " << format_.Format.nAvgBytesPerSec;
+
+    // Update our packet size assumptions based on the new format.
+    const auto new_bytes_per_buffer =
+        static_cast<int>(new_frames_per_buffer) * format_.Format.nBlockAlign;
+    packet_size_frames_ = new_bytes_per_buffer / format_.Format.nBlockAlign;
+    packet_size_bytes_ = new_bytes_per_buffer;
+    frame_size_ = format_.Format.nBlockAlign;
+
+    imperfect_buffer_size_conversion_ =
+        std::modf(new_frames_per_buffer, &new_frames_per_buffer) != 0.0;
+    /* DVLOG_IF(1, imperfect_buffer_size_conversion_) */
+    /*     << "Audio capture data conversion: Need to inject fifo"; */
+    if (imperfect_buffer_size_conversion_) {
+      LOG(INFO) << "Audio capture data conversion: Need to inject fifo";
+    }
+    /* DVLOG_IF(1, imperfect_buffer_size_conversion_) */
+    /*     << "Audio capture data conversion: Need to inject fifo"; */
+
+    // Indicate that we're good to go with a close match.
+    hr = S_OK;
+  }
+
+  return (hr == S_OK);
+}
+
+void DirectSoundAudioInputStream::ResetFormat(WAVEFORMATEXTENSIBLE* request_format) {
+  DCHECK(!is_loopback_device_); 
+
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::ResetFormat()";
+
+  // Ideally, we want a 1:1 ratio between the buffers we get and the buffers
+  // we give to OnData so that each buffer we receive from the OS can be
+  // directly converted to a buffer that matches with what was asked for.
+  const double buffer_ratio =
+    format_.Format.nSamplesPerSec / static_cast<double>(packet_size_frames_);
+  double new_frames_per_buffer = request_format->Format.nSamplesPerSec / buffer_ratio;
+
+  LOG(INFO) << "buffer_ratio: " << buffer_ratio << ", new_frames_per_buffer: " << new_frames_per_buffer;
+
+  const auto input_layout = GuessChannelLayout(request_format->Format.nChannels);
+  DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, input_layout);
+  const auto output_layout = GuessChannelLayout(params_.channels());
+  DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, output_layout);
+
+  LOG(INFO) << "Input: nSamplesPerSec: " << request_format->Format.nSamplesPerSec << ", wBitsPerSample: " << request_format->Format.wBitsPerSample << ", Channels: " << request_format->Format.nChannels;
+  LOG(INFO) << "Output: nSamplesPerSec: " << params_.sample_rate() << ", wBitsPerSample: " << params_.bits_per_sample() << ", Channels: " << params_.channels();
+
+  const AudioParameters input(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      input_layout,
+      request_format->Format.nSamplesPerSec,
+      request_format->Format.wBitsPerSample,
+      static_cast<int>(new_frames_per_buffer));
+
+  const AudioParameters output(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      output_layout, params_.sample_rate(),
+      params_.bits_per_sample(), packet_size_frames_);
+
+  converter_.reset(new AudioConverter(input, output, false));
+  converter_->AddInput(this);
+  converter_->PrimeWithSilence();
+  convert_bus_ = AudioBus::Create(output);
+
+  // Now change the format we're going to ask for to better match with what
+  // the OS can provide.  If we succeed in opening the stream with these
+  // params, we can take care of the required resampling.
+  format_.Format.wBitsPerSample = request_format->Format.wBitsPerSample;
+  format_.Format.nSamplesPerSec = request_format->Format.nSamplesPerSec;
+  format_.Format.nChannels = request_format->Format.nChannels;
+  format_.Format.nBlockAlign = (format_.Format.wBitsPerSample / 8) * format_.Format.nChannels;
+  format_.Format.nAvgBytesPerSec = format_.Format.nSamplesPerSec * format_.Format.nBlockAlign;
+
+  format_.Samples.wValidBitsPerSample = request_format->Format.wBitsPerSample;
+
+  LOG(INFO) << "Will convert audio from: bits: " << format_.Format.wBitsPerSample
+    << ", sample rate: " << format_.Format.nSamplesPerSec
+    << ", channels: " << format_.Format.nChannels
+    << ", block align: " << format_.Format.nBlockAlign
+    << ", avg bytes per sec: " << format_.Format.nAvgBytesPerSec;
+
+  // Update our packet size assumptions based on the new format.
+  const auto new_bytes_per_buffer =
+    static_cast<int>(new_frames_per_buffer) * format_.Format.nBlockAlign;
+  packet_size_frames_ = new_bytes_per_buffer / format_.Format.nBlockAlign;
+  packet_size_bytes_ = new_bytes_per_buffer;
+  frame_size_ = format_.Format.nBlockAlign;
+
+  imperfect_buffer_size_conversion_ =
+    std::modf(new_frames_per_buffer, &new_frames_per_buffer) != 0.0;
+
+  if (imperfect_buffer_size_conversion_) {
+    LOG(INFO) << "Audio capture data conversion: Need to inject fifo";
+  }
+}
+
+HRESULT DirectSoundAudioInputStream::InitializeAudioEngine() {
+  DCHECK_EQ(OPEN_RESULT_OK, open_result_);
+  DWORD flags;
+  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::InitializeAudioEngine()";
+  // Use event-driven mode only fo regular input devices. For loopback the
+  // EVENTCALLBACK flag is specified when intializing
+  // |audio_render_client_for_loopback_|.
+  if (device_id_ == AudioDeviceDescription::kLoopbackInputDeviceId ||
+      device_id_ == AudioDeviceDescription::kLoopbackWithMuteDeviceId) {
+    flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_NOPERSIST;
+  } else {
+    flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST;
+  }
+
+  // Initialize the audio stream between the client and the device.
+  // We connect indirectly through the audio engine by using shared mode.
+  // Note that, |hnsBufferDuration| is set of 0, which ensures that the
+  // buffer is never smaller than the minimum buffer size needed to ensure
+  // that glitches do not occur between the periodic processing passes.
+  // This setting should lead to lowest possible latency.
+  HRESULT hr = audio_client_->Initialize(
+      AUDCLNT_SHAREMODE_SHARED,
+      flags,
+      0,
+      0,
+      reinterpret_cast<WAVEFORMATEX*>(&format_),
+      device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
+                       ? &kCommunicationsSessionId
+                       : nullptr);
+
+  // loopback capture - workaround, some devices reports the wrong format back via GetMixFormat
+  // specifically, a workaround for Realtek Speaker loopback
+  // when it is configured with 2, 4, 6, 8 channels - GetMixFormat always return 8 channels.
+  if (is_loopback_device_ && (hr == AUDCLNT_E_UNSUPPORTED_FORMAT || hr == E_INVALIDARG)) {
+    int channelsMin = 1;
+    int channelsMax = 8;
+    int channelsCur = channelsMin;
+
+    base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> wfex;
+
+    HRESULT mfhr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&wfex));
+
+    while (mfhr == S_OK && (hr == AUDCLNT_E_UNSUPPORTED_FORMAT || hr == E_INVALIDARG) && channelsCur <= channelsMax) {
+      WAVEFORMATEX* closest_format = &wfex->Format;
+
+      // force PCM
+      closest_format->nChannels = channelsCur;
+      closest_format->wBitsPerSample = 16;
+      closest_format->nBlockAlign = (closest_format->wBitsPerSample / 8) * closest_format->nChannels;
+      closest_format->nAvgBytesPerSec = closest_format->nSamplesPerSec * closest_format->nBlockAlign;
+
+      wfex->Samples.wValidBitsPerSample = closest_format->wBitsPerSample;
+      wfex->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+
+      switch (channelsCur) {
+        case 1:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_MONO;
+          break;
+        case 2:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_STEREO;
+          break;
+        case 3:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_STEREO | SPEAKER_LOW_FREQUENCY;
+          break;
+        case 4:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_QUAD;
+          break;
+        case 5:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_5POINT1_SURROUND & SPEAKER_LOW_FREQUENCY;
+          break;
+        case 6:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_5POINT1_SURROUND;
+          break;
+        case 7:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_5POINT1_SURROUND | SPEAKER_BACK_CENTER;
+          break;
+        case 8:
+          wfex->dwChannelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND;
+          break;
+      }
+
+      LOG(INFO) << "Failed to init client. Trying with " << channelsCur << " channels";
+
+      hr = audio_client_->Initialize(
+          AUDCLNT_SHAREMODE_SHARED,
+          flags,
+          0,
+          0,
+          reinterpret_cast<WAVEFORMATEX*>(wfex.get()),
+          device_id_ == AudioDeviceDescription::kCommunicationsDeviceId
+          ? &kCommunicationsSessionId
+          : nullptr);
+
+      if (SUCCEEDED(hr)) {
+        LOG(INFO) << "Successfully opened the audio client with " << channelsCur << " channels";
+        ResetFormat(wfex.get());
+        break;
+      }
+      channelsCur++;
+    }
+  }
+
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_AUDIO_CLIENT_INIT_FAILED;
+    UMA_HISTOGRAM_SPARSE_SLOWLY("Media.Audio.Capture.Win.InitError", hr);
+    LOG(ERROR) <<  friendly_name_ << " DirectSoundAudioInputStream::InitializeAudioEngine - Media.Audio.Capture.Win.InitError 0x" << std::hex <<  hr << std::dec;
+    return hr;
+  }
+
+  // Retrieve the length of the endpoint buffer shared between the client
+  // and the audio engine. The buffer length determines the maximum amount
+  // of capture data that the audio engine can read from the endpoint buffer
+  // during a single processing pass.
+  // A typical value is 960 audio frames <=> 20ms @ 48kHz sample rate.
+  hr = audio_client_->GetBufferSize(&endpoint_buffer_size_frames_);
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_GET_BUFFER_SIZE_FAILED;
+    return hr;
+  }
+
+  LOG(INFO) << friendly_name_ << " endpoint buffer size: " << endpoint_buffer_size_frames_
+           << " [frames]";
+
+#ifndef NDEBUG
+  // The period between processing passes by the audio engine is fixed for a
+  // particular audio endpoint device and represents the smallest processing
+  // quantum for the audio engine. This period plus the stream latency between
+  // the buffer and endpoint device represents the minimum possible latency
+  // that an audio application can achieve.
+  // TODO(henrika): possibly remove this section when all parts are ready.
+  REFERENCE_TIME device_period_shared_mode = 0;
+  REFERENCE_TIME device_period_exclusive_mode = 0;
+  HRESULT hr_dbg = audio_client_->GetDevicePeriod(
+      &device_period_shared_mode, &device_period_exclusive_mode);
+  if (SUCCEEDED(hr_dbg)) {
+    DVLOG(1) << "device period: "
+             << static_cast<double>(device_period_shared_mode / 10000.0)
+             << " [ms]";
+  }
+
+  REFERENCE_TIME latency = 0;
+  hr_dbg = audio_client_->GetStreamLatency(&latency);
+  if (SUCCEEDED(hr_dbg)) {
+    DVLOG(1) << "stream latency: " << static_cast<double>(latency / 10000.0)
+             << " [ms]";
+  }
+#endif
+
+  // Set the event handle that the audio engine will signal each time a buffer
+  // becomes ready to be processed by the client.
+  //
+  // In loopback case the capture device doesn't receive any events, so we
+  // need to create a separate playback client to get notifications. According
+  // to MSDN:
+  //
+  //   A pull-mode capture client does not receive any events when a stream is
+  //   initialized with event-driven buffering and is loopback-enabled. To
+  //   work around this, initialize a render stream in event-driven mode. Each
+  //   time the client receives an event for the render stream, it must signal
+  //   the capture client to run the capture thread that reads the next set of
+  //   samples from the capture endpoint buffer.
+  //
+  // http://msdn.microsoft.com/en-us/library/windows/desktop/dd316551(v=vs.85).aspx
+  if (device_id_ == AudioDeviceDescription::kLoopbackInputDeviceId ||
+      device_id_ == AudioDeviceDescription::kLoopbackWithMuteDeviceId) {
+    hr = endpoint_device_->Activate(
+        __uuidof(IAudioClient), CLSCTX_INPROC_SERVER, NULL,
+        &audio_render_client_for_loopback_);
+    if (FAILED(hr)) {
+      open_result_ = OPEN_RESULT_LOOPBACK_ACTIVATE_FAILED;
+      return hr;
+    }
+
+    hr = audio_render_client_for_loopback_->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_NOPERSIST, 0, 0,
+        reinterpret_cast<WAVEFORMATEX*>(&format_),
+        NULL);
+    if (FAILED(hr)) {
+      open_result_ = OPEN_RESULT_LOOPBACK_INIT_FAILED;
+      return hr;
+    }
+
+    hr = audio_render_client_for_loopback_->SetEventHandle(
+        audio_samples_ready_event_.Get());
+  } else {
+    hr = audio_client_->SetEventHandle(audio_samples_ready_event_.Get());
+  }
+
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_SET_EVENT_HANDLE;
+    return hr;
+  }
+
+  // Get access to the IAudioCaptureClient interface. This interface
+  // enables us to read input data from the capture endpoint buffer.
+  hr = audio_client_->GetService(IID_PPV_ARGS(&audio_capture_client_));
+  if (FAILED(hr)) {
+    open_result_ = OPEN_RESULT_NO_CAPTURE_CLIENT;
+    return hr;
+  }
+
+  // Obtain a reference to the ISimpleAudioVolume interface which enables
+  // us to control the master volume level of an audio session.
+  hr = audio_client_->GetService(IID_PPV_ARGS(&simple_audio_volume_));
+  if (FAILED(hr))
+    open_result_ = OPEN_RESULT_NO_AUDIO_VOLUME;
+
+  return hr;
+}
+
+void DirectSoundAudioInputStream::ReportOpenResult() const {
+  DCHECK(!opened_);  // This method must be called before we set this flag.
+  UMA_HISTOGRAM_ENUMERATION("Media.Audio.Capture.Win.Open", open_result_,
+                            OPEN_RESULT_MAX + 1);
+}
+
+double DirectSoundAudioInputStream::ProvideInput(AudioBus* audio_bus,
+                                            uint32_t frames_delayed) {
+  fifo_->Consume()->CopyTo(audio_bus);
+  return 1.0;
+}
+
+// Finds an IPin on an IBaseFilter given the direction, Category and/or Major
+// Type. If either |category| or |major_type| are GUID_NULL, they are ignored.
+// static
+ScopedComPtr<IPin> DirectSoundAudioInputStream::GetPin(IBaseFilter* filter,
+                                                 PIN_DIRECTION pin_dir,
+                                                 REFGUID category,
+                                                 REFGUID major_type) {
+  ScopedComPtr<IPin> pin;
+  ScopedComPtr<IEnumPins> pin_enum;
+  HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
+  if (pin_enum.Get() == NULL)
+    return pin;
+
+  // Get first unconnected pin.
+  hr = pin_enum->Reset();  // set to first pin
+  while ((hr = pin_enum->Next(1, pin.GetAddressOf(), NULL)) == S_OK) {
+    PIN_DIRECTION this_pin_dir = static_cast<PIN_DIRECTION>(-1);
+    hr = pin->QueryDirection(&this_pin_dir);
+    if (pin_dir == this_pin_dir) {
+      if ((category == GUID_NULL || PinMatchesCategory(pin.Get(), category)) &&
+          (major_type == GUID_NULL ||
+           PinMatchesMajorType(pin.Get(), major_type))) {
+        return pin;
+      }
+    }
+    pin.Reset();
+  }
+
+  DCHECK(!pin.Get());
+  return pin;
+}
+
+
+void DirectSoundAudioInputStream::ScopedMediaType::Free() {
+  if (!media_type_)
+    return;
+
+  DeleteMediaType(media_type_);
+  media_type_ = NULL;
+}
+
+AM_MEDIA_TYPE** DirectSoundAudioInputStream::ScopedMediaType::Receive() {
+  DCHECK(!media_type_);
+  return &media_type_;
+}
+
+// Release the format block for a media type.
+// http://msdn.microsoft.com/en-us/library/dd375432(VS.85).aspx
+void DirectSoundAudioInputStream::ScopedMediaType::FreeMediaType(AM_MEDIA_TYPE* mt) {
+  if (mt->cbFormat != 0) {
+    CoTaskMemFree(mt->pbFormat);
+    mt->cbFormat = 0;
+    mt->pbFormat = NULL;
+  }
+  if (mt->pUnk != NULL) {
+    NOTREACHED();
+    // pUnk should not be used.
+    mt->pUnk->Release();
+    mt->pUnk = NULL;
+  }
+}
+
+// Delete a media type structure that was allocated on the heap.
+// http://msdn.microsoft.com/en-us/library/dd375432(VS.85).aspx
+void DirectSoundAudioInputStream::ScopedMediaType::DeleteMediaType(
+    AM_MEDIA_TYPE* mt) {
+  if (mt != NULL) {
+    FreeMediaType(mt);
+    CoTaskMemFree(mt);
+  }
+}
+
+void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
+                                          int length,
+                                          base::TimeDelta timestamp) {
+  if (first_ref_time_.is_null())
+    first_ref_time_ = base::TimeTicks::Now();
+
+  // There is a chance that the platform does not provide us with the timestamp,
+  // in which case, we use reference time to calculate a timestamp.
+  if (timestamp == media::kNoTimestamp)
+    timestamp = base::TimeTicks::Now() - first_ref_time_;
+
+  // TODO: DirectSoundAudioInputStream::Run()
+#if 0
+  client_->OnIncomingCapturedData(buffer, length, format, 0,
+                                  base::TimeTicks::Now(), timestamp);
+#endif
+}
+
+
+}  // namespace media

@@ -1,0 +1,266 @@
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// Implementation of AudioInputStream for Windows using Windows Core Audio
+// WASAPI for low latency capturing.
+//
+#ifndef MEDIA_AUDIO_WIN_AUDIO_DIRECTSOUND_INPUT_WIN_H_
+#define MEDIA_AUDIO_WIN_AUDIO_DIRECTSOUND_INPUT_WIN_H_
+
+#include <Audioclient.h>
+#include <MMDeviceAPI.h>
+#include <endpointvolume.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <dshow.h>
+
+#include <memory>
+#include <string>
+
+#include "base/compiler_specific.h"
+#include "base/macros.h"
+#include "base/sequence_checker.h"
+#include "base/threading/platform_thread.h"
+#include "base/threading/simple_thread.h"
+#include "base/win/scoped_co_mem.h"
+#include "base/win/scoped_com_initializer.h"
+#include "base/win/scoped_comptr.h"
+#include "base/win/scoped_variant.h"
+#include "base/win/scoped_handle.h"
+#include "media/audio/agc_audio_stream.h"
+#include "media/base/audio_converter.h"
+#include "media/base/audio_parameters.h"
+#include "media/base/media_export.h"
+#include "media/audio/win/audio_sink_filter_win.h"
+#include "media/audio/win/audio_sink_input_pin_win.h"
+
+namespace media {
+
+class AudioBlockFifo;
+class AudioBus;
+class AudioManagerWin;
+
+// AudioInputStream implementation using Windows Core Audio APIs.
+class MEDIA_EXPORT DirectSoundAudioInputStream
+    : public AgcAudioStream<AudioInputStream>,
+      public AudioConverter::InputCallback,
+      public AudioSinkFilterObserver {
+ public:
+  // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
+  // we free the structure when exiting the scope.  DCHECKing is also done to
+  // avoid memory leaks.
+  class ScopedMediaType {
+   public:
+    ScopedMediaType() : media_type_(NULL) {}
+    ~ScopedMediaType() { Free(); }
+
+    AM_MEDIA_TYPE* operator->() { return media_type_; }
+    AM_MEDIA_TYPE* get() { return media_type_; }
+    void Free();
+    AM_MEDIA_TYPE** Receive();
+
+   private:
+    void FreeMediaType(AM_MEDIA_TYPE* mt);
+    void DeleteMediaType(AM_MEDIA_TYPE* mt);
+
+    AM_MEDIA_TYPE* media_type_;
+};
+
+  // The ctor takes all the usual parameters, plus |manager| which is the
+  // the audio manager who is creating this object.
+  DirectSoundAudioInputStream(AudioManagerWin* manager,
+                         const AudioParameters& params,
+                         const std::string& device_id);
+
+  // The dtor is typically called by the AudioManager only and it is usually
+  // triggered by calling AudioInputStream::Close().
+  ~DirectSoundAudioInputStream() override;
+
+  // Implementation of AudioInputStream.
+  bool Open() override;
+  void Start(AudioInputCallback* callback) override;
+  void Stop() override;
+  void Close() override;
+  double GetMaxVolume() override;
+  void SetVolume(double volume) override;
+  double GetVolume() override;
+  bool IsMuted() override;
+
+  bool started() const { return started_; }
+
+ private:
+  // Issues the OnError() callback to the |sink_|.
+  void HandleError(HRESULT err);
+
+  // The Open() method is divided into these sub methods.
+  HRESULT SetCaptureDevice();
+  HRESULT GetAudioEngineStreamFormat();
+  bool DesiredFormatIsSupported();
+  void ResetFormat(WAVEFORMATEXTENSIBLE *format);
+  HRESULT InitializeAudioEngine();
+  void ReportOpenResult() const;
+
+  // AudioConverter::InputCallback implementation.
+  double ProvideInput(AudioBus* audio_bus, uint32_t frames_delayed) override;
+
+  static void GetPinCapabilityList(
+      base::win::ScopedComPtr<IBaseFilter> capture_filter,
+      base::win::ScopedComPtr<IPin> output_capture_pin,
+      bool query_detailed_frame_rates);
+  static HRESULT GetDeviceFilter(const std::string& device_id,
+                                 IBaseFilter** filter);
+  static base::win::ScopedComPtr<IPin> GetPin(IBaseFilter* filter,
+                                              PIN_DIRECTION pin_dir,
+                                              REFGUID category,
+                                              REFGUID major_type);
+
+  // AudioSinkFilterObserverer
+  void FrameReceived(const uint8_t* buffer,
+                     int length,
+                     base::TimeDelta timestamp) override;
+
+
+  // Used to track down where we fail during initialization which at the
+  // moment seems to be happening frequently and we're not sure why.
+  // The reason might be expected (e.g. trying to open "default" on a machine
+  // that has no audio devices).
+  // Note: This enum is used to record a histogram value and should not be
+  // re-ordered.
+  enum StreamOpenResult {
+    OPEN_RESULT_OK = 0,
+    OPEN_RESULT_CREATE_INSTANCE = 1,
+    OPEN_RESULT_NO_ENDPOINT = 2,
+    OPEN_RESULT_NO_STATE = 3,
+    OPEN_RESULT_DEVICE_NOT_ACTIVE = 4,
+    OPEN_RESULT_ACTIVATION_FAILED = 5,
+    OPEN_RESULT_FORMAT_NOT_SUPPORTED = 6,
+    OPEN_RESULT_AUDIO_CLIENT_INIT_FAILED = 7,
+    OPEN_RESULT_GET_BUFFER_SIZE_FAILED = 8,
+    OPEN_RESULT_LOOPBACK_ACTIVATE_FAILED = 9,
+    OPEN_RESULT_LOOPBACK_INIT_FAILED = 10,
+    OPEN_RESULT_SET_EVENT_HANDLE = 11,
+    OPEN_RESULT_NO_CAPTURE_CLIENT = 12,
+    OPEN_RESULT_NO_AUDIO_VOLUME = 13,
+    OPEN_RESULT_OK_WITH_RESAMPLING = 14,
+    OPEN_RESULT_MAX = OPEN_RESULT_OK_WITH_RESAMPLING
+  };
+
+  // Our creator, the audio manager needs to be notified when we close.
+  AudioManagerWin* const manager_;
+
+  // Capturing is driven by this thread (which has no message loop).
+  // All OnData() callbacks will be called from this thread.
+  std::unique_ptr<base::DelegateSimpleThread> capture_thread_;
+
+  // Contains the desired audio format which is set up at construction.
+  WAVEFORMATEXTENSIBLE format_;
+
+  bool opened_ = false;
+  bool started_ = false;
+  StreamOpenResult open_result_ = OPEN_RESULT_OK;
+
+  // Size in bytes of each audio frame (4 bytes for 16-bit stereo PCM)
+  size_t frame_size_ = 0;
+
+  // Size in audio frames of each audio packet where an audio packet
+  // is defined as the block of data which the user received in each
+  // OnData() callback.
+  size_t packet_size_frames_ = 0;
+
+  // Size in bytes of each audio packet.
+  size_t packet_size_bytes_ = 0;
+
+  // Length of the audio endpoint buffer.
+  uint32_t endpoint_buffer_size_frames_ = 0;
+
+  // Contains the unique name of the selected endpoint device.
+  // Note that AudioDeviceDescription::kDefaultDeviceId represents the default
+  // device role and is not a valid ID as such.
+  std::string device_id_;
+  bool is_loopback_device_;
+
+  std::string friendly_name_;
+
+  // Pointer to the object that will receive the recorded audio samples.
+  AudioInputCallback* sink_ = nullptr;
+
+  // Windows Multimedia Device (MMDevice) API interfaces.
+
+  // An IMMDevice interface which represents an audio endpoint device.
+  base::win::ScopedComPtr<IMMDevice> endpoint_device_;
+
+  // Windows Audio Session API (WASAPI) interfaces.
+
+  // An IAudioClient interface which enables a client to create and initialize
+  // an audio stream between an audio application and the audio engine.
+  base::win::ScopedComPtr<IAudioClient> audio_client_;
+
+  // Loopback IAudioClient doesn't support event-driven mode, so a separate
+  // IAudioClient is needed to receive notifications when data is available in
+  // the buffer. For loopback input |audio_client_| is used to receive data,
+  // while |audio_render_client_for_loopback_| is used to get notifications
+  // when a new buffer is ready. See comment in InitializeAudioEngine() for
+  // details.
+  base::win::ScopedComPtr<IAudioClient> audio_render_client_for_loopback_;
+
+  // The IAudioCaptureClient interface enables a client to read input data
+  // from a capture endpoint buffer.
+  base::win::ScopedComPtr<IAudioCaptureClient> audio_capture_client_;
+
+  // The ISimpleAudioVolume interface enables a client to control the
+  // master volume level of an audio session.
+  // The volume-level is a value in the range 0.0 to 1.0.
+  // This interface does only work with shared-mode streams.
+  base::win::ScopedComPtr<ISimpleAudioVolume> simple_audio_volume_;
+
+  // The IAudioEndpointVolume allows a client to control the volume level of
+  // the whole system.
+  base::win::ScopedComPtr<IAudioEndpointVolume> system_audio_volume_;
+
+  // The audio engine will signal this event each time a buffer has been
+  // recorded.
+  base::win::ScopedHandle audio_samples_ready_event_;
+
+  // This event will be signaled when capturing shall stop.
+  base::win::ScopedHandle stop_capture_event_;
+
+  // Never set it through external API. Only used when |device_id_| ==
+  // kLoopbackWithMuteDeviceId.
+  // True, if we have muted the system audio for the stream capturing, and
+  // indicates that we need to unmute the system audio when stopping capturing.
+  bool mute_done_ = false;
+
+  // Used for the captured audio on the callback thread.
+  std::unique_ptr<AudioBlockFifo> fifo_;
+
+  // If the caller requires resampling (should only be in exceptional cases and
+  // ideally, never), we support using an AudioConverter.
+  std::unique_ptr<AudioConverter> converter_;
+  std::unique_ptr<AudioBus> convert_bus_;
+  bool imperfect_buffer_size_conversion_ = false;
+
+  const AudioParameters params_;
+
+  base::TimeTicks first_ref_time_;
+
+  base::win::ScopedComPtr<IBaseFilter> capture_filter_;
+
+  base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
+  base::win::ScopedComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
+
+  base::win::ScopedComPtr<IMediaControl> media_control_;
+  base::win::ScopedComPtr<IPin> input_sink_pin_;
+  base::win::ScopedComPtr<IPin> output_capture_pin_;
+
+  scoped_refptr<AudioSinkFilter> sink_filter_;
+
+
+  SEQUENCE_CHECKER(sequence_checker_);
+
+  DISALLOW_COPY_AND_ASSIGN(DirectSoundAudioInputStream);
+};
+
+}  // namespace media
+
+#endif  // MEDIA_AUDIO_WIN_AUDIO_DIRECTSOUND_INPUT_WIN_H_
