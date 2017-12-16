@@ -13,6 +13,8 @@
 #include <endpointvolume.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#undef AM_KSCATEGORY_AUDIO
 #include <dshow.h>
 
 #include <memory>
@@ -43,7 +45,7 @@ class AudioManagerWin;
 
 // AudioInputStream implementation using Windows Core Audio APIs.
 class MEDIA_EXPORT DirectSoundAudioInputStream
-    : public AgcAudioStream<AudioInputStream>,
+    : public AudioInputStream,
       public AudioConverter::InputCallback,
       public AudioSinkFilterObserver {
  public:
@@ -114,6 +116,13 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
                                               PIN_DIRECTION pin_dir,
                                               REFGUID category,
                                               REFGUID major_type);
+  bool SetAutomaticGainControl(bool enabled) override {
+    return true;
+  }
+
+  bool GetAutomaticGainControl() override {
+    return false;
+  }
 
   // AudioSinkFilterObserverer
   void FrameReceived(const uint8_t* buffer,

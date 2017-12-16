@@ -27,6 +27,7 @@
 #include "media/audio/audio_io.h"
 #include "media/audio/win/audio_device_listener_win.h"
 #include "media/audio/win/audio_low_latency_input_win.h"
+#include "media/audio/win/directsound_input_win.h"
 #include "media/audio/win/audio_low_latency_output_win.h"
 #include "media/audio/win/core_audio_util_win.h"
 #include "media/audio/win/device_enumeration_win.h"
@@ -42,6 +43,8 @@
 #define DRV_QUERYDEVICEINTERFACE 0x80c
 #define DRVM_MAPPER_PREFERRED_GET 0x2015
 #define DRV_QUERYDEVICEINTERFACESIZE 0x80d
+
+#if 0
 DEFINE_GUID(AM_KSCATEGORY_AUDIO,
             0x6994ad04,
             0x93ef,
@@ -54,6 +57,7 @@ DEFINE_GUID(AM_KSCATEGORY_AUDIO,
             0x22,
             0x31,
             0x96);
+#endif
 
 namespace media {
 
@@ -259,6 +263,9 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
     const LogCallback& log_callback) {
   // Used for both AUDIO_PCM_LOW_LATENCY and AUDIO_PCM_LINEAR.
   DVLOG(1) << "MakeLowLatencyInputStream: " << device_id;
+  if (device_id.compare("loopback") == 0) { // HACK
+    return new DirectSoundAudioInputStream(this, params, "Elgato Game Capture HD");
+  }
   return new WASAPIAudioInputStream(this, params, device_id);
 }
 
