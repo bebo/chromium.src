@@ -22,6 +22,7 @@ media_subcomponent_deps = [
   "//media/base/android",
   "//media/cdm",
   "//media/device_monitors",
+  "//media/direct_show",
   "//media/filters",
   "//media/formats",
   "//media/muxers",

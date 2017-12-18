@@ -159,6 +159,7 @@ component("capture_lib") {
     "//media",
     "//media/capture/mojo:capture_types",
     "//media/capture/mojo:image_capture",
+    # "//media/direct_show",
     "//media/mojo/interfaces:interfaces",
     "//services/service_manager/public/cpp",
     "//third_party/libyuv",

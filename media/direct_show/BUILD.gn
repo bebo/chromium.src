@@ -1,0 +1,32 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//media/media_options.gni")
+
+source_set("direct_show") {
+
+  visibility = [ "//media", "//media/audio", "//media/capture:capture_lib" ]
+
+  sources = [
+    "direct_show.h",
+    "direct_show.cc",
+  ]
+
+  configs += [ "//media:subcomponent_config" ]
+
+  deps = [
+    "//base",
+    "//media/base",
+  ]
+
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = []
+
+  deps = [
+    "//base",
+  ]
+}

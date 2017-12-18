@@ -37,6 +37,7 @@
 #include "media/base/channel_layout.h"
 #include "media/base/limits.h"
 #include "media/base/media_switches.h"
+#include "media/direct_show/direct_show.h"
 
 // The following are defined in various DDK headers, and we (re)define them here
 // to avoid adding the DDK as a chrome dependency.
@@ -93,6 +94,9 @@ AudioManagerWin::AudioManagerWin(std::unique_ptr<AudioThread> audio_thread,
   // So, here we call it explicitly before we kick off the audio thread
   // or do any other work.
   CoreAudioUtil::IsSupported();
+
+  DirectShow* direct_show = DirectShow::GetInstance();
+  direct_show->hi();
 
   SetMaxOutputStreamsAllowed(kMaxOutputStreams);
 
