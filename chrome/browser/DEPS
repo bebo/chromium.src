@@ -59,6 +59,7 @@ include_rules = [
   "+services/ui/common",
   "+services/ui/public",
   "+services/ui/service.h",
+  "+services/video_capture",
   "+skia/ext",
   "+third_party/boringssl/src/include",
   "+third_party/crashpad",

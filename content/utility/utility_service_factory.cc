@@ -113,12 +113,17 @@ UtilityServiceFactory::UtilityServiceFactory()
 UtilityServiceFactory::~UtilityServiceFactory() {}
 
 void UtilityServiceFactory::RegisterServices(ServiceMap* services) {
+  const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
+
   GetContentClient()->utility()->RegisterServices(services);
 
-  service_manager::EmbeddedServiceInfo video_capture_info;
-  video_capture_info.factory = base::Bind(&CreateVideoCaptureService);
-  services->insert(
-      std::make_pair(video_capture::mojom::kServiceName, video_capture_info));
+  if (!command_line.HasSwitch(switches::kInProcessVideoCapture)) {
+    service_manager::EmbeddedServiceInfo video_capture_info;
+    video_capture_info.factory = base::Bind(&CreateVideoCaptureService);
+    services->insert(
+        std::make_pair(video_capture::mojom::kServiceName, video_capture_info));
+  }
 
 #if BUILDFLAG(ENABLE_LIBRARY_CDMS)
   service_manager::EmbeddedServiceInfo info;

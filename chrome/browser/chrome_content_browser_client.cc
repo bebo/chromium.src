@@ -440,6 +440,9 @@
 #include "chrome/browser/supervised_user/supervised_user_navigation_throttle.h"
 #endif
 
+#include "services/video_capture/public/interfaces/constants.mojom.h"
+#include "services/video_capture/service_impl.h"
+
 using base::FileDescriptor;
 using content::BrowserThread;
 using content::BrowserURLHandler;
@@ -830,6 +833,10 @@ GetSystemRequestContextOnUIThread() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   return scoped_refptr<net::URLRequestContextGetter>(
       g_browser_process->system_request_context());
+}
+
+std::unique_ptr<service_manager::Service> CreateVideoCaptureService() {
+  return base::MakeUnique<video_capture::ServiceImpl>();
 }
 
 }  // namespace
@@ -3160,6 +3167,17 @@ void ChromeContentBrowserClient::RegisterInProcessServices(
     services->insert(std::make_pair(media::mojom::kMediaServiceName, info));
   }
 #endif
+
+  const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
+  if (command_line.HasSwitch(switches::kInProcessVideoCapture)) {
+    service_manager::EmbeddedServiceInfo video_capture_info;
+    video_capture_info.factory = base::Bind(&CreateVideoCaptureService);
+    services->insert(
+      std::make_pair(video_capture::mojom::kServiceName, video_capture_info));
+  }
+
+
 
 #if defined(OS_ANDROID)
   {
