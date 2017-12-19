@@ -32,6 +32,7 @@ class AudioSinkInputPin : public AudioPinBase {
   ~AudioSinkInputPin() override;
 
   AudioSinkFilterObserver* observer_;
+  BITMAPINFOHEADER requested_info_header_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(AudioSinkInputPin);
 };

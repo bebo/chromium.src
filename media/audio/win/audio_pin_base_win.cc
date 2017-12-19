@@ -49,16 +49,18 @@ class TypeEnumerator final : public IEnumMediaTypes,
       }
       ZeroMemory(type, sizeof(AM_MEDIA_TYPE));
 
-      // Allocate a VIDEOINFOHEADER and connect it to the AM_MEDIA_TYPE.
-      type->cbFormat = sizeof(VIDEOINFOHEADER);
-      BYTE* format =
-          reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(VIDEOINFOHEADER)));
+      // Allocate a WAVEFORMATEX and connect it to the AM_MEDIA_TYPE.
+      type->cbFormat = sizeof(WAVEFORMATEX);
+      BYTE* format = 
+        reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(WAVEFORMATEX)));
       if (!format) {
         CoTaskMemFree(type);
         FreeAllocatedMediaTypes(types_fetched, types);
         return E_OUTOFMEMORY;
       }
+
       type->pbFormat = format;
+
       // Get the media type from the pin.
       if (pin_->GetValidMediaType(index_++, type)) {
         types[types_fetched++] = type;

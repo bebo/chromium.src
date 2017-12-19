@@ -47,6 +47,7 @@ class AudioManagerWin;
 class MEDIA_EXPORT DirectSoundAudioInputStream
     : public AudioInputStream,
       public AudioConverter::InputCallback,
+      public base::DelegateSimpleThread::Delegate,
       public AudioSinkFilterObserver {
  public:
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
@@ -92,6 +93,9 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   bool started() const { return started_; }
 
  private:
+  // DelegateSimpleThread::Delegate implementation.
+  void Run() override;
+
   // Issues the OnError() callback to the |sink_|.
   void HandleError(HRESULT err);
 
@@ -116,6 +120,7 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
                                               PIN_DIRECTION pin_dir,
                                               REFGUID category,
                                               REFGUID major_type);
+
   bool SetAutomaticGainControl(bool enabled) override {
     return true;
   }
@@ -254,16 +259,18 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   base::TimeTicks first_ref_time_;
 
   base::win::ScopedComPtr<IBaseFilter> capture_filter_;
+  base::win::ScopedComPtr<IBaseFilter> null_renderer_;
 
   base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
   base::win::ScopedComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
 
   base::win::ScopedComPtr<IMediaControl> media_control_;
-  base::win::ScopedComPtr<IPin> input_sink_pin_;
-  base::win::ScopedComPtr<IPin> output_capture_pin_;
+  base::win::ScopedComPtr<IPin> input_audio_sink_pin_;
+  base::win::ScopedComPtr<IPin> null_renderer_pin_;
+  base::win::ScopedComPtr<IPin> output_video_capture_pin_;
+  base::win::ScopedComPtr<IPin> output_audio_capture_pin_;
 
-  scoped_refptr<AudioSinkFilter> sink_filter_;
-
+  scoped_refptr<AudioSinkFilter> audio_sink_filter_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 

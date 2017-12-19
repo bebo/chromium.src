@@ -17,30 +17,67 @@
 
 namespace media {
 
+GUID kMediaSubTypeI420 = {0x30323449,
+                          0x0000,
+                          0x0010,
+                          {0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}};
+
+// UYVY synonym with BT709 color components, used in HD video. This variation
+// might appear in non-USB capture cards and it's implemented as a normal YUV
+// pixel format with the characters HDYC encoded in the first array word.
+GUID kMediaSubTypeHDYC = {0x43594448,
+                          0x0000,
+                          0x0010,
+                          {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+
+GUID kMediaSubTypeZ16 = {0x2036315a,
+                         0x0000,
+                         0x0010,
+                         {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+GUID kMediaSubTypeINVZ = {0x5a564e49,
+                          0x2d90,
+                          0x4a58,
+                          {0x92, 0x0b, 0x77, 0x3f, 0x1f, 0x2c, 0x55, 0x6b}};
+GUID kMediaSubTypeY16 = {0x20363159,
+                         0x0000,
+                         0x0010,
+                         {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+
+  
 const REFERENCE_TIME kSecondsToReferenceTime = 10000000;
+
+static DWORD GetArea(const BITMAPINFOHEADER& info_header) {
+  return info_header.biWidth * info_header.biHeight;
+}
 
 AudioSinkInputPin::AudioSinkInputPin(IBaseFilter* filter, AudioSinkFilterObserver* observer)
     : AudioPinBase(filter), observer_(observer) {
 }
 
 bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
-#if 0
   const GUID type = media_type->majortype;
-  if (type != MEDIATYPE_Video)
+  if (type != MEDIATYPE_Audio) {
+    LOG(INFO) << "type != MEDIATYPE_Audio";
     return false;
+  }
 
   const GUID format_type = media_type->formattype;
-  if (format_type != FORMAT_VideoInfo)
+  if (format_type != FORMAT_WaveFormatEx) {
+    LOG(INFO) << "format_type != FORMAT_WaveFormatEx";
     return false;
+  }
 
   // Check for the sub types we support.
   const GUID sub_type = media_type->subtype;
-  VIDEOINFOHEADER* pvi =
-      reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
-  if (pvi == NULL)
+  WAVEFORMATEX* pvi =
+      reinterpret_cast<WAVEFORMATEX*>(media_type->pbFormat);
+  if (pvi == NULL) {
+    LOG(INFO) << "pvi == NULL";
     return false;
+  }
 
   // Store the incoming width and height.
+#if 0
   resulting_format_.frame_size.SetSize(pvi->bmiHeader.biWidth,
                                        abs(pvi->bmiHeader.biHeight));
   if (pvi->AvgTimePerFrame > 0) {
@@ -49,153 +86,48 @@ bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
   } else {
     resulting_format_.frame_rate = requested_frame_rate_;
   }
-  if (sub_type == kMediaSubTypeI420 &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('I', '4', '2', '0')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_I420;
-    return true;
-  }
-  if (sub_type == MEDIASUBTYPE_YUY2 &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('Y', 'U', 'Y', '2')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_YUY2;
-    return true;
-  }
-  // This format is added after http:/crbug.com/508413.
-  if (sub_type == MEDIASUBTYPE_UYVY &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('U', 'Y', 'V', 'Y')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_UYVY;
-    return true;
-  }
-  if (sub_type == MEDIASUBTYPE_MJPG &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('M', 'J', 'P', 'G')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_MJPEG;
-    return true;
-  }
-  if (sub_type == MEDIASUBTYPE_RGB24 &&
-      pvi->bmiHeader.biCompression == BI_RGB) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_RGB24;
-    return true;
-  }
-  if (sub_type == MEDIASUBTYPE_RGB32 &&
-      pvi->bmiHeader.biCompression == BI_RGB) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_RGB32;
-    return true;
-  }
-  if (sub_type == kMediaSubTypeY16 &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('Y', '1', '6', ' ')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_Y16;
-    return true;
-  }
-  if (sub_type == kMediaSubTypeZ16 &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('Z', '1', '6', ' ')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_Y16;
-    return true;
-  }
-  if (sub_type == kMediaSubTypeINVZ &&
-      pvi->bmiHeader.biCompression == MAKEFOURCC('I', 'N', 'V', 'Z')) {
-    resulting_format_.pixel_format = PIXEL_FORMAT_Y16;
+#endif
+
+  LOG(INFO) << "IsMediaTypeVaild";
+  if (sub_type == MEDIASUBTYPE_PCM) {
     return true;
   }
 
-#ifndef NDEBUG
-  WCHAR guid_str[128];
-  StringFromGUID2(sub_type, guid_str, arraysize(guid_str));
-  DVLOG(2) << __func__ << " unsupported media type: " << guid_str;
-#endif
-
-#endif
-  return true;
+  return false;
 }
 
-bool AudioSinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) {
-#if 0
-  if (media_type->cbFormat < sizeof(VIDEOINFOHEADER))
+bool AudioSinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) { 
+  LOG(INFO) << "GetValidMediaType, index: " << index;
+
+  if (media_type->cbFormat < sizeof(WAVEFORMATEX)) {
+    LOG(INFO) << "media_type->cbFormat < sizeof(WAVEFORMATEX)";
     return false;
-
-  VIDEOINFOHEADER* const pvi =
-      reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
-
-  ZeroMemory(pvi, sizeof(VIDEOINFOHEADER));
-  pvi->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  pvi->bmiHeader.biPlanes = 1;
-  pvi->bmiHeader.biClrImportant = 0;
-  pvi->bmiHeader.biClrUsed = 0;
-  if (requested_frame_rate_ > 0)
-    pvi->AvgTimePerFrame = kSecondsToReferenceTime / requested_frame_rate_;
-
-  media_type->majortype = MEDIATYPE_Video;
-  media_type->formattype = FORMAT_VideoInfo;
-  media_type->bTemporalCompression = FALSE;
-
-  if (requested_pixel_format_ == PIXEL_FORMAT_MJPEG ||
-      requested_pixel_format_ == PIXEL_FORMAT_Y16) {
-    // If the requested pixel format is MJPEG or Y16, don't accept other.
-    // This is ok since the capabilities of the capturer have been
-    // enumerated and we know that it is supported.
-    if (index != 0)
-      return false;
-
-    pvi->bmiHeader = requested_info_header_;
-    return true;
   }
 
-  switch (index) {
-    case 0: {
-      pvi->bmiHeader.biCompression = MAKEFOURCC('I', '4', '2', '0');
-      pvi->bmiHeader.biBitCount = 12;  // bit per pixel
-      pvi->bmiHeader.biWidth = requested_info_header_.biWidth;
-      pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
-      pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 3 / 2;
-      media_type->subtype = kMediaSubTypeI420;
-      break;
-    }
-    case 1: {
-      pvi->bmiHeader.biCompression = MAKEFOURCC('Y', 'U', 'Y', '2');
-      pvi->bmiHeader.biBitCount = 16;
-      pvi->bmiHeader.biWidth = requested_info_header_.biWidth;
-      pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
-      pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 2;
-      media_type->subtype = MEDIASUBTYPE_YUY2;
-      break;
-    }
-    case 2: {
-      pvi->bmiHeader.biCompression = MAKEFOURCC('U', 'Y', 'V', 'Y');
-      pvi->bmiHeader.biBitCount = 16;
-      pvi->bmiHeader.biWidth = requested_info_header_.biWidth;
-      pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
-      pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 2;
-      media_type->subtype = MEDIASUBTYPE_UYVY;
-      break;
-    }
-    case 3: {
-      pvi->bmiHeader.biCompression = BI_RGB;
-      pvi->bmiHeader.biBitCount = 24;
-      pvi->bmiHeader.biWidth = requested_info_header_.biWidth;
-      pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
-      pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 3;
-      media_type->subtype = MEDIASUBTYPE_RGB24;
-      break;
-    }
-    case 4: {
-      pvi->bmiHeader.biCompression = BI_RGB;
-      pvi->bmiHeader.biBitCount = 32;
-      pvi->bmiHeader.biWidth = requested_info_header_.biWidth;
-      pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
-      pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 4;
-      media_type->subtype = MEDIASUBTYPE_RGB32;
-      break;
-    }
-    default:
-      return false;
-  }
-
+  media_type->majortype = MEDIATYPE_Audio;
+  media_type->subtype = MEDIASUBTYPE_PCM;
+  media_type->formattype = FORMAT_WaveFormatEx;
   media_type->bFixedSizeSamples = TRUE;
-  media_type->lSampleSize = pvi->bmiHeader.biSizeImage;
-#endif
+  media_type->bTemporalCompression = FALSE;
+  media_type->cbFormat = sizeof(WAVEFORMATEX);
+
+  WAVEFORMATEX* const format = reinterpret_cast<WAVEFORMATEX*>(media_type->pbFormat);
+  format->wFormatTag = WAVE_FORMAT_PCM;
+  format->nSamplesPerSec = 48000; // params.sample_rate();
+  format->wBitsPerSample = 16; // params.bits_per_sample();
+  format->nChannels = 2; // params.channels();
+  format->nBlockAlign = (format->wBitsPerSample / 8) * format->nChannels;
+  format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
+  format->cbSize = 0;
+
+  if (index == 1) return false;
+
   return true;
 }
 
 HRESULT AudioSinkInputPin::Receive(IMediaSample* sample) {
   const int length = sample->GetActualDataLength();
+  LOG(INFO) << "Receive, length: " << length;
 
 #if 0
   if (length <= 0 ||
