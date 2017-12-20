@@ -19,6 +19,7 @@
 #include "base/win/scoped_variant.h"
 #include "media/base/media_switches.h"
 #include "media/direct_show/direct_show.h"
+#include "media/direct_show/direct_show_device_factory.h"
 #include "media/base/win/mf_initializer.h"
 #include "media/capture/video/win/video_capture_device_mf_win.h"
 #include "media/capture/video/win/video_capture_device_win.h"
@@ -421,9 +422,6 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
   DCHECK(thread_checker_.CalledOnValidThread());
   std::unique_ptr<VideoCaptureDevice> device;
 
-  DirectShow *direct_show = DirectShow::GetInstance();
-  direct_show->hi();
-
   if (device_descriptor.capture_api == VideoCaptureApi::WIN_MEDIA_FOUNDATION) {
     DCHECK(PlatformSupportsMediaFoundation());
     device.reset(new VideoCaptureDeviceMFWin(device_descriptor));
@@ -441,6 +439,14 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
     DVLOG(1) << " DirectShow Device: " << device_descriptor.display_name;
     if (!static_cast<VideoCaptureDeviceWin*>(device.get())->Init())
       device.reset();
+
+  } else if (device_descriptor.capture_api ==
+             VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
+    //TODO
+    LOG(ERROR) << "DON'T FORGET TO IMPLEMENT ME";
+    DirectShow *direct_show = DirectShow::GetInstance();
+    direct_show->hi();
+
   } else {
     NOTREACHED();
   }
@@ -454,6 +460,13 @@ void VideoCaptureDeviceFactoryWin::GetDeviceDescriptors(
     GetDeviceDescriptorsMediaFoundation(device_descriptors);
   else
     GetDeviceDescriptorsDirectShow(device_descriptors);
+
+  DirectShowDeviceDescriptors ds_descriptors; 
+  DirectShowDeviceFactory::GetInstance()->GetDeviceDescriptors(&ds_descriptors);
+
+  for(DirectShowDeviceDescriptor& ds : ds_descriptors) {
+    device_descriptors->emplace_back(ds.display_name, ds.device_id, ds.model_id, VideoCaptureApi::WIN_DIRECT_SHOW_AV);
+  }
 }
 
 void VideoCaptureDeviceFactoryWin::GetSupportedFormats(

@@ -225,6 +225,11 @@ source_set("audio") {
       "setupapi.lib",
       "winmm.lib",
     ]
+
+    deps += [
+      "//media/direct_show"
+    ]
+
   }
 
   if (is_android) {

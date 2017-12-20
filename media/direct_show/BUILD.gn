@@ -6,11 +6,13 @@ import("//media/media_options.gni")
 
 source_set("direct_show") {
 
-  visibility = [ "//media", "//media/audio", "//media/capture:capture_lib" ]
+  visibility = [ "//media/audio", "//media/capture:capture_lib" ]
 
   sources = [
     "direct_show.h",
     "direct_show.cc",
+    "direct_show_device_factory.h",
+    "direct_show_device_factory.cc",
   ]
 
   configs += [ "//media:subcomponent_config" ]
