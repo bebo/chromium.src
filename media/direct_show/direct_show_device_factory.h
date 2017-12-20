@@ -17,6 +17,9 @@ namespace base {
 
 namespace media {
 
+  enum class MEDIA_EXPORT DirectShowType { Audio, Video };
+
+
   class MEDIA_EXPORT DirectShowDeviceDescriptor {
     public:
       DirectShowDeviceDescriptor(
@@ -38,7 +41,7 @@ namespace media {
   class MEDIA_EXPORT DirectShowDeviceFactory {
     public:
       static DirectShowDeviceFactory* GetInstance();
-      void GetDeviceDescriptors(DirectShowDeviceDescriptors* device_descriptors);
+      void GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors);
 
     private:
       DirectShowDeviceFactory();
@@ -50,4 +53,6 @@ namespace media {
 }
 
 #endif // MEDIA_DIRECT_SHOW_DEVICE_FACTORY_H_
+
+
 

@@ -462,7 +462,7 @@ void VideoCaptureDeviceFactoryWin::GetDeviceDescriptors(
     GetDeviceDescriptorsDirectShow(device_descriptors);
 
   DirectShowDeviceDescriptors ds_descriptors; 
-  DirectShowDeviceFactory::GetInstance()->GetDeviceDescriptors(&ds_descriptors);
+  DirectShowDeviceFactory::GetInstance()->GetDeviceDescriptors(DirectShowType::Video, &ds_descriptors);
 
   for(DirectShowDeviceDescriptor& ds : ds_descriptors) {
     device_descriptors->emplace_back(ds.display_name, ds.device_id, ds.model_id, VideoCaptureApi::WIN_DIRECT_SHOW_AV);

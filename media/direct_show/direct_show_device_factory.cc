@@ -51,7 +51,7 @@ namespace media {
   /*
    * [ ] should this run on it's own thread?
    */
-  void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowDeviceDescriptors* device_descriptors) {
+  void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors) {
 
     DCHECK(device_descriptors);
     DVLOG(1) << __func__;
