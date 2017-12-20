@@ -45,7 +45,7 @@ class AudioManagerWin;
 
 // AudioInputStream implementation using Windows Core Audio APIs.
 class MEDIA_EXPORT DirectSoundAudioInputStream
-    : public AudioInputStream,
+    : public AgcAudioStream<AudioInputStream>,
       public AudioConverter::InputCallback,
       public base::DelegateSimpleThread::Delegate,
       public AudioSinkFilterObserver {
@@ -103,7 +103,7 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   HRESULT SetCaptureDevice();
   HRESULT GetAudioEngineStreamFormat();
   bool DesiredFormatIsSupported();
-  void ResetFormat(WAVEFORMATEXTENSIBLE *format);
+  void ResetFormat(WAVEFORMATEX *format);
   HRESULT InitializeAudioEngine();
   void ReportOpenResult() const;
 
@@ -120,14 +120,6 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
                                               PIN_DIRECTION pin_dir,
                                               REFGUID category,
                                               REFGUID major_type);
-
-  bool SetAutomaticGainControl(bool enabled) override {
-    return true;
-  }
-
-  bool GetAutomaticGainControl() override {
-    return false;
-  }
 
   // AudioSinkFilterObserverer
   void FrameReceived(const uint8_t* buffer,

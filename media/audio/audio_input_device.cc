@@ -35,10 +35,10 @@ const int kRequestedSharedMemoryCount = 10;
 // start for 5 seconds when resuming after standby, and has a startup success
 // check 5 seconds after actually starting, where stats is logged. We must allow
 // enough time for this. See AUAudioInputStream::CheckInputStartupSuccess().
-const int kMissingCallbacksTimeBeforeErrorSeconds = 12;
+const int kMissingCallbacksTimeBeforeErrorSeconds = 60; // 12;
 
 // The interval for checking missing callbacks.
-const int kCheckMissingCallbacksIntervalSeconds = 5;
+const int kCheckMissingCallbacksIntervalSeconds = 60;// 5;
 
 // How often AudioInputDevice::AudioThreadCallback informs that it has gotten
 // data from the source.

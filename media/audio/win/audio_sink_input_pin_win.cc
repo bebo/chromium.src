@@ -57,22 +57,39 @@ AudioSinkInputPin::AudioSinkInputPin(IBaseFilter* filter, AudioSinkFilterObserve
 bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
   const GUID type = media_type->majortype;
   if (type != MEDIATYPE_Audio) {
-    LOG(INFO) << "type != MEDIATYPE_Audio";
+    WCHAR guid_str[128];
+    StringFromGUID2(type, guid_str, arraysize(guid_str));
+    LOG(INFO) << "type != MEDIATYPE_Audio, " << guid_str;
     return false;
   }
 
   const GUID format_type = media_type->formattype;
   if (format_type != FORMAT_WaveFormatEx) {
-    LOG(INFO) << "format_type != FORMAT_WaveFormatEx";
+    WCHAR guid_str[128];
+    StringFromGUID2(format_type, guid_str, arraysize(guid_str));
+    LOG(INFO) << "format_type != FORMAT_WaveFormatEx, " << guid_str;
     return false;
   }
 
   // Check for the sub types we support.
   const GUID sub_type = media_type->subtype;
+
+  if (sub_type != MEDIASUBTYPE_PCM) {
+    WCHAR guid_str[128];
+    StringFromGUID2(sub_type, guid_str, arraysize(guid_str));
+    LOG(INFO) << "sub_type != MEDIASUBTYPE_PCM, " << guid_str;
+    return false;
+  }
+
   WAVEFORMATEX* pvi =
       reinterpret_cast<WAVEFORMATEX*>(media_type->pbFormat);
   if (pvi == NULL) {
     LOG(INFO) << "pvi == NULL";
+    return false;
+  }
+
+  if (pvi->nSamplesPerSec != 48000) {
+    LOG(INFO) << "wfex->nSamplesPerSec != 48000";
     return false;
   }
 
@@ -89,11 +106,7 @@ bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
 #endif
 
   LOG(INFO) << "IsMediaTypeVaild";
-  if (sub_type == MEDIASUBTYPE_PCM) {
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
 bool AudioSinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) { 
@@ -127,7 +140,6 @@ bool AudioSinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) 
 
 HRESULT AudioSinkInputPin::Receive(IMediaSample* sample) {
   const int length = sample->GetActualDataLength();
-  LOG(INFO) << "Receive, length: " << length;
 
 #if 0
   if (length <= 0 ||
