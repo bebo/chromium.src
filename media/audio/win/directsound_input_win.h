@@ -116,10 +116,15 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
       bool query_detailed_frame_rates);
   static HRESULT GetDeviceFilter(const std::string& device_id,
                                  IBaseFilter** filter);
+  static HRESULT GetCrossbarFilter(const std::string& device_id,
+                                 IBaseFilter** filter);
   static base::win::ScopedComPtr<IPin> GetPin(IBaseFilter* filter,
                                               PIN_DIRECTION pin_dir,
                                               REFGUID category,
                                               REFGUID major_type);
+  static base::win::ScopedComPtr<IPin> GetPinByName(IBaseFilter* filter,
+                                                    PIN_DIRECTION pin_dir,
+                                                    const std::string& pin_name);
 
   // AudioSinkFilterObserverer
   void FrameReceived(const uint8_t* buffer,
@@ -251,6 +256,7 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   base::TimeTicks first_ref_time_;
 
   base::win::ScopedComPtr<IBaseFilter> capture_filter_;
+  base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
   base::win::ScopedComPtr<IBaseFilter> null_renderer_;
 
   base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
@@ -259,8 +265,12 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   base::win::ScopedComPtr<IMediaControl> media_control_;
   base::win::ScopedComPtr<IPin> input_audio_sink_pin_;
   base::win::ScopedComPtr<IPin> null_renderer_pin_;
+  base::win::ScopedComPtr<IPin> input_video_capture_pin_;
+  base::win::ScopedComPtr<IPin> input_audio_capture_pin_;
   base::win::ScopedComPtr<IPin> output_video_capture_pin_;
   base::win::ScopedComPtr<IPin> output_audio_capture_pin_;
+  base::win::ScopedComPtr<IPin> output_video_crossbar_pin_;
+  base::win::ScopedComPtr<IPin> output_audio_crossbar_pin_;
 
   scoped_refptr<AudioSinkFilter> audio_sink_filter_;
 

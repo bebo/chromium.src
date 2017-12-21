@@ -13,6 +13,7 @@
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/strings/sys_string_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "media/audio/audio_device_description.h"
 #include "media/audio/win/audio_manager_win.h"
@@ -33,6 +34,7 @@ using base::win::ScopedCOMInitializer;
 using base::win::ScopedVariant;
 
 #undef ALAX_AUDIO_TEST
+#define AVERMEDIA
 
 GUID kElgatoGameCaptureHD = {0x39f50f4c,
                           0x99E1,
@@ -42,6 +44,10 @@ GUID kAlaxAudioTestSrc = {0xbf53d5ec,
                           0xa137,
                           0x4a3e,
                           {0xb7, 0xcf, 0xb6, 0x73, 0x56, 0x8a, 0x9d, 0x8b}};
+GUID kAvermediaVideoCapture = {0x8ec460c4,
+                          0x0d2e,
+                          0x46fd,
+                          {0xad, 0x9b, 0x33, 0x1f, 0xf3, 0x3d, 0xe3, 0xb6}};
 
 enum FILTER {
   FILTER_ELGATO_GAME_CAPTURE_HD = 0,
@@ -50,9 +56,13 @@ enum FILTER {
 const int kFilterSize = FILTER_MAX + 1;
 
 #ifdef ALAX_AUDIO_TEST
-const GUID kFilterArray[kFilterSize] = {kAlaxAudioTestSrc}; // kElgatoGameCaptureHD
+const GUID kFilterArray[kFilterSize] = {kAlaxAudioTestSrc};
+#else
+#ifdef AVERMEDIA
+const GUID kFilterArray[kFilterSize] = {kAvermediaVideoCapture};
 #else
 const GUID kFilterArray[kFilterSize] = {kElgatoGameCaptureHD};
+#endif
 #endif
 
 const std::string kFilterArrayName[kFilterSize] = {"Elgato Game Capture HD"};
@@ -109,6 +119,14 @@ bool PinMatchesCategory(IPin* pin, REFGUID category) {
     DWORD return_value;
     hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
                           &pin_category, sizeof(pin_category), &return_value);
+
+    hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
+                          &pin_category, sizeof(pin_category), &return_value);
+
+    WCHAR cat[128];
+    StringFromGUID2(pin_category, cat, arraysize(cat));
+    LOG(INFO) << "pin matches category, return_value: " << cat;
+
     if (SUCCEEDED(hr) && (return_value == sizeof(pin_category))) {
       found = (pin_category == category);
     }
@@ -136,19 +154,20 @@ void PrintPinInfo(IPin* pin) {
   AM_MEDIA_TYPE media_type = {0};
   hr = pin->ConnectionMediaType(&media_type);
   if (SUCCEEDED(hr)) {
-    WCHAR major_type[128];
+    WCHAR major_type[128] = {0};
     StringFromGUID2(media_type.majortype, major_type, arraysize(major_type));
 
-    WCHAR sub_type[128];
+    WCHAR sub_type[128] = {0};
     StringFromGUID2(media_type.subtype, sub_type, arraysize(sub_type));
 
-    WCHAR format_type[128];
+    WCHAR format_type[128] = {0};
     StringFromGUID2(media_type.formattype, format_type, arraysize(format_type));
 
     LOG(INFO) << "media_type, majortype: " << major_type << ", subtype: " << sub_type << ", formattype: " << format_type;
   } else {
     LOG(INFO) << "Failed to get connection media type";
   }
+
 
   WCHAR *pin_id = new WCHAR[128];
   hr = pin->QueryId(&pin_id);
@@ -246,15 +265,66 @@ HRESULT DirectSoundAudioInputStream::GetDeviceFilter(const std::string& device_i
                                                IBaseFilter** filter) {
   DCHECK(filter);
 
-  // go through our whitelisted filters first (bebo-game-capture, capture cards)
-  // so that we won't fail on the shortcircuit for when no camera exist in the OS
+#ifdef AVERMEDIA
+  ScopedComPtr<ICreateDevEnum> dev_enum;
+  HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
+                                  IID_PPV_ARGS(&dev_enum));
+  if (FAILED(hr))
+    return hr;
+
+  ScopedComPtr<IEnumMoniker> enum_moniker;
+  hr = dev_enum->CreateClassEnumerator(AM_KSCATEGORY_CAPTURE,
+                                       enum_moniker.GetAddressOf(), 0);
+  if (hr != S_OK) {
+    return hr;
+  }
+
+  ScopedComPtr<IBaseFilter> capture_filter;
+  for (ScopedComPtr<IMoniker> moniker;
+       enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
+       moniker.Reset()) {
+    ScopedComPtr<IPropertyBag> prop_bag;
+    hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
+    if (FAILED(hr))
+      continue;
+
+    // Find |device_id| via DevicePath, Description or FriendlyName, whichever
+    // is available first and is a VT_BSTR (i.e. String) type.
+    static const wchar_t* kPropertyNames[] = {
+      //L"DevicePath", L"Description",
+                                              L"FriendlyName"};
+
+    ScopedVariant name;
+    for (const auto* property_name : kPropertyNames) {
+      prop_bag->Read(property_name, name.Receive(), 0);
+      if (name.type() == VT_BSTR)
+        break;
+    }
+
+    if (name.type() == VT_BSTR) {
+      const std::string device_path(base::SysWideToUTF8(V_BSTR(name.ptr())));
+      if (device_path.compare(device_id) == 0) {
+        // We have found the requested device
+        hr = moniker->BindToObject(0, 0, IID_PPV_ARGS(&capture_filter));
+        DLOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
+                                   << logging::SystemErrorCodeToString(hr);
+        break;
+      }
+    }
+  }
+
+  *filter = capture_filter.Detach();
+  if (!*filter && SUCCEEDED(hr))
+    hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+
+  return hr;
+#else
   ScopedComPtr<IBaseFilter> capture_filter;
   for (int i = 0; i < kFilterSize; i++) {
     GUID guid = kFilterArray[i];
     std::string name = kFilterArrayName[i];
 
     if (name.compare(device_id) == 0) {
-
       HRESULT hr = ::CoCreateInstance(guid, NULL, CLSCTX_INPROC_SERVER,
           IID_PPV_ARGS(&capture_filter));
 
@@ -266,8 +336,68 @@ HRESULT DirectSoundAudioInputStream::GetDeviceFilter(const std::string& device_i
   }
 
   return E_NOTFOUND;
+#endif
+
 }
 
+HRESULT DirectSoundAudioInputStream::GetCrossbarFilter(const std::string& device_id,
+                                               IBaseFilter** filter) {
+  DCHECK(filter);
+
+  ScopedComPtr<ICreateDevEnum> dev_enum;
+  HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
+                                  IID_PPV_ARGS(&dev_enum));
+  if (FAILED(hr))
+    return hr;
+
+  ScopedComPtr<IEnumMoniker> enum_moniker;
+  hr = dev_enum->CreateClassEnumerator(AM_KSCATEGORY_CROSSBAR,
+                                       enum_moniker.GetAddressOf(), 0);
+  if (hr != S_OK) {
+    return hr;
+  }
+
+  ScopedComPtr<IBaseFilter> capture_filter;
+  for (ScopedComPtr<IMoniker> moniker;
+       enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
+       moniker.Reset()) {
+    ScopedComPtr<IPropertyBag> prop_bag;
+    hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
+    if (FAILED(hr))
+      continue;
+
+    // Find |device_id| via DevicePath, Description or FriendlyName, whichever
+    // is available first and is a VT_BSTR (i.e. String) type.
+
+    static const wchar_t* kPropertyNames[] = {
+    //L"DevicePath", L"Description",
+                                              L"FriendlyName"};
+
+    ScopedVariant name;
+    for (const auto* property_name : kPropertyNames) {
+      prop_bag->Read(property_name, name.Receive(), 0);
+      if (name.type() == VT_BSTR)
+        break;
+    }
+
+    if (name.type() == VT_BSTR) {
+      const std::string device_path(base::SysWideToUTF8(V_BSTR(name.ptr())));
+      if (device_path.compare(device_id) == 0) {
+        // We have found the requested device
+        hr = moniker->BindToObject(0, 0, IID_PPV_ARGS(&capture_filter));
+        DLOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
+                                   << logging::SystemErrorCodeToString(hr);
+        break;
+      }
+    }
+  }
+
+  *filter = capture_filter.Detach();
+  if (!*filter && SUCCEEDED(hr))
+    hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+
+  return hr;
+}
 
 
 bool DirectSoundAudioInputStream::Open() {
@@ -445,6 +575,22 @@ void DirectSoundAudioInputStream::Run() {
   fifo_.reset(new AudioBlockFifo(format_.Format.nChannels, packet_size_frames_,
                                  buffers_required));
 
+#ifdef AVERMEDIA
+  hr = graph_builder_->ConnectDirect(output_video_crossbar_pin_.Get(),
+      input_video_capture_pin_.Get(), NULL);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = graph_builder_->ConnectDirect(output_audio_crossbar_pin_.Get(),
+      input_audio_capture_pin_.Get(), NULL);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+#endif
+
   LOG(INFO) << "DirectSoundAudioInputStream::Run() about to connect direct (audio) ";
   hr = graph_builder_->ConnectDirect(output_audio_capture_pin_.Get(),
       input_audio_sink_pin_.Get(), NULL);
@@ -505,14 +651,27 @@ HRESULT DirectSoundAudioInputStream::SetCaptureDevice() {
 ////// open
   HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
 
+#ifdef AVERMEDIA
+  hr = GetCrossbarFilter("AVerMedia GC550 Crossbar",
+                         crossbar_filter_.GetAddressOf());
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to get crossbar filter", hr);
+  if (!crossbar_filter_.Get())
+    return hr;
+#endif
+
+
+#ifdef AVERMEDIA
+  hr = GetDeviceFilter("AVerMedia GC550 Video Capture",
+                      capture_filter_.GetAddressOf());
+#else
   hr = GetDeviceFilter(device_id_,
                       capture_filter_.GetAddressOf());
+#endif
   DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
   if (!capture_filter_.Get())
     return hr;
 
   // Create the sink filter used for receiving Captured frames.
-
   audio_sink_filter_ = new AudioSinkFilter(this);
   if (audio_sink_filter_.get() == NULL) {
     LOG(ERROR) << "Failed to create sink filter";
@@ -557,17 +716,54 @@ HRESULT DirectSoundAudioInputStream::SetCaptureDevice() {
   if (FAILED(hr))
     return hr;
 
-  // DebugBreak();
-
 #ifdef ALAX_AUDIO_TEST
   output_audio_capture_pin_ = GetPin(capture_filter_.Get(), PINDIR_OUTPUT,
       GUID_NULL, GUID_NULL);
 #else 
+
+#ifdef AVERMEDIA
+#if 0
+  hr = capture_graph_builder_->FindPin(crossbar_filter_.Get(), PINDIR_OUTPUT,
+      &GUID_NULL, &MEDIATYPE_Video, TRUE, 
+      0, &output_video_crossbar_pin_);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to find crossbar video output pin", hr);
+  if (FAILED(hr))
+    return hr;
+#endif
+  output_video_crossbar_pin_ = GetPinByName(crossbar_filter_.Get(), PINDIR_OUTPUT, 
+     "0: Video Decoder Out");
+  if (output_video_crossbar_pin_.Get() == NULL) {
+    LOG(ERROR) << "Failed to get crossbar video pin";
+    return E_OUTOFMEMORY;
+  }
+
+  output_audio_crossbar_pin_ = GetPinByName(crossbar_filter_.Get(), PINDIR_OUTPUT, 
+     "1: Audio Decoder Out");
+  if (output_audio_crossbar_pin_.Get() == NULL) {
+    LOG(ERROR) << "Failed to get crossbar audio pin";
+    return E_OUTOFMEMORY;
+  }
+
+  // capture filter input pins
+  input_video_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_INPUT, 
+     /*"Analog Video In"*/ "0");
+  if (input_video_capture_pin_.Get() == NULL) {
+    LOG(ERROR) << "Failed to get video input pin";
+    return E_OUTOFMEMORY;
+  }
+
+  input_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_INPUT, 
+     /*"Audio In"*/ "1");
+  if (input_audio_capture_pin_.Get() == NULL) {
+    LOG(ERROR) << "Failed to get audio input pin";
+    return E_OUTOFMEMORY;
+  }
+#endif
+
   hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
       &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 
       0, &output_video_capture_pin_);
-
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to find video output pin", hr);
   if (FAILED(hr))
     return hr;
 
@@ -579,7 +775,6 @@ HRESULT DirectSoundAudioInputStream::SetCaptureDevice() {
   hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
       &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE, 
       0, &output_audio_capture_pin_);
-
   DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr);
   if (FAILED(hr))
     return hr;
@@ -598,6 +793,13 @@ HRESULT DirectSoundAudioInputStream::SetCaptureDevice() {
   PrintPinInfo(output_video_capture_pin_.Get());
 #endif
 
+#ifdef AVERMEDIA
+  hr = graph_builder_->AddFilter(crossbar_filter_.Get(), NULL);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the crossbar to the graph",
+                              hr);
+  if (FAILED(hr))
+    return hr;
+#endif
 
   hr = graph_builder_->AddFilter(capture_filter_.Get(), NULL);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to add the capture device to the graph",
@@ -837,6 +1039,41 @@ ScopedComPtr<IPin> DirectSoundAudioInputStream::GetPin(IBaseFilter* filter,
   return pin;
 }
 
+ScopedComPtr<IPin> DirectSoundAudioInputStream::GetPinByName(IBaseFilter* filter,
+                                                 PIN_DIRECTION pin_dir,
+                                                 const std::string& pin_name) {
+  ScopedComPtr<IPin> pin;
+  ScopedComPtr<IEnumPins> pin_enum;
+  HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
+  if (pin_enum.Get() == NULL)
+    return pin;
+
+  // Get first unconnected pin.
+  hr = pin_enum->Reset();  // set to first pin
+  while ((hr = pin_enum->Next(1, pin.GetAddressOf(), NULL)) == S_OK) {
+    PIN_DIRECTION this_pin_dir = static_cast<PIN_DIRECTION>(-1);
+    hr = pin->QueryDirection(&this_pin_dir);
+    if (pin_dir == this_pin_dir) {
+      PrintPinInfo(pin.Get());
+
+      WCHAR *pin_id = new WCHAR[128];
+      hr = pin->QueryId(reinterpret_cast<LPWSTR*>(&pin_id));
+      if (SUCCEEDED(hr)) {
+        const std::string this_pin_name(base::SysWideToUTF8(pin_id));
+
+        if (pin_name.compare(this_pin_name) == 0) {
+          delete[] pin_id;
+          return pin;
+        }
+      }
+      delete[] pin_id;
+    }
+    pin.Reset();
+  }
+
+  DCHECK(!pin.Get());
+  return pin;
+}
 
 void DirectSoundAudioInputStream::ScopedMediaType::Free() {
   if (!media_type_)
@@ -915,19 +1152,7 @@ void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
   // size which was specified at construction.
   float volume = 0.0f;
 
-  static base::TimeTicks last_write;
-
   while (fifo_->available_blocks()) {
-    base::TimeTicks now;
-    now = base::TimeTicks::Now();
-    base::TimeDelta delta;
-    delta = now - last_write;
-    if (delta.InMilliseconds() < 5) {
-      base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(5) - delta);
-      LOG(INFO) << "delta: " << delta << " slept: " << (base::TimeDelta::FromMilliseconds(5) - delta);
-    } else {
-      LOG(INFO) << "delta: " << delta;
-    }
     if (converter_) {
       if (imperfect_buffer_size_conversion_ &&
           fifo_->available_blocks() == 1) {
@@ -948,8 +1173,6 @@ void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
       capture_time += AudioTimestampHelper::FramesToTime(
           packet_size_frames_, format_.Format.nSamplesPerSec);
     }
-    last_write = now;
-
   }
 }
 
