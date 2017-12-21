@@ -32,7 +32,7 @@ using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 using base::win::ScopedVariant;
 
-#define ALAX_AUDIO_TEST
+#undef ALAX_AUDIO_TEST
 
 GUID kElgatoGameCaptureHD = {0x39f50f4c,
                           0x99E1,
@@ -203,12 +203,6 @@ DirectSoundAudioInputStream::DirectSoundAudioInputStream(AudioManagerWin* manage
   packet_size_bytes_ = params.GetBytesPerBuffer();
 
   // 3840
-#ifdef ALAX_AUDIO_TEST
-  // mono
-  endpoint_buffer_size_frames_ = 3840 / (format->nBlockAlign / 2); // 20 * 480 / format->nBlockAlign;
-#else
-  endpoint_buffer_size_frames_ = 4608 / format->nBlockAlign; // 20 * 480 / format->nBlockAlign;
-#endif
 
   DVLOG(1) << "Number of bytes per audio frame  : " << frame_size_;
   DVLOG(1) << "Number of audio frames per packet: " << packet_size_frames_;
@@ -310,6 +304,8 @@ void DirectSoundAudioInputStream::Start(AudioInputCallback* callback) {
       base::SimpleThread::Options(base::ThreadPriority::REALTIME_AUDIO)));
   capture_thread_->Start();
 
+  StartAgc();
+
   started_ = true; // SUCCEEDED(hr);
 
   LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Start() " << started_;
@@ -322,6 +318,8 @@ void DirectSoundAudioInputStream::Stop() {
 
   if (!started_)
     return;
+
+  StopAgc();
 
   if (capture_thread_) {
     SetEvent(stop_capture_event_.Get());
@@ -388,7 +386,7 @@ double DirectSoundAudioInputStream::GetMaxVolume() {
 
   // The effective volume value is always in the range 0.0 to 1.0, hence
   // we can return a fixed value (=1.0) here.
-  return 1.0;
+  return 0.0;
 }
 
 void DirectSoundAudioInputStream::SetVolume(double volume) {
@@ -410,7 +408,7 @@ double DirectSoundAudioInputStream::GetVolume() {
     return 0.0;
 
   // Retrieve the current volume level. The value is in the range 0.0 to 1.0.
-  return static_cast<double>(1.0f);
+  return static_cast<double>(0.0f);
 }
 
 bool DirectSoundAudioInputStream::IsMuted() {
@@ -430,9 +428,13 @@ void DirectSoundAudioInputStream::Run() {
   HRESULT hr = SetCaptureDevice();
   LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Run() - SetCaptureDevice - " << hr;
 
-  size_t capture_buffer_size =
+  size_t capture_buffer_size = 24 * 24 /*ms*/ * 48 /*sample rate*/ * frame_size_;
+#if 0
+  endpoint_buffer_size_frames_ = 1056 * 2;
+  size_t capture_buffer_size = 
     std::max(2 * endpoint_buffer_size_frames_ * frame_size_,
-        2 * packet_size_frames_ * frame_size_);
+      2 * packet_size_frames_ * frame_size_);
+#endif
   int buffers_required = capture_buffer_size / packet_size_bytes_;
   if (converter_ && imperfect_buffer_size_conversion_)
     ++buffers_required;
@@ -878,12 +880,12 @@ void DirectSoundAudioInputStream::ScopedMediaType::DeleteMediaType(
 void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
                                           int length,
                                           base::TimeDelta timestamp) {
+  static base::TimeDelta first_timestamp_;
   if (first_ref_time_.is_null()) {
     first_ref_time_ = base::TimeTicks::Now();
-    LOG(INFO) << "frame received length: " << length;
+    first_timestamp_ = timestamp;
   }
-
-  base::TimeTicks reference_time = base::TimeTicks::Now();
+  timestamp -= first_timestamp_;
 
   // There is a chance that the platform does not provide us with the timestamp,
   // in which case, we use reference time to calculate a timestamp.
@@ -893,7 +895,14 @@ void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
   // |audio_samples_ready_event_| has been set.
   UINT32 num_frames_to_read = length / format_.Format.nBlockAlign; // (length / nBlockAlign)
 
-  base::TimeTicks capture_time = first_ref_time_ + timestamp;
+  static base::TimeDelta last_called;
+  static uint64_t frame_count = 0;
+
+  base::TimeTicks capture_time = first_ref_time_ + timestamp; // + timestamp;
+
+//  LOG(INFO) << "frame received length: " << length << ", timestamp: " << timestamp << " delta: " << (timestamp - last_called) << ", capture_time: " << capture_time << ", first_ref_time: " << first_ref_time_;
+
+  last_called = timestamp;
 
   // Adjust |capture_time| for the FIFO before pushing.
   capture_time -= AudioTimestampHelper::FramesToTime(
@@ -904,9 +913,21 @@ void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
 
   // Deliver captured data to the registered consumer using a packet
   // size which was specified at construction.
+  float volume = 0.0f;
 
-  float volume = 1.0f;
+  static base::TimeTicks last_write;
+
   while (fifo_->available_blocks()) {
+    base::TimeTicks now;
+    now = base::TimeTicks::Now();
+    base::TimeDelta delta;
+    delta = now - last_write;
+    if (delta.InMilliseconds() < 5) {
+      base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(5) - delta);
+      LOG(INFO) << "delta: " << delta << " slept: " << (base::TimeDelta::FromMilliseconds(5) - delta);
+    } else {
+      LOG(INFO) << "delta: " << delta;
+    }
     if (converter_) {
       if (imperfect_buffer_size_conversion_ &&
           fifo_->available_blocks() == 1) {
@@ -927,6 +948,8 @@ void DirectSoundAudioInputStream::FrameReceived(const uint8_t* buffer,
       capture_time += AudioTimestampHelper::FramesToTime(
           packet_size_frames_, format_.Format.nSamplesPerSec);
     }
+    last_write = now;
+
   }
 }
 
