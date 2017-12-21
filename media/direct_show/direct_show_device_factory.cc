@@ -36,7 +36,8 @@ using base::win::ScopedVariant;
 namespace media {
 
   DirectShowDeviceFactory::DirectShowDeviceFactory():
-    device_descriptors_()
+    device_descriptors_(),
+    fake_list_(nullptr)
   {
     LOG(INFO) << __func__ ;
   }
@@ -59,6 +60,16 @@ namespace media {
     return false;
   }
 
+  DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
+    /* FIXME:
+     * * get correct enumeration
+     * * get from list and if not return;
+     */
+    if (fake_list_ == NULL) {
+       fake_list_ = new DirectShow(device_id);
+    }
+    return fake_list_;
+  }
 
   /*
    * [ ] should this run on it's own thread?

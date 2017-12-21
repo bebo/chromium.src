@@ -9,6 +9,7 @@
 
 #include "base/macros.h"
 #include "media/base/media_export.h"
+#include "media/direct_show/direct_show.h"
 
 namespace base {
   template <typename Type>
@@ -43,12 +44,16 @@ namespace media {
       static DirectShowDeviceFactory* GetInstance();
       void GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors);
       bool IsDirectShowDevice(std::string device_id);
+      DirectShow *GetController(std::string device_id);
 
     private:
       DirectShowDeviceFactory();
       virtual ~DirectShowDeviceFactory();
-      DirectShowDeviceDescriptors device_descriptors_;
       friend struct base::StaticMemorySingletonTraits<DirectShowDeviceFactory>;
+
+      DirectShowDeviceDescriptors device_descriptors_;
+      DirectShow* fake_list_;
+
       DISALLOW_COPY_AND_ASSIGN(DirectShowDeviceFactory);
   };
 

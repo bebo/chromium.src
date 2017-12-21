@@ -444,8 +444,6 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
              VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
     //TODO
     LOG(ERROR) << "DON'T FORGET TO IMPLEMENT ME";
-    DirectShow *direct_show = DirectShow::GetInstance();
-    direct_show->hi();
 
   } else {
     NOTREACHED();

@@ -160,7 +160,7 @@ HRESULT AudioSinkInputPin::Receive(IMediaSample* sample) {
     timestamp = base::TimeDelta::FromMicroseconds(start_time / 10);
   }
 
-  observer_->FrameReceived(buffer, length, timestamp);
+  observer_->AudioFrameReceived(buffer, length, timestamp);
   return S_OK;
 }
 

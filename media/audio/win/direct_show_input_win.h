@@ -8,8 +8,8 @@
 #ifndef MEDIA_AUDIO_WIN_AUDIO_DIRECTSOUND_INPUT_WIN_H_
 #define MEDIA_AUDIO_WIN_AUDIO_DIRECTSOUND_INPUT_WIN_H_
 
-#include <Audioclient.h>
-#include <MMDeviceAPI.h>
+/* #include <Audioclient.h> */
+/* #include <MMDeviceAPI.h> */
 #include <endpointvolume.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -23,19 +23,17 @@
 #include "base/compiler_specific.h"
 #include "base/macros.h"
 #include "base/sequence_checker.h"
-#include "base/threading/platform_thread.h"
-#include "base/threading/simple_thread.h"
-#include "base/win/scoped_co_mem.h"
-#include "base/win/scoped_com_initializer.h"
-#include "base/win/scoped_comptr.h"
-#include "base/win/scoped_variant.h"
-#include "base/win/scoped_handle.h"
+/* #include "base/win/scoped_co_mem.h" */
+/* #include "base/win/scoped_com_initializer.h" */
+/* #include "base/win/scoped_comptr.h" */
+/* #include "base/win/scoped_variant.h" */
+/* #include "base/win/scoped_handle.h" */
 #include "media/audio/agc_audio_stream.h"
 #include "media/base/audio_converter.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/media_export.h"
-#include "media/direct_show/audio_sink_filter.h"
-#include "media/direct_show/audio_sink_input_pin.h"
+#include "media/direct_show/audio_sink_filter_observer.h"
+#include "media/direct_show/direct_show.h"
 
 namespace media {
 
@@ -47,29 +45,8 @@ class AudioManagerWin;
 class MEDIA_EXPORT DirectSoundAudioInputStream
     : public AgcAudioStream<AudioInputStream>,
       public AudioConverter::InputCallback,
-      public base::DelegateSimpleThread::Delegate,
       public AudioSinkFilterObserver {
  public:
-  // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
-  // we free the structure when exiting the scope.  DCHECKing is also done to
-  // avoid memory leaks.
-  class ScopedMediaType {
-   public:
-    ScopedMediaType() : media_type_(NULL) {}
-    ~ScopedMediaType() { Free(); }
-
-    AM_MEDIA_TYPE* operator->() { return media_type_; }
-    AM_MEDIA_TYPE* get() { return media_type_; }
-    void Free();
-    AM_MEDIA_TYPE** Receive();
-
-   private:
-    void FreeMediaType(AM_MEDIA_TYPE* mt);
-    void DeleteMediaType(AM_MEDIA_TYPE* mt);
-
-    AM_MEDIA_TYPE* media_type_;
-};
-
   // The ctor takes all the usual parameters, plus |manager| which is the
   // the audio manager who is creating this object.
   DirectSoundAudioInputStream(AudioManagerWin* manager,
@@ -93,44 +70,20 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   bool started() const { return started_; }
 
  private:
-  // DelegateSimpleThread::Delegate implementation.
-  void Run() override;
 
-  // Issues the OnError() callback to the |sink_|.
-  void HandleError(HRESULT err);
-
-  // The Open() method is divided into these sub methods.
-  HRESULT SetCaptureDevice();
-  HRESULT GetAudioEngineStreamFormat();
-  bool DesiredFormatIsSupported();
-  void ResetFormat(WAVEFORMATEX *format);
-  HRESULT InitializeAudioEngine();
-  void ReportOpenResult() const;
+  /* // Issues the OnError() callback to the |sink_|. */
+  /* void HandleError(HRESULT err); */
 
   // AudioConverter::InputCallback implementation.
   double ProvideInput(AudioBus* audio_bus, uint32_t frames_delayed) override;
 
-  static void GetPinCapabilityList(
-      base::win::ScopedComPtr<IBaseFilter> capture_filter,
-      base::win::ScopedComPtr<IPin> output_capture_pin,
-      bool query_detailed_frame_rates);
-  static HRESULT GetDeviceFilter(const std::string& device_id,
-                                 IBaseFilter** filter);
-  static HRESULT GetCrossbarFilter(const std::string& device_id,
-                                 IBaseFilter** filter);
-  static base::win::ScopedComPtr<IPin> GetPin(IBaseFilter* filter,
-                                              PIN_DIRECTION pin_dir,
-                                              REFGUID category,
-                                              REFGUID major_type);
-  static base::win::ScopedComPtr<IPin> GetPinByName(IBaseFilter* filter,
-                                                    PIN_DIRECTION pin_dir,
-                                                    const std::string& pin_name);
 
   // AudioSinkFilterObserverer
-  void FrameReceived(const uint8_t* buffer,
+  void AudioFrameReceived(const uint8_t* buffer,
                      int length,
                      base::TimeDelta timestamp) override;
 
+  void FormatChanged(WAVEFORMATEXTENSIBLE *format) override;
 
   // Used to track down where we fail during initialization which at the
   // moment seems to be happening frequently and we're not sure why.
@@ -160,16 +113,13 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   // Our creator, the audio manager needs to be notified when we close.
   AudioManagerWin* const manager_;
 
-  // Capturing is driven by this thread (which has no message loop).
-  // All OnData() callbacks will be called from this thread.
-  std::unique_ptr<base::DelegateSimpleThread> capture_thread_;
-
-  // Contains the desired audio format which is set up at construction.
-  WAVEFORMATEXTENSIBLE format_;
+  DirectShow* direct_show_;
 
   bool opened_ = false;
   bool started_ = false;
   StreamOpenResult open_result_ = OPEN_RESULT_OK;
+
+  WAVEFORMATEXTENSIBLE *capture_format_ = NULL;
 
   // Size in bytes of each audio frame (4 bytes for 16-bit stereo PCM)
   size_t frame_size_ = 0;
@@ -199,13 +149,13 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   // Windows Multimedia Device (MMDevice) API interfaces.
 
   // An IMMDevice interface which represents an audio endpoint device.
-  base::win::ScopedComPtr<IMMDevice> endpoint_device_;
+  /* base::win::ScopedComPtr<IMMDevice> endpoint_device_; */
 
   // Windows Audio Session API (WASAPI) interfaces.
 
   // An IAudioClient interface which enables a client to create and initialize
   // an audio stream between an audio application and the audio engine.
-  base::win::ScopedComPtr<IAudioClient> audio_client_;
+  /* base::win::ScopedComPtr<IAudioClient> audio_client_; */
 
   // Loopback IAudioClient doesn't support event-driven mode, so a separate
   // IAudioClient is needed to receive notifications when data is available in
@@ -213,34 +163,34 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   // while |audio_render_client_for_loopback_| is used to get notifications
   // when a new buffer is ready. See comment in InitializeAudioEngine() for
   // details.
-  base::win::ScopedComPtr<IAudioClient> audio_render_client_for_loopback_;
+  /* base::win::ScopedComPtr<IAudioClient> audio_render_client_for_loopback_; */
 
   // The IAudioCaptureClient interface enables a client to read input data
   // from a capture endpoint buffer.
-  base::win::ScopedComPtr<IAudioCaptureClient> audio_capture_client_;
+  /* base::win::ScopedComPtr<IAudioCaptureClient> audio_capture_client_; */
 
   // The ISimpleAudioVolume interface enables a client to control the
   // master volume level of an audio session.
   // The volume-level is a value in the range 0.0 to 1.0.
   // This interface does only work with shared-mode streams.
-  base::win::ScopedComPtr<ISimpleAudioVolume> simple_audio_volume_;
+  /* base::win::ScopedComPtr<ISimpleAudioVolume> simple_audio_volume_; */
 
   // The IAudioEndpointVolume allows a client to control the volume level of
   // the whole system.
-  base::win::ScopedComPtr<IAudioEndpointVolume> system_audio_volume_;
+  /* base::win::ScopedComPtr<IAudioEndpointVolume> system_audio_volume_; */
 
   // The audio engine will signal this event each time a buffer has been
   // recorded.
-  base::win::ScopedHandle audio_samples_ready_event_;
+  /* base::win::ScopedHandle audio_samples_ready_event_; */
 
   // This event will be signaled when capturing shall stop.
-  base::win::ScopedHandle stop_capture_event_;
+  /* base::win::ScopedHandle stop_capture_event_; */
 
   // Never set it through external API. Only used when |device_id_| ==
   // kLoopbackWithMuteDeviceId.
   // True, if we have muted the system audio for the stream capturing, and
   // indicates that we need to unmute the system audio when stopping capturing.
-  bool mute_done_ = false;
+  /* bool mute_done_ = false; */
 
   // Used for the captured audio on the callback thread.
   std::unique_ptr<AudioBlockFifo> fifo_;
@@ -254,25 +204,6 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   const AudioParameters params_;
 
   base::TimeTicks first_ref_time_;
-
-  base::win::ScopedComPtr<IBaseFilter> capture_filter_;
-  base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
-  base::win::ScopedComPtr<IBaseFilter> null_renderer_;
-
-  base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
-  base::win::ScopedComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
-
-  base::win::ScopedComPtr<IMediaControl> media_control_;
-  base::win::ScopedComPtr<IPin> input_audio_sink_pin_;
-  base::win::ScopedComPtr<IPin> null_renderer_pin_;
-  base::win::ScopedComPtr<IPin> input_video_capture_pin_;
-  base::win::ScopedComPtr<IPin> input_audio_capture_pin_;
-  base::win::ScopedComPtr<IPin> output_video_capture_pin_;
-  base::win::ScopedComPtr<IPin> output_audio_capture_pin_;
-  base::win::ScopedComPtr<IPin> output_video_crossbar_pin_;
-  base::win::ScopedComPtr<IPin> output_audio_crossbar_pin_;
-
-  scoped_refptr<AudioSinkFilter> audio_sink_filter_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 
