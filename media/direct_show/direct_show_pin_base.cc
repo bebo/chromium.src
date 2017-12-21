@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "media/audio/win/audio_pin_base_win.h"
-#include "media/audio/win/audio_sink_filter_win.h"
+#include "media/direct_show/direct_show_pin_base.h"
+#include "media/direct_show/audio_sink_filter.h"
 
 #include "base/logging.h"
 

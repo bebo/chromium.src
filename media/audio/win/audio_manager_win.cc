@@ -27,7 +27,6 @@
 #include "media/audio/audio_io.h"
 #include "media/audio/win/audio_device_listener_win.h"
 #include "media/audio/win/audio_low_latency_input_win.h"
-#include "media/audio/win/directsound_input_win.h"
 #include "media/audio/win/audio_low_latency_output_win.h"
 #include "media/audio/win/core_audio_util_win.h"
 #include "media/audio/win/device_enumeration_win.h"
@@ -38,6 +37,7 @@
 #include "media/base/limits.h"
 #include "media/base/media_switches.h"
 #include "media/direct_show/direct_show_device_factory.h"
+#include "media/audio/win/direct_show_input_win.h"
 
 // The following are defined in various DDK headers, and we (re)define them here
 // to avoid adding the DDK as a chrome dependency.

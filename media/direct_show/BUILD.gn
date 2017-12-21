@@ -13,6 +13,15 @@ source_set("direct_show") {
     "direct_show.cc",
     "direct_show_device_factory.h",
     "direct_show_device_factory.cc",
+    "direct_show_filter_base.h",
+    "direct_show_filter_base.cc",
+    "direct_show_pin_base.h",
+    "direct_show_pin_base.cc",
+    "audio_sink_filter_observer.h",
+    "audio_sink_filter.h",
+    "audio_sink_filter.cc",
+    "audio_sink_input_pin.h",
+    "audio_sink_input_pin.cc",
   ]
 
   configs += [ "//media:subcomponent_config" ]

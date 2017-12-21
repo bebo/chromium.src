@@ -9,8 +9,8 @@
 #define MEDIA_AUDIO_WIN_SINK_INPUT_PIN_WIN_H_
 
 #include "base/macros.h"
-#include "media/audio/win/audio_pin_base_win.h"
-#include "media/audio/win/audio_sink_filter_win.h"
+#include "media/direct_show/direct_show_pin_base.h"
+#include "media/direct_show/audio_sink_filter.h"
 
 namespace media {
 

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "media/audio/win/audio_filter_base_win.h"
+#include "media/direct_show/direct_show_filter_base.h"
 
 #pragma comment(lib, "strmiids.lib")
 
@@ -38,7 +38,7 @@ class PinEnumerator final : public IEnumPins,
   STDMETHOD(Next)(ULONG count, IPin** pins, ULONG* fetched) override {
     ULONG pins_fetched = 0;
     while (pins_fetched < count && filter_->NoOfPins() > index_) {
-      IPin* pin = filter_->GetPin(index_++);
+      IPin* pin = filter_->GetPin((int)index_++); // FIXME not shure why cast is needed
       pin->AddRef();
       pins[pins_fetched++] = pin;
     }

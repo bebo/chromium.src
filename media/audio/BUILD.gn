@@ -207,17 +207,8 @@ source_set("audio") {
       "win/device_enumeration_win.h",
       "win/waveout_output_win.cc",
       "win/waveout_output_win.h",
-      "win/audio_filter_base_win.cc",
-      "win/audio_filter_base_win.h",
-      "win/audio_pin_base_win.cc",
-      "win/audio_pin_base_win.h",
-      "win/audio_sink_filter_observer_win.h",
-      "win/audio_sink_filter_win.cc",
-      "win/audio_sink_filter_win.h",
-      "win/audio_sink_input_pin_win.cc",
-      "win/audio_sink_input_pin_win.h",
-      "win/directsound_input_win.cc",
-      "win/directsound_input_win.h",
+      "win/direct_show_input_win.h",
+      "win/direct_show_input_win.cc",
     ]
 
     libs += [

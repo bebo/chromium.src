@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "media/audio/win/audio_sink_input_pin_win.h"
+#include "media/direct_show/audio_sink_input_pin.h"
 
 #include <cstring>
 

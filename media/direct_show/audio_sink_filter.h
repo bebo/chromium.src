@@ -13,8 +13,8 @@
 
 #include "base/macros.h"
 #include "base/memory/ref_counted.h"
-#include "media/audio/win/audio_filter_base_win.h"
-#include "media/audio/win/audio_sink_filter_observer_win.h"
+#include "media/direct_show/direct_show_filter_base.h"
+#include "media/direct_show/audio_sink_filter_observer.h"
 
 namespace media {
 

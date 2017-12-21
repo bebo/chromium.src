@@ -34,8 +34,8 @@
 #include "media/base/audio_converter.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/media_export.h"
-#include "media/audio/win/audio_sink_filter_win.h"
-#include "media/audio/win/audio_sink_input_pin_win.h"
+#include "media/direct_show/audio_sink_filter.h"
+#include "media/direct_show/audio_sink_input_pin.h"
 
 namespace media {
 
