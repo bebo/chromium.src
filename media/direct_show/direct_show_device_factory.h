@@ -42,10 +42,12 @@ namespace media {
     public:
       static DirectShowDeviceFactory* GetInstance();
       void GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors);
+      bool IsDirectShowDevice(std::string device_id);
 
     private:
       DirectShowDeviceFactory();
       virtual ~DirectShowDeviceFactory();
+      DirectShowDeviceDescriptors device_descriptors_;
       friend struct base::StaticMemorySingletonTraits<DirectShowDeviceFactory>;
       DISALLOW_COPY_AND_ASSIGN(DirectShowDeviceFactory);
   };

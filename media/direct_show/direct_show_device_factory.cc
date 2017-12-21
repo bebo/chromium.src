@@ -35,7 +35,9 @@ using base::win::ScopedVariant;
 
 namespace media {
 
-  DirectShowDeviceFactory::DirectShowDeviceFactory() {
+  DirectShowDeviceFactory::DirectShowDeviceFactory():
+    device_descriptors_()
+  {
     LOG(INFO) << __func__ ;
   }
 
@@ -47,6 +49,16 @@ namespace media {
     return base::Singleton<DirectShowDeviceFactory, base::StaticMemorySingletonTraits<DirectShowDeviceFactory>>::get();
   }
 
+  bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
+
+    for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
+      if (ds.device_id == device_id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
 
   /*
    * [ ] should this run on it's own thread?
@@ -55,6 +67,8 @@ namespace media {
 
     DCHECK(device_descriptors);
     DVLOG(1) << __func__;
+
+    DirectShowDeviceDescriptors update;
 
     ScopedComPtr<ICreateDevEnum> dev_enum;
     HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
@@ -106,8 +120,10 @@ namespace media {
         const std::string model_id = "TEST";
 
         device_descriptors->emplace_back(device_name, id, model_id);
+        update.emplace_back(device_name, id, model_id);
       }
     }
+    device_descriptors_ = update;
   }
 
   DirectShowDeviceDescriptor::DirectShowDeviceDescriptor(

@@ -37,7 +37,7 @@
 #include "media/base/channel_layout.h"
 #include "media/base/limits.h"
 #include "media/base/media_switches.h"
-#include "media/direct_show/direct_show.h"
+#include "media/direct_show/direct_show_device_factory.h"
 
 // The following are defined in various DDK headers, and we (re)define them here
 // to avoid adding the DDK as a chrome dependency.
@@ -95,9 +95,6 @@ AudioManagerWin::AudioManagerWin(std::unique_ptr<AudioThread> audio_thread,
   // or do any other work.
   CoreAudioUtil::IsSupported();
 
-  DirectShow* direct_show = DirectShow::GetInstance();
-  direct_show->hi();
-
   SetMaxOutputStreamsAllowed(kMaxOutputStreams);
 
   // WARNING: This is executed on the UI loop, do not add any code here which
@@ -143,6 +140,7 @@ void AudioManagerWin::GetAudioDeviceNamesImpl(bool input,
   DCHECK(device_names->empty());
   // Enumerate all active audio-endpoint capture devices.
   if (input)  {
+
     GetInputDeviceNamesWin(device_names);
     AudioDeviceNames output_device_names;
     GetOutputDeviceNamesWin(&output_device_names);
@@ -267,7 +265,8 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
     const LogCallback& log_callback) {
   // Used for both AUDIO_PCM_LOW_LATENCY and AUDIO_PCM_LINEAR.
   DVLOG(1) << "MakeLowLatencyInputStream: " << device_id;
-  if (device_id.compare("loopback") == 0) { // HACK
+  if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
+    // FIXME: device_id
     return new DirectSoundAudioInputStream(this, params, "Elgato Game Capture HD");
   }
   return new WASAPIAudioInputStream(this, params, device_id);
