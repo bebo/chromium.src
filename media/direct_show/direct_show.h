@@ -131,6 +131,10 @@ class MEDIA_EXPORT DirectShow:
 
   bool running_ = false; // FIXME make atomic
 
+  bool has_audio_;
+  bool has_video_;
+
+
   base::win::ScopedComPtr<IBaseFilter> capture_filter_;
   base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
 

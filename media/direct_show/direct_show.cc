@@ -162,7 +162,9 @@ void PrintPinInfo(IPin* pin) {
 namespace media {
 
 DirectShow::DirectShow(std::string device_id)
-  : device_id_(device_id) {
+  : device_id_(device_id),
+  has_audio_(true),
+  has_video_(true){
   LOG(INFO) << __func__;
   friendly_name_ = "DirectShow";  // FIXME device name??
 
@@ -402,12 +404,17 @@ void DirectShow::Run() {
   }
 #endif
 
-  LOG(INFO) << "DirectShow::Run() about to connect direct (audio) ";
-  hr = graph_builder_->ConnectDirect(output_audio_capture_pin_.Get(),
-      input_audio_sink_pin_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
-  if (FAILED(hr)) {
-    return;
+  if (has_audio_) {
+    LOG(INFO) << "DirectShow::Run() about to connect direct (audio) ";
+    hr = graph_builder_->ConnectDirect(output_audio_capture_pin_.Get(),
+        input_audio_sink_pin_.Get(), NULL);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
+    if (FAILED(hr)) {
+      return;
+    }
+
+    LOG(INFO) << "output_audio_capture_pin_ (2)";
+    PrintPinInfo(output_audio_capture_pin_.Get());
   }
 
 #ifndef ALAX_AUDIO_TEST
@@ -420,9 +427,6 @@ void DirectShow::Run() {
     return;
   }
 #endif
-
-  LOG(INFO) << "output_audio_capture_pin_ (2)";
-  PrintPinInfo(output_audio_capture_pin_.Get());
 
   LOG(INFO) << "output_video_capture_pin_ (2)";
   PrintPinInfo(output_video_capture_pin_.Get());
@@ -569,24 +573,26 @@ HRESULT DirectShow::SetCaptureDevice() {
     return E_OUTOFMEMORY;
   }
 
-  output_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_OUTPUT, /* "Audio" */ "1");
+  /* output_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_OUTPUT, /1* "Audio" *1/ "1"); */
 
-  /* hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT, */
-  /*     &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE, */ 
-  /*     0, &output_audio_capture_pin_); */
-  /* DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr); */
-  /* if (FAILED(hr)) */
-  /*   return hr; */
+  hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
+      &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE, 
+      0, &output_audio_capture_pin_);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr);
+  if (FAILED(hr)) {
+    has_audio_ = false;
+  }
 
   if (output_audio_capture_pin_.Get() == NULL) {
     LOG(ERROR) << "Failed to get device audio pin";
-    return E_OUTOFMEMORY;
+    has_audio_ = false;
+  } else {
+    LOG(INFO) << "output_audio_capture_pin_";
+    PrintPinInfo(output_audio_capture_pin_.Get());
   }
 #endif
 
 #if 1
-  LOG(INFO) << "output_audio_capture_pin_";
-  PrintPinInfo(output_audio_capture_pin_.Get());
 
   LOG(INFO) << "output_video_capture_pin_";
   PrintPinInfo(output_video_capture_pin_.Get());
@@ -606,10 +612,12 @@ HRESULT DirectShow::SetCaptureDevice() {
   if (FAILED(hr))
     return hr;
 
+  if (has_audio_) {
   hr = graph_builder_->AddFilter(audio_sink_filter_.get(), NULL);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to add the audio sink filter to the graph", hr);
   if (FAILED(hr))
     return hr;
+  }
 
 #ifndef ALAX_AUDIO_TEST
   hr = graph_builder_->AddFilter(video_sink_filter_.get(), NULL);
