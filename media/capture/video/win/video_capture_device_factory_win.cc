@@ -23,6 +23,7 @@
 #include "media/base/win/mf_initializer.h"
 #include "media/capture/video/win/video_capture_device_mf_win.h"
 #include "media/capture/video/win/video_capture_device_win.h"
+#include "media/capture/video/win/video_capture_device_ds_av_win.h"
 
 using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
@@ -402,6 +403,21 @@ static void GetDeviceSupportedFormatsMediaFoundation(
   }
 }
 
+static void GetDeviceSupportedFormatsDirectShowAV(const Descriptor& descriptor,
+                                                VideoCaptureFormats* formats) {
+  DVLOG(1) << "GetDeviceSupportedFormatsDirectShowAV for "
+           << descriptor.display_name;
+  bool query_detailed_frame_rates = false; // TODO:
+  CapabilityList capability_list;
+  VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
+      descriptor.device_id, query_detailed_frame_rates, &capability_list);
+  for (const auto& entry : capability_list) {
+    formats->emplace_back(entry.supported_format);
+    DVLOG(1) << descriptor.display_name << " "
+             << VideoCaptureFormat::ToString(entry.supported_format);
+  }
+}
+
 // Returns true iff the current platform supports the Media Foundation API
 // and that the DLLs are available.  On Vista this API is an optional download
 // but the API is advertised as a part of Windows 7 and onwards.  However,
@@ -471,10 +487,17 @@ void VideoCaptureDeviceFactoryWin::GetSupportedFormats(
     const Descriptor& device,
     VideoCaptureFormats* formats) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  if (use_media_foundation_)
-    GetDeviceSupportedFormatsMediaFoundation(device, formats);
-  else
+  if (device.capture_api ==
+             VideoCaptureApi::WIN_DIRECT_SHOW) {
     GetDeviceSupportedFormatsDirectShow(device, formats);
+  } else if (device.capture_api ==
+             VideoCaptureApi::WIN_MEDIA_FOUNDATION) {
+    GetDeviceSupportedFormatsMediaFoundation(device, formats);
+  } else if (device.capture_api ==
+             VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
+    GetDeviceSupportedFormatsDirectShow(device, formats);
+  }
+
 }
 
 // static
