@@ -13,7 +13,7 @@ namespace media {
 class TypeEnumerator final : public IEnumMediaTypes,
                              public base::RefCounted<TypeEnumerator> {
  public:
-  explicit TypeEnumerator(AudioPinBase* pin) : pin_(pin), index_(0) {}
+  explicit TypeEnumerator(DirectShowPinBase* pin) : pin_(pin), index_(0) {}
 
   // Implement from IUnknown.
   STDMETHOD(QueryInterface)(REFIID iid, void** object_ptr) override {
@@ -106,21 +106,21 @@ class TypeEnumerator final : public IEnumMediaTypes,
     }
   }
 
-  scoped_refptr<AudioPinBase> pin_;
+  scoped_refptr<DirectShowPinBase> pin_;
   int index_;
 };
 
-AudioPinBase::AudioPinBase(IBaseFilter* owner) : owner_(owner) {
+DirectShowPinBase::DirectShowPinBase(IBaseFilter* owner) : owner_(owner) {
   memset(&current_media_type_, 0, sizeof(current_media_type_));
 }
 
-void AudioPinBase::SetOwner(IBaseFilter* owner) {
+void DirectShowPinBase::SetOwner(IBaseFilter* owner) {
   owner_ = owner;
 }
 
 // Called on an output pin to and establish a
 //   connection.
-STDMETHODIMP AudioPinBase::Connect(IPin* receive_pin,
+STDMETHODIMP DirectShowPinBase::Connect(IPin* receive_pin,
                               const AM_MEDIA_TYPE* media_type) {
   if (!receive_pin || !media_type)
     return E_POINTER;
@@ -135,7 +135,7 @@ STDMETHODIMP AudioPinBase::Connect(IPin* receive_pin,
 
 // Called from an output pin on an input pin to and establish a
 // connection.
-STDMETHODIMP AudioPinBase::ReceiveConnection(IPin* connector,
+STDMETHODIMP DirectShowPinBase::ReceiveConnection(IPin* connector,
                                         const AM_MEDIA_TYPE* media_type) {
   if (!IsMediaTypeValid(media_type))
     return VFW_E_TYPE_NOT_ACCEPTED;
@@ -146,7 +146,7 @@ STDMETHODIMP AudioPinBase::ReceiveConnection(IPin* connector,
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::Disconnect() {
+STDMETHODIMP DirectShowPinBase::Disconnect() {
   if (!connected_pin_.Get())
     return S_FALSE;
 
@@ -154,7 +154,7 @@ STDMETHODIMP AudioPinBase::Disconnect() {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::ConnectedTo(IPin** pin) {
+STDMETHODIMP DirectShowPinBase::ConnectedTo(IPin** pin) {
   *pin = connected_pin_.Get();
   if (!connected_pin_.Get())
     return VFW_E_NOT_CONNECTED;
@@ -163,14 +163,14 @@ STDMETHODIMP AudioPinBase::ConnectedTo(IPin** pin) {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::ConnectionMediaType(AM_MEDIA_TYPE* media_type) {
+STDMETHODIMP DirectShowPinBase::ConnectionMediaType(AM_MEDIA_TYPE* media_type) {
   if (!connected_pin_.Get())
     return VFW_E_NOT_CONNECTED;
   *media_type = current_media_type_;
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::QueryPinInfo(PIN_INFO* info) {
+STDMETHODIMP DirectShowPinBase::QueryPinInfo(PIN_INFO* info) {
   info->dir = PINDIR_INPUT;
   info->pFilter = owner_;
   if (owner_)
@@ -180,43 +180,43 @@ STDMETHODIMP AudioPinBase::QueryPinInfo(PIN_INFO* info) {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::QueryDirection(PIN_DIRECTION* pin_dir) {
+STDMETHODIMP DirectShowPinBase::QueryDirection(PIN_DIRECTION* pin_dir) {
   *pin_dir = PINDIR_INPUT;
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::QueryId(LPWSTR* id) {
+STDMETHODIMP DirectShowPinBase::QueryId(LPWSTR* id) {
   NOTREACHED();
   return E_OUTOFMEMORY;
 }
 
-STDMETHODIMP AudioPinBase::QueryAccept(const AM_MEDIA_TYPE* media_type) {
+STDMETHODIMP DirectShowPinBase::QueryAccept(const AM_MEDIA_TYPE* media_type) {
   return S_FALSE;
 }
 
-STDMETHODIMP AudioPinBase::EnumMediaTypes(IEnumMediaTypes** types) {
+STDMETHODIMP DirectShowPinBase::EnumMediaTypes(IEnumMediaTypes** types) {
   *types = new TypeEnumerator(this);
   (*types)->AddRef();
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::QueryInternalConnections(IPin** pins, ULONG* no_pins) {
+STDMETHODIMP DirectShowPinBase::QueryInternalConnections(IPin** pins, ULONG* no_pins) {
   return E_NOTIMPL;
 }
 
-STDMETHODIMP AudioPinBase::EndOfStream() {
+STDMETHODIMP DirectShowPinBase::EndOfStream() {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::BeginFlush() {
+STDMETHODIMP DirectShowPinBase::BeginFlush() {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::EndFlush() {
+STDMETHODIMP DirectShowPinBase::EndFlush() {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::NewSegment(REFERENCE_TIME start,
+STDMETHODIMP DirectShowPinBase::NewSegment(REFERENCE_TIME start,
                                  REFERENCE_TIME stop,
                                  double rate) {
   NOTREACHED();
@@ -224,16 +224,16 @@ STDMETHODIMP AudioPinBase::NewSegment(REFERENCE_TIME start,
 }
 
 // Inherited from IMemInputPin.
-STDMETHODIMP AudioPinBase::GetAllocator(IMemAllocator** allocator) {
+STDMETHODIMP DirectShowPinBase::GetAllocator(IMemAllocator** allocator) {
   return VFW_E_NO_ALLOCATOR;
 }
 
-STDMETHODIMP AudioPinBase::NotifyAllocator(IMemAllocator* allocator,
+STDMETHODIMP DirectShowPinBase::NotifyAllocator(IMemAllocator* allocator,
                                       BOOL read_only) {
   return S_OK;
 }
 
-STDMETHODIMP AudioPinBase::GetAllocatorRequirements(
+STDMETHODIMP DirectShowPinBase::GetAllocatorRequirements(
     ALLOCATOR_PROPERTIES* properties) {
   LOG(INFO) << "GetAllocatorRequirements in align: " << properties->cbAlign
     << ", size: " << properties->cbBuffer
@@ -245,7 +245,7 @@ STDMETHODIMP AudioPinBase::GetAllocatorRequirements(
   return E_NOTIMPL;
 }
 
-STDMETHODIMP AudioPinBase::ReceiveMultiple(IMediaSample** samples,
+STDMETHODIMP DirectShowPinBase::ReceiveMultiple(IMediaSample** samples,
                                       long sample_count,
                                       long* processed) {
   DCHECK(samples);
@@ -262,12 +262,12 @@ STDMETHODIMP AudioPinBase::ReceiveMultiple(IMediaSample** samples,
   return hr;
 }
 
-STDMETHODIMP AudioPinBase::ReceiveCanBlock() {
+STDMETHODIMP DirectShowPinBase::ReceiveCanBlock() {
   return S_FALSE;
 }
 
 // Inherited from IUnknown.
-STDMETHODIMP AudioPinBase::QueryInterface(REFIID id, void** object_ptr) {
+STDMETHODIMP DirectShowPinBase::QueryInterface(REFIID id, void** object_ptr) {
   if (id == IID_IPin || id == IID_IUnknown) {
     *object_ptr = static_cast<IPin*>(this);
   } else if (id == IID_IMemInputPin) {
@@ -279,17 +279,17 @@ STDMETHODIMP AudioPinBase::QueryInterface(REFIID id, void** object_ptr) {
   return S_OK;
 }
 
-STDMETHODIMP_(ULONG) AudioPinBase::AddRef() {
-  base::RefCounted<AudioPinBase>::AddRef();
+STDMETHODIMP_(ULONG) DirectShowPinBase::AddRef() {
+  base::RefCounted<DirectShowPinBase>::AddRef();
   return 1;
 }
 
-STDMETHODIMP_(ULONG) AudioPinBase::Release() {
-  base::RefCounted<AudioPinBase>::Release();
+STDMETHODIMP_(ULONG) DirectShowPinBase::Release() {
+  base::RefCounted<DirectShowPinBase>::Release();
   return 1;
 }
 
-AudioPinBase::~AudioPinBase() {
+DirectShowPinBase::~DirectShowPinBase() {
 }
 
 }  // namespace media

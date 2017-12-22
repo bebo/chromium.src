@@ -14,11 +14,8 @@
 
 namespace media {
 
-// Const used for converting Seconds to REFERENCE_TIME.
-extern const REFERENCE_TIME kSecondsToReferenceTime;
-
 // Input pin of the SinkFilter.
-class AudioSinkInputPin : public AudioPinBase {
+class AudioSinkInputPin : public DirectShowPinBase {
  public:
   AudioSinkInputPin(IBaseFilter* filter, AudioSinkFilterObserver* observer);
 
@@ -32,7 +29,6 @@ class AudioSinkInputPin : public AudioPinBase {
   ~AudioSinkInputPin() override;
 
   AudioSinkFilterObserver* observer_;
-  BITMAPINFOHEADER requested_info_header_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(AudioSinkInputPin);
 };

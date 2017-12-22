@@ -23,8 +23,13 @@
 #include "base/win/scoped_variant.h"
 #include "base/win/scoped_handle.h"
 
+#include "media/direct_show/video_sink_filter.h"
+#include "media/direct_show/video_sink_input_pin.h"
 #include "media/direct_show/audio_sink_filter.h"
 #include "media/direct_show/audio_sink_input_pin.h"
+#include "media/direct_show/video_capture_types.h"
+
+using media::directshow::DirectShowVideoCaptureFormat;
 
 namespace base {
   template <typename Type>
@@ -34,13 +39,16 @@ namespace media {
 
 class MEDIA_EXPORT DirectShow:
       public base::DelegateSimpleThread::Delegate,
-      public AudioSinkFilterObserver {
+      public AudioSinkFilterObserver,
+      public VideoSinkFilterObserver {
   public:
+    ~DirectShow();
     /* void GetVideoPinCapabilityList(bool query_detailed_framerate, &capabilities_); */
 
     void RegisterObserver(AudioSinkFilterObserver* observer);
     void UnregisterObserver(AudioSinkFilterObserver* observer);
-    ~DirectShow();
+    void RegisterObserver(VideoSinkFilterObserver* observer);
+    void UnregisterObserver(VideoSinkFilterObserver* observer);
 
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
   // we free the structure when exiting the scope.  DCHECKing is also done to
@@ -96,6 +104,11 @@ class MEDIA_EXPORT DirectShow:
   void AudioFrameReceived(const uint8_t* buffer,
                      int length,
                      base::TimeDelta timestamp) override;
+  void VideoFrameReceived(const uint8_t* buffer,
+                          int length,
+                          const DirectShowVideoCaptureFormat& format,
+                          base::TimeDelta timestamp) override;
+
 
   // Capturing is driven by this thread (which has no message loop).
   // All OnData() callbacks will be called from this thread.
@@ -105,19 +118,19 @@ class MEDIA_EXPORT DirectShow:
   WAVEFORMATEXTENSIBLE format_;
 
   AudioSinkFilterObserver* audio_observer_;
+  VideoSinkFilterObserver* video_observer_;
 
   bool running_ = false; // FIXME make atomic
 
   base::win::ScopedComPtr<IBaseFilter> capture_filter_;
   base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
-  base::win::ScopedComPtr<IBaseFilter> null_renderer_;
 
   base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
   base::win::ScopedComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
 
   base::win::ScopedComPtr<IMediaControl> media_control_;
   base::win::ScopedComPtr<IPin> input_audio_sink_pin_;
-  base::win::ScopedComPtr<IPin> null_renderer_pin_;
+  base::win::ScopedComPtr<IPin> input_video_sink_pin_;
   base::win::ScopedComPtr<IPin> input_video_capture_pin_;
   base::win::ScopedComPtr<IPin> input_audio_capture_pin_;
   base::win::ScopedComPtr<IPin> output_video_capture_pin_;
@@ -126,6 +139,7 @@ class MEDIA_EXPORT DirectShow:
   base::win::ScopedComPtr<IPin> output_audio_crossbar_pin_;
 
   scoped_refptr<AudioSinkFilter> audio_sink_filter_;
+  scoped_refptr<VideoSinkFilter> video_sink_filter_;
 
   std::string friendly_name_;
   std::string device_id_;

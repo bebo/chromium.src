@@ -74,7 +74,6 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   void AudioFrameReceived(const uint8_t* buffer,
                          int length,
                          base::TimeDelta timestamp) override;
-
   void FormatChanged(WAVEFORMATEXTENSIBLE *format) override;
 
   // Used to track down where we fail during initialization which at the

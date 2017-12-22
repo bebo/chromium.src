@@ -5,11 +5,11 @@
 // Observer class of Sinkfilter. The implementor of this class receive video
 // frames from the SinkFilter DirectShow filter.
 
-#ifndef MEDIA_AUDIO_WIN_SINK_FILTER_OBSERVER_WIN_H_
-#define MEDIA_AUDIO_WIN_SINK_FILTER_OBSERVER_WIN_H_
+#ifndef MEDIA_DIRECT_SHOW_SINK_FILTER_OBSERVER_H_
+#define MEDIA_DIRECT_SHOW_SINK_FILTER_OBSERVER_H_
 
 #include <stdint.h>
-#include <Mmreg.h>
+#include <mmreg.h>
 
 namespace media {
 
@@ -29,4 +29,4 @@ class AudioSinkFilterObserver {
 
 }  // namespace media
 
-#endif  // MEDIA_AUDIO_WIN_SINK_FILTER_OBSERVER_WIN_H_
+#endif  // MEDIA_DIRECT_SHOW_SINK_FILTER_OBSERVER_H_

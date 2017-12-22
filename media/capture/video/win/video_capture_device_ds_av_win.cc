@@ -18,6 +18,7 @@
 #include "base/win/scoped_co_mem.h"
 #include "base/win/scoped_variant.h"
 #include "media/base/timestamp_constants.h"
+#include "media/capture/video/win/sink_filter_win.h" // for pixel GUIDs
 #include "media/capture/video/blob_utils.h"
 #include "media/capture/video/win/video_capture_device_factory_win.h"
 #include "media/direct_show/direct_show_device_factory.h"
@@ -27,19 +28,13 @@
 using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
-/* using media::directshow::DirectShowDeviceCapabilityList; */
+using media::directshow::DirectShowVideoCaptureFormat;
 
-static GUID kBeboGameCaptureCLSID = {0x1f1383ef,
-                          0x8019,
-                          0x4f96,
-                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x63}};
-enum FILTER {
-  FILTER_BEBO_GAME_CAPTUIRE = 0,
-  FILTER_MAX = FILTER_BEBO_GAME_CAPTUIRE,
-};
-const int kFilterSize = FILTER_MAX + 1;
-const GUID kFilterArray[kFilterSize] = {kBeboGameCaptureCLSID};
-const std::string kFilterArrayName[kFilterSize] = {"bebo-game-capture"};
+extern GUID kMediaSubTypeI420;
+extern GUID kMediaSubTypeHDYC;
+extern GUID kMediaSubTypeZ16;
+extern GUID kMediaSubTypeINVZ;
+extern GUID kMediaSubTypeY16;
 
 namespace media {
 
@@ -54,6 +49,7 @@ namespace media {
   {}
 #endif
 
+#if 0
 // Check if a Pin matches a category.
 bool PinMatchesCategoryDSAV(IPin* pin, REFGUID category) {
   DCHECK(pin);
@@ -118,6 +114,7 @@ mojom::RangePtr RetrieveControlRangeAndCurrent(
 
   return control_range;
 }
+#endif
 
 // static
 void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
@@ -137,7 +134,6 @@ void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
       cap.supported_format.pixel_format);
     out_capability_list->emplace_back(cap.stream_index, format, cap.info_header);
   }
-
 }
 
 // static
@@ -146,6 +142,7 @@ void VideoCaptureDeviceDirectShowAV::GetPinCapabilityList(
     base::win::ScopedComPtr<IPin> output_capture_pin,
     bool query_detailed_frame_rates,
     CapabilityList* out_capability_list) {
+#if 0
   ScopedComPtr<IAMStreamConfig> stream_config;
   HRESULT hr = output_capture_pin.CopyTo(stream_config.GetAddressOf());
   if (FAILED(hr)) {
@@ -229,122 +226,7 @@ void VideoCaptureDeviceDirectShowAV::GetPinCapabilityList(
       }
     }
   }
-}
-
-// Finds and creates a DirectShow Video Capture filter matching the |device_id|.
-// static
-HRESULT VideoCaptureDeviceDirectShowAV::GetDeviceFilter(const std::string& device_id,
-                                               IBaseFilter** filter) {
-  DCHECK(filter);
-
-  // go through our whitelisted filters first (bebo-game-capture, capture cards)
-  // so that we won't fail on the shortcircuit for when no camera exist in the OS
-  ScopedComPtr<IBaseFilter> capture_filter;
-  for (int i = 0; i < kFilterSize; i++) {
-    GUID guid = kFilterArray[i];
-    std::string name = kFilterArrayName[i];
-
-    if (name.compare(device_id) == 0) {
-
-      HRESULT hr = ::CoCreateInstance(guid, NULL, CLSCTX_INPROC_SERVER,
-          IID_PPV_ARGS(&capture_filter));
-
-      if (SUCCEEDED(hr)) {
-        *filter = capture_filter.Detach();
-        return hr;
-      }
-    }
-  }
-
-  ScopedComPtr<ICreateDevEnum> dev_enum;
-  HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
-                                  IID_PPV_ARGS(&dev_enum));
-  if (FAILED(hr))
-    return hr;
-
-  ScopedComPtr<IEnumMoniker> enum_moniker;
-  hr = dev_enum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
-                                       enum_moniker.GetAddressOf(), 0);
-  // CreateClassEnumerator returns S_FALSE on some Windows OS
-  // when no camera exist. Therefore the FAILED macro can't be used.
-  if (hr != S_OK) {
-    // whitelisted devices are usually filters, and not video input source,
-    // and they are usually valid device? we're not going through moniker again,
-    // do we even need this check?
-    if (!IsDeviceWhiteListed(device_id)) {
-      return hr;
-    }
-  }
-
-  for (ScopedComPtr<IMoniker> moniker;
-       enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
-       moniker.Reset()) {
-    ScopedComPtr<IPropertyBag> prop_bag;
-    hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
-    if (FAILED(hr))
-      continue;
-
-    // Find |device_id| via DevicePath, Description or FriendlyName, whichever
-    // is available first and is a VT_BSTR (i.e. String) type.
-    static const wchar_t* kPropertyNames[] = {L"DevicePath", L"Description",
-                                              L"FriendlyName"};
-
-    ScopedVariant name;
-    for (const auto* property_name : kPropertyNames) {
-      prop_bag->Read(property_name, name.Receive(), 0);
-      if (name.type() == VT_BSTR)
-        break;
-    }
-
-    if (name.type() == VT_BSTR) {
-      const std::string device_path(base::SysWideToUTF8(V_BSTR(name.ptr())));
-      if (device_path.compare(device_id) == 0) {
-        // We have found the requested device
-        hr = moniker->BindToObject(0, 0, IID_PPV_ARGS(&capture_filter));
-        DLOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
-                                   << logging::SystemErrorCodeToString(hr);
-        break;
-      }
-    }
-  }
-
-  *filter = capture_filter.Detach();
-  if (!*filter && SUCCEEDED(hr))
-    hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-
-  return hr;
-}
-
-// Finds an IPin on an IBaseFilter given the direction, Category and/or Major
-// Type. If either |category| or |major_type| are GUID_NULL, they are ignored.
-// static
-ScopedComPtr<IPin> VideoCaptureDeviceDirectShowAV::GetPin(IBaseFilter* filter,
-                                                 PIN_DIRECTION pin_dir,
-                                                 REFGUID category,
-                                                 REFGUID major_type) {
-  ScopedComPtr<IPin> pin;
-  ScopedComPtr<IEnumPins> pin_enum;
-  HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
-  if (pin_enum.Get() == NULL)
-    return pin;
-
-  // Get first unconnected pin.
-  hr = pin_enum->Reset();  // set to first pin
-  while ((hr = pin_enum->Next(1, pin.GetAddressOf(), NULL)) == S_OK) {
-    PIN_DIRECTION this_pin_dir = static_cast<PIN_DIRECTION>(-1);
-    hr = pin->QueryDirection(&this_pin_dir);
-    if (pin_dir == this_pin_dir) {
-      if ((category == GUID_NULL || PinMatchesCategoryDSAV(pin.Get(), category)) &&
-          (major_type == GUID_NULL ||
-           PinMatchesMajorTypeDSAV(pin.Get(), major_type))) {
-        return pin;
-      }
-    }
-    pin.Reset();
-  }
-
-  DCHECK(!pin.Get());
-  return pin;
+#endif
 }
 
 // static
@@ -430,21 +312,6 @@ VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
 
 VideoCaptureDeviceDirectShowAV::~VideoCaptureDeviceDirectShowAV() {
   DCHECK(thread_checker_.CalledOnValidThread());
-  if (media_control_.Get())
-    media_control_->Stop();
-
-  if (graph_builder_.Get()) {
-    if (sink_filter_.get()) {
-      graph_builder_->RemoveFilter(sink_filter_.get());
-      sink_filter_ = NULL;
-    }
-
-    if (capture_filter_.Get())
-      graph_builder_->RemoveFilter(capture_filter_.Get());
-  }
-
-  if (capture_graph_builder_.Get())
-    capture_graph_builder_.Reset();
 }
 
 bool VideoCaptureDeviceDirectShowAV::Init() {
@@ -464,9 +331,9 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
   if (state_ != kIdle)
     return;
 
-
   client_ = std::move(client);
 
+#if 0
   // Get the camera capability that best match the requested format.
   const CapabilityWin found_capability =
       GetBestMatchedCapability(params.requested_format, capabilities_);
@@ -550,6 +417,9 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
     SetErrorState(FROM_HERE, "Failed to start the Capture device.", hr);
     return;
   }
+#endif
+
+  direct_show_->RegisterObserver(this);
 
   client_->OnStarted();
   state_ = kCapturing;
@@ -560,6 +430,7 @@ void VideoCaptureDeviceDirectShowAV::StopAndDeAllocate() {
   if (state_ != kCapturing)
     return;
 
+#if 0
   HRESULT hr = media_control_->Stop();
   if (FAILED(hr)) {
     SetErrorState(FROM_HERE, "Failed to stop the capture graph.", hr);
@@ -568,6 +439,8 @@ void VideoCaptureDeviceDirectShowAV::StopAndDeAllocate() {
 
   graph_builder_->Disconnect(output_capture_pin_.Get());
   graph_builder_->Disconnect(input_sink_pin_.Get());
+#endif
+  direct_show_->UnregisterObserver(this);
 
   client_.reset();
   state_ = kIdle;
@@ -583,6 +456,7 @@ void VideoCaptureDeviceDirectShowAV::TakePhoto(TakePhotoCallback callback) {
 }
 
 void VideoCaptureDeviceDirectShowAV::GetPhotoState(GetPhotoStateCallback callback) {
+#if 0
   DCHECK(thread_checker_.CalledOnValidThread());
 
   if (!camera_control_ || !video_control_) {
@@ -672,11 +546,13 @@ void VideoCaptureDeviceDirectShowAV::GetPhotoState(GetPhotoStateCallback callbac
   photo_capabilities->torch = false;
 
   std::move(callback).Run(std::move(photo_capabilities));
+#endif
 }
 
 void VideoCaptureDeviceDirectShowAV::SetPhotoOptions(
     mojom::PhotoSettingsPtr settings,
     VideoCaptureDevice::SetPhotoOptionsCallback callback) {
+#if 0
   DCHECK(thread_checker_.CalledOnValidThread());
 
   if (!camera_control_ || !video_control_) {
@@ -763,9 +639,11 @@ void VideoCaptureDeviceDirectShowAV::SetPhotoOptions(
   }
 
   std::move(callback).Run(true);
+#endif
 }
 
 bool VideoCaptureDeviceDirectShowAV::InitializeVideoAndCameraControls() {
+#if 0
   base::win::ScopedComPtr<IKsTopologyInfo> info;
   HRESULT hr = capture_filter_.CopyTo(info.GetAddressOf());
   if (FAILED(hr)) {
@@ -804,12 +682,14 @@ bool VideoCaptureDeviceDirectShowAV::InitializeVideoAndCameraControls() {
     }
   }
   return camera_control_ && video_control_;
+#endif
+  return false;
 }
 
 // Implements SinkFilterObserver::SinkFilterObserver.
-void VideoCaptureDeviceDirectShowAV::FrameReceived(const uint8_t* buffer,
+void VideoCaptureDeviceDirectShowAV::VideoFrameReceived(const uint8_t* buffer,
                                           int length,
-                                          const VideoCaptureFormat& format,
+                                          const DirectShowVideoCaptureFormat& format,
                                           base::TimeDelta timestamp) {
   if (first_ref_time_.is_null())
     first_ref_time_ = base::TimeTicks::Now();
@@ -819,17 +699,27 @@ void VideoCaptureDeviceDirectShowAV::FrameReceived(const uint8_t* buffer,
   if (timestamp == media::kNoTimestamp)
     timestamp = base::TimeTicks::Now() - first_ref_time_;
 
-  client_->OnIncomingCapturedData(buffer, length, format, 0,
+
+  VideoPixelStorage actual_pixel_storage = VideoPixelStorage::PIXEL_STORAGE_CPU; // FIXME: format.pixel_storage;
+  VideoCaptureFormat actual_format(format.frame_size,
+    format.frame_rate, format.pixel_format, actual_pixel_storage);
+
+  client_->OnIncomingCapturedData(buffer, length, actual_format, 0,
                                   base::TimeTicks::Now(), timestamp);
 
+#if 0
   while (!take_photo_callbacks_.empty()) {
     TakePhotoCallback cb = std::move(take_photo_callbacks_.front());
     take_photo_callbacks_.pop();
 
-    mojom::BlobPtr blob = Blobify(buffer, length, format);
+    mojom::BlobPtr blob = Blobify(buffer, length, actual_format);
     if (blob)
       std::move(cb).Run(std::move(blob));
   }
+#endif
+}
+
+void VideoCaptureDeviceDirectShowAV::FormatChanged() {
 }
 
 

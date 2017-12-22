@@ -12,7 +12,7 @@ namespace media {
 class PinEnumerator final : public IEnumPins,
                             public base::RefCounted<PinEnumerator> {
  public:
-  explicit PinEnumerator(AudioFilterBase* filter) : filter_(filter), index_(0) {}
+  explicit PinEnumerator(DirectShowFilterBase* filter) : filter_(filter), index_(0) {}
 
   // IUnknown implementation.
   STDMETHOD(QueryInterface)(REFIID iid, void** object_ptr) override {
@@ -75,24 +75,24 @@ class PinEnumerator final : public IEnumPins,
   friend class base::RefCounted<PinEnumerator>;
   ~PinEnumerator() {}
 
-  scoped_refptr<AudioFilterBase> filter_;
+  scoped_refptr<DirectShowFilterBase> filter_;
   size_t index_;
 };
 
-AudioFilterBase::AudioFilterBase() : state_(State_Stopped) {
+DirectShowFilterBase::DirectShowFilterBase() : state_(State_Stopped) {
 }
 
-STDMETHODIMP AudioFilterBase::EnumPins(IEnumPins** enum_pins) {
+STDMETHODIMP DirectShowFilterBase::EnumPins(IEnumPins** enum_pins) {
   *enum_pins = new PinEnumerator(this);
   (*enum_pins)->AddRef();
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::FindPin(LPCWSTR id, IPin** pin) {
+STDMETHODIMP DirectShowFilterBase::FindPin(LPCWSTR id, IPin** pin) {
   return E_NOTIMPL;
 }
 
-STDMETHODIMP AudioFilterBase::QueryFilterInfo(FILTER_INFO* info) {
+STDMETHODIMP DirectShowFilterBase::QueryFilterInfo(FILTER_INFO* info) {
   info->pGraph = owning_graph_.Get();
   info->achName[0] = L'\0';
   if (info->pGraph)
@@ -100,52 +100,52 @@ STDMETHODIMP AudioFilterBase::QueryFilterInfo(FILTER_INFO* info) {
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::JoinFilterGraph(IFilterGraph* graph, LPCWSTR name) {
+STDMETHODIMP DirectShowFilterBase::JoinFilterGraph(IFilterGraph* graph, LPCWSTR name) {
   owning_graph_ = graph;
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::QueryVendorInfo(LPWSTR* pVendorInfo) {
+STDMETHODIMP DirectShowFilterBase::QueryVendorInfo(LPWSTR* pVendorInfo) {
   return S_OK;
 }
 
 // Implement IMediaFilter.
-STDMETHODIMP AudioFilterBase::Stop() {
+STDMETHODIMP DirectShowFilterBase::Stop() {
   state_ = State_Stopped;
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::Pause() {
+STDMETHODIMP DirectShowFilterBase::Pause() {
   state_ = State_Paused;
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::Run(REFERENCE_TIME start) {
+STDMETHODIMP DirectShowFilterBase::Run(REFERENCE_TIME start) {
   state_ = State_Running;
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::GetState(DWORD msec_timeout, FILTER_STATE* state) {
+STDMETHODIMP DirectShowFilterBase::GetState(DWORD msec_timeout, FILTER_STATE* state) {
   *state = state_;
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::SetSyncSource(IReferenceClock* clock) {
+STDMETHODIMP DirectShowFilterBase::SetSyncSource(IReferenceClock* clock) {
   return S_OK;
 }
 
-STDMETHODIMP AudioFilterBase::GetSyncSource(IReferenceClock** clock) {
+STDMETHODIMP DirectShowFilterBase::GetSyncSource(IReferenceClock** clock) {
   return E_NOTIMPL;
 }
 
 // Implement from IPersistent.
-STDMETHODIMP AudioFilterBase::GetClassID(CLSID* class_id) {
+STDMETHODIMP DirectShowFilterBase::GetClassID(CLSID* class_id) {
   NOTREACHED();
   return E_NOTIMPL;
 }
 
 // Implement IUnknown.
-STDMETHODIMP AudioFilterBase::QueryInterface(REFIID id, void** object_ptr) {
+STDMETHODIMP DirectShowFilterBase::QueryInterface(REFIID id, void** object_ptr) {
   if (id == IID_IMediaFilter || id == IID_IUnknown) {
     *object_ptr = static_cast<IMediaFilter*>(this);
   } else if (id == IID_IPersist) {
@@ -157,17 +157,17 @@ STDMETHODIMP AudioFilterBase::QueryInterface(REFIID id, void** object_ptr) {
   return S_OK;
 }
 
-ULONG STDMETHODCALLTYPE AudioFilterBase::AddRef() {
-  base::RefCounted<AudioFilterBase>::AddRef();
+ULONG STDMETHODCALLTYPE DirectShowFilterBase::AddRef() {
+  base::RefCounted<DirectShowFilterBase>::AddRef();
   return 1;
 }
 
-ULONG STDMETHODCALLTYPE AudioFilterBase::Release() {
-  base::RefCounted<AudioFilterBase>::Release();
+ULONG STDMETHODCALLTYPE DirectShowFilterBase::Release() {
+  base::RefCounted<DirectShowFilterBase>::Release();
   return 1;
 }
 
-AudioFilterBase::~AudioFilterBase() {
+DirectShowFilterBase::~DirectShowFilterBase() {
 }
 
 }  // namespace media

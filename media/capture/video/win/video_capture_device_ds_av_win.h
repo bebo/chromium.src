@@ -23,10 +23,12 @@
 #include "base/win/scoped_comptr.h"
 #include "media/capture/video/video_capture_device.h"
 #include "media/capture/video/win/capability_list_win.h"
-#include "media/capture/video/win/sink_filter_win.h"
-#include "media/capture/video/win/sink_input_pin_win.h"
-#include "media/capture/video_capture_types.h"
+
+#include "media/direct_show/video_sink_filter_observer.h"
 #include "media/direct_show/direct_show.h"
+#include "media/capture/video_capture_types.h"
+
+using media::directshow::DirectShowVideoCaptureFormat;
 
 namespace base {
 class Location;
@@ -35,8 +37,8 @@ class Location;
 namespace media {
 
 // All the methods in the class can only be run on a COM initialized thread.
-class VideoCaptureDeviceDirectShowAV: public VideoCaptureDevice,
-                              public SinkFilterObserver {
+class VideoCaptureDeviceDirectShowAV : public VideoCaptureDevice,
+                                       public VideoSinkFilterObserver {
  public:
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
   // we free the structure when exiting the scope.  DCHECKing is also done to
@@ -66,18 +68,13 @@ class VideoCaptureDeviceDirectShowAV: public VideoCaptureDevice,
       base::win::ScopedComPtr<IPin> output_capture_pin,
       bool query_detailed_frame_rates,
       CapabilityList* out_capability_list);
-  static HRESULT GetDeviceFilter(const std::string& device_id,
-                                 IBaseFilter** filter);
-  static base::win::ScopedComPtr<IPin> GetPin(IBaseFilter* filter,
-                                              PIN_DIRECTION pin_dir,
-                                              REFGUID category,
-                                              REFGUID major_type);
   static VideoPixelFormat TranslateMediaSubtypeToPixelFormat(
       const GUID& sub_type);
 
   explicit VideoCaptureDeviceDirectShowAV(
       const VideoCaptureDeviceDescriptor& device_descriptor);
   ~VideoCaptureDeviceDirectShowAV() override;
+
   // Opens the device driver for this device.
   bool Init();
 
@@ -102,10 +99,11 @@ class VideoCaptureDeviceDirectShowAV: public VideoCaptureDevice,
   bool InitializeVideoAndCameraControls();
 
   // Implements SinkFilterObserver.
-  void FrameReceived(const uint8_t* buffer,
+  void VideoFrameReceived(const uint8_t* buffer,
                      int length,
-                     const VideoCaptureFormat& format,
+                     const DirectShowVideoCaptureFormat& format,
                      base::TimeDelta timestamp) override;
+  void FormatChanged() override;
 
   /* bool CreateCapabilityMap(); */
   void SetAntiFlickerInCaptureFilter(const VideoCaptureParams& params);
@@ -114,7 +112,7 @@ class VideoCaptureDeviceDirectShowAV: public VideoCaptureDevice,
                      HRESULT hr);
 
 
-  DirectShow * direct_show_;
+  DirectShow* direct_show_;
   const VideoCaptureDeviceDescriptor device_descriptor_;
   InternalState state_;
   std::unique_ptr<VideoCaptureDevice::Client> client_;
@@ -127,8 +125,6 @@ class VideoCaptureDeviceDirectShowAV: public VideoCaptureDevice,
   base::win::ScopedComPtr<IMediaControl> media_control_;
   base::win::ScopedComPtr<IPin> input_sink_pin_;
   base::win::ScopedComPtr<IPin> output_capture_pin_;
-
-  scoped_refptr<SinkFilter> sink_filter_;
 
   // Map of all capabilities this device support.
   CapabilityList capabilities_;

@@ -192,7 +192,10 @@ component("capture_lib") {
   }
 
   if (is_win) {
-    deps += [ "//media/base/win" ]
+    deps += [
+      "//media/base/win",
+      # "//media/direct_show",
+    ]
     libs = [
       "mf.lib",
       "mfplat.lib",

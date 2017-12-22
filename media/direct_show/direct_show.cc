@@ -6,14 +6,12 @@
 #include "base/memory/singleton.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/strings/sys_string_conversions.h"
-#include "media/audio/win/avrt_wrapper_win.h"
 
 using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 using base::win::ScopedVariant;
-
-EXTERN_C const CLSID CLSID_NullRenderer;
+using media::directshow::DirectShowVideoCaptureFormat;
 
 GUID kElgatoGameCaptureHD = {0x39f50f4c,
                           0x99E1,
@@ -150,10 +148,6 @@ DirectShow::DirectShow(std::string device_id)
   LOG(INFO) << __func__;
   friendly_name_ = "DirectShow";  // FIXME device name??
 
-  // Load the Avrt DLL if not already loaded. Required to support MMCSS.
-  bool avrt_init = avrt::Initialize();
-  DCHECK(avrt_init) << "Failed to load the Avrt.dll";
-
   // Set up the desired capture format specified by the client.
   WAVEFORMATEX* format = &format_.Format;
   format->wFormatTag = WAVE_FORMAT_PCM;
@@ -176,8 +170,8 @@ DirectShow::~DirectShow() {
     }
 
 #ifndef ALAX_AUDIO_TEST
-    if (null_renderer_.Get()) {
-      graph_builder_->RemoveFilter(null_renderer_.Get());
+    if (video_sink_filter_.get()) {
+      graph_builder_->RemoveFilter(video_sink_filter_.get());
     }
 #endif
 
@@ -191,6 +185,7 @@ DirectShow::~DirectShow() {
 }
 
 
+// FIXME: cleanup needs works
 void DirectShow::StopThread() {
   if (capture_thread_) {
     /* SetEvent(stop_capture_event_.Get()); FIXME */
@@ -210,8 +205,8 @@ void DirectShow::StopThread() {
     }
 
 #ifndef ALAX_AUDIO_TEST
-    if (null_renderer_.Get()) {
-      graph_builder_->RemoveFilter(null_renderer_.Get());
+    if (video_sink_filter_.get()) {
+      graph_builder_->RemoveFilter(video_sink_filter_.get());
     }
 #endif
 
@@ -220,12 +215,11 @@ void DirectShow::StopThread() {
     }
   }
 
-
   graph_builder_->Disconnect(input_audio_sink_pin_.Get());
 
 #ifndef ALAX_AUDIO_TEST
   graph_builder_->Disconnect(output_video_capture_pin_.Get());
-  graph_builder_->Disconnect(null_renderer_pin_.Get());
+  graph_builder_->Disconnect(input_video_sink_pin_.Get());
 #endif
 }
 
@@ -409,7 +403,7 @@ void DirectShow::Run() {
   LOG(INFO) << "DirectShow::Run() about to connect direct (video)";
 
   hr = graph_builder_->ConnectDirect(output_video_capture_pin_.Get(),
-      null_renderer_pin_.Get(), NULL);
+      input_video_sink_pin_.Get(), NULL);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
   if (FAILED(hr)) {
     return;
@@ -482,6 +476,14 @@ HRESULT DirectShow::SetCaptureDevice() {
 
   input_audio_sink_pin_ = audio_sink_filter_->GetPin(0);
 
+  video_sink_filter_ = new VideoSinkFilter(this);
+  if (video_sink_filter_.get() == NULL) {
+    LOG(ERROR) << "Failed to create sink filter";
+    return E_OUTOFMEMORY;
+  }
+
+  input_video_sink_pin_ = video_sink_filter_->GetPin(0);
+
   hr = ::CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
                           IID_PPV_ARGS(&graph_builder_));
   DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
@@ -493,19 +495,6 @@ HRESULT DirectShow::SetCaptureDevice() {
   DLOG_IF_FAILED_WITH_HRESULT("Failed to create the Capture Graph Builder", hr);
   if (FAILED(hr))
     return hr;
-
-  hr = ::CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC,
-                          IID_PPV_ARGS(&null_renderer_));
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to create null renderer", hr);
-  if (FAILED(hr))
-    return hr;
-
- null_renderer_pin_ = GetPin(null_renderer_.Get(), PINDIR_INPUT,
-     GUID_NULL, GUID_NULL);
- if (null_renderer_pin_.Get() == NULL) {
-    LOG(INFO) << "Failed to find null renderer pin";
-    return E_OUTOFMEMORY;
-  }
 
   hr = capture_graph_builder_->SetFiltergraph(graph_builder_.Get());
   DLOG_IF_FAILED_WITH_HRESULT("Failed to give graph to capture graph builder",
@@ -611,13 +600,13 @@ HRESULT DirectShow::SetCaptureDevice() {
     return hr;
 
   hr = graph_builder_->AddFilter(audio_sink_filter_.get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the sink filter to the graph", hr);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the audio sink filter to the graph", hr);
   if (FAILED(hr))
     return hr;
 
 #ifndef ALAX_AUDIO_TEST
-  hr = graph_builder_->AddFilter(null_renderer_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the sink filter to the graph", hr);
+  hr = graph_builder_->AddFilter(video_sink_filter_.get(), NULL);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the video sink filter to the graph", hr);
   if (FAILED(hr))
     return hr;
 #endif
@@ -828,13 +817,22 @@ void DirectShow::EnsureGraphIsRunning() {
 void DirectShow::RegisterObserver(AudioSinkFilterObserver* observer) {
     audio_observer_ = observer;
     EnsureGraphIsRunning();
-
-    WAVEFORMATEXTENSIBLE* format = new WAVEFORMATEXTENSIBLE(format_);
-    observer->FormatChanged(format);
+    observer->FormatChanged(new WAVEFORMATEXTENSIBLE(format_));
 }
 
 void DirectShow::UnregisterObserver(AudioSinkFilterObserver* observer) {
     audio_observer_ = NULL;
+    //ShouldGraphBeRunning(); FIXME
+}
+
+void DirectShow::RegisterObserver(VideoSinkFilterObserver* observer) {
+    video_observer_ = observer;
+    EnsureGraphIsRunning();
+    // observer->FormatChanged(new VideoPixelFormat(format_));
+}
+
+void DirectShow::UnregisterObserver(VideoSinkFilterObserver* observer) {
+    video_observer_ = NULL;
     //ShouldGraphBeRunning(); FIXME
 }
 
@@ -843,6 +841,15 @@ void DirectShow::AudioFrameReceived(const uint8_t* buffer,
                                     base::TimeDelta timestamp) {
   if (audio_observer_ != NULL) {  // TODO make atomic
     audio_observer_->AudioFrameReceived(buffer, length, timestamp);
+  }
+}
+
+void DirectShow::VideoFrameReceived(const uint8_t* buffer,
+                                    int length,
+                                    const DirectShowVideoCaptureFormat& format,
+                                    base::TimeDelta timestamp) {
+  if (video_observer_ != NULL) {  // TODO make atomic
+    video_observer_->VideoFrameReceived(buffer, length, format, timestamp);
   }
 }
 

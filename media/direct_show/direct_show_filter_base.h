@@ -19,9 +19,9 @@
 
 namespace media {
 
-class AudioFilterBase : public IBaseFilter, public base::RefCounted<AudioFilterBase> {
+class DirectShowFilterBase : public IBaseFilter, public base::RefCounted<DirectShowFilterBase> {
  public:
-  AudioFilterBase();
+  DirectShowFilterBase();
 
   // Number of pins connected to this filter.
   virtual size_t NoOfPins() = 0;
@@ -61,14 +61,14 @@ class AudioFilterBase : public IBaseFilter, public base::RefCounted<AudioFilterB
   STDMETHOD(GetClassID)(CLSID* class_id) override = 0;
 
  protected:
-  friend class base::RefCounted<AudioFilterBase>;
-  virtual ~AudioFilterBase();
+  friend class base::RefCounted<DirectShowFilterBase>;
+  virtual ~DirectShowFilterBase();
 
  private:
   FILTER_STATE state_;
   base::win::ScopedComPtr<IFilterGraph> owning_graph_;
 
-  DISALLOW_COPY_AND_ASSIGN(AudioFilterBase);
+  DISALLOW_COPY_AND_ASSIGN(DirectShowFilterBase);
 };
 
 }  // namespace media

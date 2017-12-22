@@ -21,7 +21,7 @@ namespace media {
 class AudioSinkInputPin;
 
 class __declspec(uuid("88cdbbdc-a73b-4afa-acbf-15d5e2ce12d4")) AudioSinkFilter
-    : public AudioFilterBase {
+    : public DirectShowFilterBase {
  public:
   explicit AudioSinkFilter(AudioSinkFilterObserver* observer);
 

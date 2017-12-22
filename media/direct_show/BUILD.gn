@@ -26,6 +26,11 @@ source_set("direct_show") {
     "video_capture_types.cc",
     "capability_list_win.h",
     "capability_list_win.cc",
+    "video_sink_filter_observer.h",
+    "video_sink_filter.h",
+    "video_sink_filter.cc",
+    "video_sink_input_pin.h",
+    "video_sink_input_pin.cc",
   ]
 
   configs += [ "//media:subcomponent_config" ]

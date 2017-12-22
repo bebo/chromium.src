@@ -17,11 +17,11 @@
 
 namespace media {
 
-class AudioPinBase : public IPin,
+class DirectShowPinBase : public IPin,
                 public IMemInputPin,
-                public base::RefCounted<AudioPinBase> {
+                public base::RefCounted<DirectShowPinBase> {
  public:
-  explicit AudioPinBase(IBaseFilter* owner);
+  explicit DirectShowPinBase(IBaseFilter* owner);
 
   // Function used for changing the owner.
   // If the owner is deleted the owner should first call this function
@@ -95,8 +95,8 @@ class AudioPinBase : public IPin,
   STDMETHOD_(ULONG, Release)() override;
 
  protected:
-  friend class base::RefCounted<AudioPinBase>;
-  virtual ~AudioPinBase();
+  friend class base::RefCounted<DirectShowPinBase>;
+  virtual ~DirectShowPinBase();
 
  private:
   AM_MEDIA_TYPE current_media_type_;
