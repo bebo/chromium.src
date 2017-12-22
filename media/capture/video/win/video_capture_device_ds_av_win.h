@@ -26,6 +26,7 @@
 #include "media/capture/video/win/sink_filter_win.h"
 #include "media/capture/video/win/sink_input_pin_win.h"
 #include "media/capture/video_capture_types.h"
+#include "media/direct_show/direct_show.h"
 
 namespace base {
 class Location;
@@ -106,12 +107,14 @@ class VideoCaptureDeviceDirectShowAV: public VideoCaptureDevice,
                      const VideoCaptureFormat& format,
                      base::TimeDelta timestamp) override;
 
-  bool CreateCapabilityMap();
+  /* bool CreateCapabilityMap(); */
   void SetAntiFlickerInCaptureFilter(const VideoCaptureParams& params);
   void SetErrorState(const base::Location& from_here,
                      const std::string& reason,
                      HRESULT hr);
 
+
+  DirectShow * direct_show_;
   const VideoCaptureDeviceDescriptor device_descriptor_;
   InternalState state_;
   std::unique_ptr<VideoCaptureDevice::Client> client_;

@@ -75,6 +75,12 @@ namespace media {
     return fake_list_;
   }
 
+  void DirectShowDeviceFactory::GetDeviceCapabilityList(DirectShowType type,
+              std::string device_id,
+              DirectShowDeviceCapabilityList* device_capablity_list) {
+    // FIXME
+  }
+
   /*
    * [ ] should this run on it's own thread?
    */

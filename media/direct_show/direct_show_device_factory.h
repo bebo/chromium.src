@@ -10,6 +10,7 @@
 #include "base/macros.h"
 #include "media/base/media_export.h"
 #include "media/direct_show/direct_show.h"
+#include "media/direct_show/capability_list_win.h"
 
 namespace base {
   template <typename Type>
@@ -43,6 +44,9 @@ namespace media {
     public:
       static DirectShowDeviceFactory* GetInstance();
       void GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors);
+      void GetDeviceCapabilityList(DirectShowType type,
+              std::string device_id,
+              DirectShowDeviceCapabilityList* device_capablity_list);
       bool IsDirectShowDevice(std::string device_id);
       DirectShow *GetController(std::string device_id);
 

@@ -22,6 +22,10 @@ source_set("direct_show") {
     "audio_sink_filter.cc",
     "audio_sink_input_pin.h",
     "audio_sink_input_pin.cc",
+    "video_capture_types.h",
+    "video_capture_types.cc",
+    "capability_list_win.h",
+    "capability_list_win.cc",
   ]
 
   configs += [ "//media:subcomponent_config" ]

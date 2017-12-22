@@ -36,9 +36,11 @@ class MEDIA_EXPORT DirectShow:
       public base::DelegateSimpleThread::Delegate,
       public AudioSinkFilterObserver {
   public:
-  void RegisterObserver(AudioSinkFilterObserver* observer);
-  void UnregisterObserver(AudioSinkFilterObserver* observer);
-  ~DirectShow();
+    /* void GetVideoPinCapabilityList(bool query_detailed_framerate, &capabilities_); */
+
+    void RegisterObserver(AudioSinkFilterObserver* observer);
+    void UnregisterObserver(AudioSinkFilterObserver* observer);
+    ~DirectShow();
 
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
   // we free the structure when exiting the scope.  DCHECKing is also done to

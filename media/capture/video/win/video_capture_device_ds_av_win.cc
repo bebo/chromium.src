@@ -20,10 +20,14 @@
 #include "media/base/timestamp_constants.h"
 #include "media/capture/video/blob_utils.h"
 #include "media/capture/video/win/video_capture_device_factory_win.h"
+#include "media/direct_show/direct_show_device_factory.h"
+#include "media/direct_show/direct_show.h"
+#include "media/direct_show/capability_list_win.h"
 
 using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
+/* using media::directshow::DirectShowDeviceCapabilityList; */
 
 static GUID kBeboGameCaptureCLSID = {0x1f1383ef,
                           0x8019,
@@ -120,25 +124,20 @@ void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
     const std::string& device_id,
     bool query_detailed_frame_rates,
     CapabilityList* out_capability_list) {
-  base::win::ScopedComPtr<IBaseFilter> capture_filter;
-  HRESULT hr = VideoCaptureDeviceDirectShowAV::GetDeviceFilter(
-      device_id, capture_filter.GetAddressOf());
-  if (!capture_filter.Get()) {
-    DLOG(ERROR) << "Failed to create capture filter: "
-                << logging::SystemErrorCodeToString(hr);
-    return;
+
+  DirectShowDeviceCapabilityList ds_caps; 
+  DirectShowDeviceFactory::GetInstance()->GetDeviceCapabilityList(
+      DirectShowType::Video,
+      device_id,
+      &ds_caps);
+
+  for (const auto cap: ds_caps) {
+    VideoCaptureFormat format(cap.supported_format.frame_size,
+      cap.supported_format.frame_rate,
+      cap.supported_format.pixel_format);
+    out_capability_list->emplace_back(cap.stream_index, format, cap.info_header);
   }
 
-  base::win::ScopedComPtr<IPin> output_capture_pin(
-      VideoCaptureDeviceDirectShowAV::GetPin(capture_filter.Get(), PINDIR_OUTPUT,
-                                    PIN_CATEGORY_CAPTURE, GUID_NULL));
-  if (!output_capture_pin.Get()) {
-    DLOG(ERROR) << "Failed to get capture output pin";
-    return;
-  }
-
-  GetPinCapabilityList(capture_filter, output_capture_pin,
-                       query_detailed_frame_rates, out_capability_list);
 }
 
 // static
@@ -423,7 +422,8 @@ VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
     : device_descriptor_(device_descriptor),
       state_(kIdle),
       white_balance_mode_manual_(false),
-      exposure_mode_manual_(false) {
+      exposure_mode_manual_(false),
+      direct_show_(nullptr) {
   // TODO(mcasas): Check that CoInitializeEx() has been called with the
   // appropriate Apartment model, i.e., Single Threaded.
 }
@@ -449,80 +449,12 @@ VideoCaptureDeviceDirectShowAV::~VideoCaptureDeviceDirectShowAV() {
 
 bool VideoCaptureDeviceDirectShowAV::Init() {
   DCHECK(thread_checker_.CalledOnValidThread());
-  HRESULT hr = GetDeviceFilter(device_descriptor_.device_id,
-                               capture_filter_.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
-  if (!capture_filter_.Get())
-    return false;
 
-  output_capture_pin_ = GetPin(capture_filter_.Get(), PINDIR_OUTPUT,
-                               PIN_CATEGORY_CAPTURE, GUID_NULL);
-  if (!output_capture_pin_.Get()) {
-    DLOG(ERROR) << "Failed to get capture output pin";
-    return false;
+  if (direct_show_ == NULL) {
+    direct_show_ = DirectShowDeviceFactory::GetInstance()->GetController(device_descriptor_.device_id);
   }
 
-  // Create the sink filter used for receiving Captured frames.
-  sink_filter_ = new SinkFilter(this);
-  if (sink_filter_.get() == NULL) {
-    DLOG(ERROR) << "Failed to create sink filter";
-    return false;
-  }
-
-  input_sink_pin_ = sink_filter_->GetPin(0);
-
-  hr = ::CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
-                          IID_PPV_ARGS(&graph_builder_));
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
-  if (FAILED(hr))
-    return false;
-
-  hr = ::CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC,
-                          IID_PPV_ARGS(&capture_graph_builder_));
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to create the Capture Graph Builder", hr);
-  if (FAILED(hr))
-    return false;
-
-  hr = capture_graph_builder_->SetFiltergraph(graph_builder_.Get());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to give graph to capture graph builder",
-                              hr);
-  if (FAILED(hr))
-    return false;
-
-  hr = graph_builder_.CopyTo(media_control_.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to create media control builder", hr);
-  if (FAILED(hr))
-    return false;
-
-  hr = graph_builder_->AddFilter(capture_filter_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the capture device to the graph",
-                              hr);
-  if (FAILED(hr))
-    return false;
-
-  hr = graph_builder_->AddFilter(sink_filter_.get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the sink filter to the graph", hr);
-  if (FAILED(hr))
-    return false;
-
-  // The following code builds the upstream portions of the graph, for example
-  // if a capture device uses a Windows Driver Model (WDM) driver, the graph may
-  // require certain filters upstream from the WDM Video Capture filter, such as
-  // a TV Tuner filter or an Analog Video Crossbar filter. We try using the more
-  // prevalent MEDIATYPE_Interleaved first.
-  base::win::ScopedComPtr<IAMStreamConfig> stream_config;
-
-  hr = capture_graph_builder_->FindInterface(
-      &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Interleaved, capture_filter_.Get(),
-      IID_IAMStreamConfig, (void**)stream_config.GetAddressOf());
-  if (FAILED(hr)) {
-    hr = capture_graph_builder_->FindInterface(
-        &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter_.Get(),
-        IID_IAMStreamConfig, (void**)stream_config.GetAddressOf());
-    DLOG_IF_FAILED_WITH_HRESULT("Failed to find CapFilter:IAMStreamConfig", hr);
-  }
-
-  return CreateCapabilityMap();
+  return true;
 }
 
 void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
@@ -531,6 +463,7 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
   DCHECK(thread_checker_.CalledOnValidThread());
   if (state_ != kIdle)
     return;
+
 
   client_ = std::move(client);
 
@@ -899,12 +832,6 @@ void VideoCaptureDeviceDirectShowAV::FrameReceived(const uint8_t* buffer,
   }
 }
 
-bool VideoCaptureDeviceDirectShowAV::CreateCapabilityMap() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  GetPinCapabilityList(capture_filter_, output_capture_pin_,
-                       true /* query_detailed_frame_rates */, &capabilities_);
-  return !capabilities_.empty();
-}
 
 // Set the power line frequency removal in |capture_filter_| if available.
 void VideoCaptureDeviceDirectShowAV::SetAntiFlickerInCaptureFilter(
@@ -938,12 +865,12 @@ void VideoCaptureDeviceDirectShowAV::SetAntiFlickerInCaptureFilter(
   }
 }
 
-void VideoCaptureDeviceDirectShowAV::SetErrorState(const base::Location& from_here,
-                                          const std::string& reason,
-                                          HRESULT hr) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  DLOG_IF_FAILED_WITH_HRESULT(reason, hr);
-  state_ = kError;
-  client_->OnError(from_here, reason);
-}
+  void VideoCaptureDeviceDirectShowAV::SetErrorState(const base::Location& from_here,
+                                            const std::string& reason,
+                                            HRESULT hr) {
+    DCHECK(thread_checker_.CalledOnValidThread());
+    DLOG_IF_FAILED_WITH_HRESULT(reason, hr);
+    state_ = kError;
+    client_->OnError(from_here, reason);
+  }
 }  // namespace media
