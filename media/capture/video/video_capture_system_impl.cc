@@ -77,9 +77,11 @@ void VideoCaptureSystemImpl::GetDeviceInfosAsync(
   new_devices_info_cache.reserve(descriptors.size());
   for (const auto& descriptor : descriptors) {
     if (auto* cached_info = LookupDeviceInfoFromId(descriptor.device_id)) {
+      LOG(INFO) << "bebo " << __func__ << " found in cache: " << descriptor.display_name;
       new_devices_info_cache.push_back(*cached_info);
     } else {
       // Query for supported formats in order to create the entry.
+      LOG(INFO) << "bebo " << __func__ << " query factory: " << descriptor.display_name;
       VideoCaptureDeviceInfo device_info(descriptor);
       factory_->GetSupportedFormats(descriptor, &device_info.supported_formats);
       ConsolidateCaptureFormats(&device_info.supported_formats);

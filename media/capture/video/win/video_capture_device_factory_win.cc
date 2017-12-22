@@ -409,7 +409,9 @@ static void GetDeviceSupportedFormatsDirectShowAV(const Descriptor& descriptor,
                                                 VideoCaptureFormats* formats) {
   DVLOG(1) << "GetDeviceSupportedFormatsDirectShowAV for "
            << descriptor.display_name;
-  bool query_detailed_frame_rates = false; // TODO:
+  bool query_detailed_frame_rates =
+    !IsDeviceBlacklistedForQueryingDetailedFrameRates(
+      descriptor.display_name);
   CapabilityList capability_list;
   VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
       descriptor.device_id, query_detailed_frame_rates, &capability_list);
@@ -439,6 +441,7 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
     const Descriptor& device_descriptor) {
   DCHECK(thread_checker_.CalledOnValidThread());
   std::unique_ptr<VideoCaptureDevice> device;
+  LOG(INFO) << "bebo " << __func__;
 
   if (device_descriptor.capture_api == VideoCaptureApi::WIN_MEDIA_FOUNDATION) {
     DCHECK(PlatformSupportsMediaFoundation());
@@ -449,37 +452,33 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
             device_descriptor.device_id.c_str(), source.GetAddressOf())) {
       return std::unique_ptr<VideoCaptureDevice>();
     }
-    if (!static_cast<VideoCaptureDeviceMFWin*>(device.get())->Init(source))
+    if (!static_cast<VideoCaptureDeviceMFWin*>(device.get())->Init(source)) {
       device.reset();
+    }
   } else if (device_descriptor.capture_api ==
              VideoCaptureApi::WIN_DIRECT_SHOW) {
-      LOG(INFO) << " DirectShow Device: " << device_descriptor.display_name;
-    // FIXME proper pls
+      device.reset(new VideoCaptureDeviceWin(device_descriptor));
+      LOG(INFO) << "bebo DirectShow Device: " << device_descriptor.display_name;
+      if (!static_cast<VideoCaptureDeviceWin*>(device.get())->Init())
+        device.reset();
+
+      LOG(INFO) << "bebo DirectShow Device: " << device_descriptor.display_name;
 #ifdef BEBO_GAME_CAPTURE_TO_CAPTURE_CARD
-    if (device_descriptor.display_name.compare("bebo-game-capture") == 0) {
+  } else if (device_descriptor.display_name.compare("bebo-game-capture") == 0) {
+      LOG(INFO) << "bebo redirect bebo-game-capture to capture card??? " << device_descriptor.display_name;
       device.reset(new VideoCaptureDeviceDirectShowAV(device_descriptor));
       if (!static_cast<VideoCaptureDeviceDirectShowAV*>(device.get())->Init())
         device.reset();
-    } else {
 #endif
-      device.reset(new VideoCaptureDeviceWin(device_descriptor));
-      DVLOG(1) << " DirectShow Device: " << device_descriptor.display_name;
-      if (!static_cast<VideoCaptureDeviceWin*>(device.get())->Init())
-        device.reset();
-#ifdef BEBO_GAME_CAPTURE_TO_CAPTURE_CARD
-    }
-#endif
-
   } else if (device_descriptor.capture_api ==
              VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
-    LOG(ERROR) << "DON'T FORGET TO IMPLEMENT ME";
     device.reset(new VideoCaptureDeviceDirectShowAV(device_descriptor));
     DVLOG(1) << " DirectShow AV Device: " << device_descriptor.display_name;
-    LOG(INFO) << " DirectShow AV Device: " << device_descriptor.display_name;
+    LOG(INFO) << "bebo DirectShow AV Device: " << device_descriptor.display_name;
     if (!static_cast<VideoCaptureDeviceDirectShowAV*>(device.get())->Init())
       device.reset();
-
   } else {
+    LOG(ERROR) << "bebo unknow device device";
     NOTREACHED();
   }
   return device;
@@ -497,6 +496,14 @@ void VideoCaptureDeviceFactoryWin::GetDeviceDescriptors(
   DirectShowDeviceFactory::GetInstance()->GetDeviceDescriptors(DirectShowType::Video, &ds_descriptors);
 
   for(DirectShowDeviceDescriptor& ds : ds_descriptors) {
+    LOG(INFO) << "bebo " << __func__ << " name: " << ds.display_name << " device_id: " << ds.device_id;
+    std::string name = ds.display_name;
+    device_descriptors->erase(
+      std::remove_if(device_descriptors->begin(), 
+                     device_descriptors->end(),
+                     [&name](const VideoCaptureDeviceDescriptor d){return d.display_name == name;}),
+      device_descriptors->end());
+
     device_descriptors->emplace_back(ds.display_name, ds.device_id, ds.model_id, VideoCaptureApi::WIN_DIRECT_SHOW_AV);
   }
 }
@@ -505,6 +512,7 @@ void VideoCaptureDeviceFactoryWin::GetSupportedFormats(
     const Descriptor& device,
     VideoCaptureFormats* formats) {
   DCHECK(thread_checker_.CalledOnValidThread());
+  LOG(INFO) << "bebo " << __func__ << " " << device.display_name;
   if (device.capture_api ==
              VideoCaptureApi::WIN_DIRECT_SHOW) {
     GetDeviceSupportedFormatsDirectShow(device, formats);

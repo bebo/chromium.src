@@ -1,17 +1,48 @@
 
 #include "media/direct_show/direct_show.h"
 
+#include <ks.h>
+#include <ksmedia.h>
+#include <objbase.h>
+
+#include "media/direct_show/video_sink_filter.h"
+
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/memory/singleton.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/strings/sys_string_conversions.h"
+#include "media/base/timestamp_constants.h"
 
 using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 using base::win::ScopedVariant;
 using media::directshow::DirectShowVideoCaptureFormat;
+using media::directshow::kMediaSubTypeI420;
+using media::directshow::kMediaSubTypeHDYC;
+using media::directshow::kMediaSubTypeZ16;
+using media::directshow::kMediaSubTypeINVZ;
+using media::directshow::kMediaSubTypeY16;
+
+static const REFERENCE_TIME kSecondsToReferenceTime = 10000000;
+
+
+static const enum WhitelistedFilterNames {
+  GAME_CAPTURE_HD_60_PRO = 0,
+  AVERMEDIA_GC550_VIDEO_CAPTURE = 1,
+  WHITELISTED_FILTER_MAX = 1
+};
+
+static const char* const kWhitelistedFilterNames[] = {
+  "Game Capture HD60 Pro",
+  "AVerMedia GC550 Video Capture",
+};
+
+static_assert(arraysize(kWhitelistedFilterNames) == WHITELISTED_FILTER_MAX + 1,
+              "kWhitelistedFilterNames should be same size as "
+              "WhitelistedFilterNames enum");
+
 
 GUID kElgatoGameCaptureHD = {0x39f50f4c,
                           0x99E1,
@@ -27,7 +58,7 @@ GUID kAvermediaVideoCapture = {0x8ec460c4,
                           {0xad, 0x9b, 0x33, 0x1f, 0xf3, 0x3d, 0xe3, 0xb6}};
 
 #undef ALAX_AUDIO_TEST
-#define AVERMEDIA
+#undef AVERMEDIA
 
 enum FILTER {
   FILTER_ELGATO_GAME_CAPTURE_HD = 0,
@@ -35,16 +66,6 @@ enum FILTER {
 };
 
 const int kFilterSize = FILTER_MAX + 1;
-
-#ifdef ALAX_AUDIO_TEST
-const GUID kFilterArray[kFilterSize] = {kAlaxAudioTestSrc};
-#else
-#ifdef AVERMEDIA
-const GUID kFilterArray[kFilterSize] = {kAvermediaVideoCapture};
-#else
-const GUID kFilterArray[kFilterSize] = {kElgatoGameCaptureHD};
-#endif
-#endif
 
 #if DCHECK_IS_ON()
 #define DLOG_IF_FAILED_WITH_HRESULT(message, hr)                      \
@@ -59,9 +80,6 @@ const GUID kFilterArray[kFilterSize] = {kElgatoGameCaptureHD};
         << (message) << ": " << logging::SystemErrorCodeToString(hr); \
   }
 #endif
-
-const std::string kFilterArrayName[kFilterSize] = {"Elgato Game Capture HD"};
-
 
 namespace {
 // Check if a Pin matches a category.
@@ -184,6 +202,19 @@ DirectShow::~DirectShow() {
     capture_graph_builder_.Reset();
 }
 
+bool DirectShow::IsDeviceWhiteListed(const std::string& name) {
+  DCHECK_EQ(WHITELISTED_FILTER_MAX + 1,
+            static_cast<int>(arraysize(kWhitelistedFilterNames)));
+  for (size_t i = 0; i < arraysize(kWhitelistedFilterNames); ++i) {
+    if (base::StartsWith(name, kWhitelistedFilterNames[i],
+                         base::CompareCase::INSENSITIVE_ASCII) != 0) {
+      LOG(INFO) << "Enumerated whitelist device: " << name;
+      return true;
+    }
+    LOG(INFO) << "Enumerated whitelist failed: device: " << name;
+  }
+  return false;
+}
 
 // FIXME: cleanup needs works
 void DirectShow::StopThread() {
@@ -229,7 +260,6 @@ HRESULT DirectShow::GetDeviceFilter(const std::string& device_id,
                                     IBaseFilter** filter) {
   DCHECK(filter);
 
-#ifdef AVERMEDIA
   ScopedComPtr<ICreateDevEnum> dev_enum;
   HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
                                   IID_PPV_ARGS(&dev_enum));
@@ -255,8 +285,7 @@ HRESULT DirectShow::GetDeviceFilter(const std::string& device_id,
     // Find |device_id| via DevicePath, Description or FriendlyName, whichever
     // is available first and is a VT_BSTR (i.e. String) type.
     static const wchar_t* kPropertyNames[] = {
-      //L"DevicePath", L"Description",
-                                              L"FriendlyName"};
+      L"DevicePath", L"Description", L"FriendlyName"};
 
     ScopedVariant name;
     for (const auto* property_name : kPropertyNames) {
@@ -269,9 +298,10 @@ HRESULT DirectShow::GetDeviceFilter(const std::string& device_id,
       const std::string device_path(base::SysWideToUTF8(V_BSTR(name.ptr())));
       if (device_path.compare(device_id) == 0) {
         // We have found the requested device
+        LOG(INFO) << "FOUND DEVICE: " << device_id;
         hr = moniker->BindToObject(0, 0, IID_PPV_ARGS(&capture_filter));
-        DLOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
-                                   << logging::SystemErrorCodeToString(hr);
+        LOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
+                                  << logging::SystemErrorCodeToString(hr);
         break;
       }
     }
@@ -282,25 +312,6 @@ HRESULT DirectShow::GetDeviceFilter(const std::string& device_id,
     hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
   return hr;
-#else
-  ScopedComPtr<IBaseFilter> capture_filter;
-  for (int i = 0; i < kFilterSize; i++) {
-    GUID guid = kFilterArray[i];
-    std::string name = kFilterArrayName[i];
-
-    if (name.compare(device_id) == 0) {
-      HRESULT hr = ::CoCreateInstance(guid, NULL, CLSCTX_INPROC_SERVER,
-          IID_PPV_ARGS(&capture_filter));
-
-      if (SUCCEEDED(hr)) {
-        *filter = capture_filter.Detach();
-        return hr;
-      }
-    }
-  }
-
-  return E_NOTFOUND;
-#endif
 
 }
 
@@ -455,14 +466,8 @@ HRESULT DirectShow::SetCaptureDevice() {
     return hr;
 #endif
 
-
-#ifdef AVERMEDIA
-  hr = GetDeviceFilter("AVerMedia GC550 Video Capture",
-                      capture_filter_.GetAddressOf());
-#else
   hr = GetDeviceFilter(device_id_,
                       capture_filter_.GetAddressOf());
-#endif
   DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
   if (!capture_filter_.Get())
     return hr;
@@ -564,12 +569,14 @@ HRESULT DirectShow::SetCaptureDevice() {
     return E_OUTOFMEMORY;
   }
 
-  hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
-      &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE, 
-      0, &output_audio_capture_pin_);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr);
-  if (FAILED(hr))
-    return hr;
+  output_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_OUTPUT, /* "Audio" */ "1");
+
+  /* hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT, */
+  /*     &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE, */ 
+  /*     0, &output_audio_capture_pin_); */
+  /* DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr); */
+  /* if (FAILED(hr)) */
+  /*   return hr; */
 
   if (output_audio_capture_pin_.Get() == NULL) {
     LOG(ERROR) << "Failed to get device audio pin";
@@ -697,6 +704,122 @@ HRESULT DirectShow::SetCaptureDevice() {
   return hr;
 }
 
+// static
+void DirectShow::GetVideoDeviceCapabilityList(
+    const std::string& device_id,
+    bool query_detailed_frame_rates,
+    DirectShowDeviceCapabilityList* out_capability_list) {
+
+  base::win::ScopedComPtr<IBaseFilter> capture_filter;
+  HRESULT hr = DirectShow::GetDeviceFilter(
+      device_id, capture_filter.GetAddressOf());
+  if (!capture_filter.Get()) {
+    LOG(ERROR) << "Failed to create capture filter: "
+                << logging::SystemErrorCodeToString(hr);
+    return;
+  }
+
+  base::win::ScopedComPtr<IPin> output_capture_pin(
+      DirectShow::GetPin(capture_filter.Get(), PINDIR_OUTPUT,
+                                    PIN_CATEGORY_CAPTURE, GUID_NULL));
+  if (!output_capture_pin.Get()) {
+    LOG(ERROR) << "Failed to get capture output pin";
+    return;
+  }
+
+  GetPinCapabilityList(capture_filter, output_capture_pin,
+                       query_detailed_frame_rates, out_capability_list);
+}
+// static
+void DirectShow::GetPinCapabilityList(
+    base::win::ScopedComPtr<IBaseFilter> capture_filter,
+    base::win::ScopedComPtr<IPin> output_capture_pin,
+    bool query_detailed_frame_rates,
+    DirectShowDeviceCapabilityList* out_capability_list) {
+  ScopedComPtr<IAMStreamConfig> stream_config;
+  HRESULT hr = output_capture_pin.CopyTo(stream_config.GetAddressOf());
+  if (FAILED(hr)) {
+    DLOG(ERROR) << "Failed to get IAMStreamConfig interface from "
+                   "capture device: "
+                << logging::SystemErrorCodeToString(hr);
+    return;
+  }
+
+  // Get interface used for getting the frame rate.
+  ScopedComPtr<IAMVideoControl> video_control;
+  hr = capture_filter.CopyTo(video_control.GetAddressOf());
+
+  int count = 0, size = 0;
+  hr = stream_config->GetNumberOfCapabilities(&count, &size);
+  if (FAILED(hr)) {
+    DLOG(ERROR) << "GetNumberOfCapabilities failed: "
+                << logging::SystemErrorCodeToString(hr);
+    return;
+  }
+
+  std::unique_ptr<BYTE[]> caps(new BYTE[size]);
+  for (int i = 0; i < count; ++i) {
+    DirectShow::ScopedMediaType media_type;
+    hr = stream_config->GetStreamCaps(i, media_type.Receive(), caps.get());
+    // GetStreamCaps() may return S_FALSE, so don't use FAILED() or SUCCEED()
+    // macros here since they'll trigger incorrectly.
+    if (hr != S_OK || !media_type.get()) {
+      LOG(ERROR) << "GetStreamCaps failed: "
+                  << logging::SystemErrorCodeToString(hr);
+      return;
+    }
+
+    if (media_type->majortype == MEDIATYPE_Video &&
+        media_type->formattype == FORMAT_VideoInfo) {
+      DirectShowVideoCaptureFormat format;
+      format.pixel_format =
+          DirectShow::TranslateMediaSubtypeToPixelFormat(
+              media_type->subtype);
+      if (format.pixel_format == PIXEL_FORMAT_UNKNOWN)
+        continue;
+      VIDEOINFOHEADER* h =
+          reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
+      format.frame_size.SetSize(h->bmiHeader.biWidth, h->bmiHeader.biHeight);
+
+      std::vector<float> frame_rates;
+      if (query_detailed_frame_rates && video_control.Get()) {
+        // Try to get a better |time_per_frame| from IAMVideoControl. If not,
+        // use the value from VIDEOINFOHEADER.
+        ScopedCoMem<LONGLONG> time_per_frame_list;
+        LONG list_size = 0;
+        const SIZE size = {format.frame_size.width(),
+                           format.frame_size.height()};
+        hr = video_control->GetFrameRateList(output_capture_pin.Get(), i, size,
+                                             &list_size, &time_per_frame_list);
+        // Sometimes |list_size| will be > 0, but time_per_frame_list will be
+        // NULL. Some drivers may return an HRESULT of S_FALSE which
+        // SUCCEEDED() translates into success, so explicitly check S_OK. See
+        // http://crbug.com/306237.
+        if (hr == S_OK && list_size > 0 && time_per_frame_list) {
+          for (int k = 0; k < list_size; k++) {
+            LONGLONG time_per_frame = *(time_per_frame_list.get() + k);
+            if (time_per_frame <= 0)
+              continue;
+            frame_rates.push_back(kSecondsToReferenceTime /
+                                  static_cast<float>(time_per_frame));
+          }
+        }
+      }
+
+      if (frame_rates.empty() && h->AvgTimePerFrame > 0) {
+        frame_rates.push_back(kSecondsToReferenceTime /
+                              static_cast<float>(h->AvgTimePerFrame));
+      }
+      if (frame_rates.empty())
+        frame_rates.push_back(0.0f);
+
+      for (const auto& frame_rate : frame_rates) {
+        format.frame_rate = frame_rate;
+        out_capability_list->emplace_back(i, format, h->bmiHeader);
+      }
+    }
+  }
+}
 // Finds an IPin on an IBaseFilter given the direction, Category and/or Major
 // Type. If either |category| or |major_type| are GUID_NULL, they are ignored.
 // static
@@ -727,6 +850,37 @@ ScopedComPtr<IPin> DirectShow::GetPin(IBaseFilter* filter,
 
   DCHECK(!pin.Get());
   return pin;
+}
+
+// static
+VideoPixelFormat DirectShow::TranslateMediaSubtypeToPixelFormat(
+    const GUID& sub_type) {
+  static struct {
+    const GUID& sub_type;
+    VideoPixelFormat format;
+  } const kMediaSubtypeToPixelFormatCorrespondence[] = {
+      {kMediaSubTypeI420, PIXEL_FORMAT_I420},
+      {MEDIASUBTYPE_IYUV, PIXEL_FORMAT_I420},
+      {MEDIASUBTYPE_RGB24, PIXEL_FORMAT_RGB24},
+      {MEDIASUBTYPE_YUY2, PIXEL_FORMAT_YUY2},
+      {MEDIASUBTYPE_MJPG, PIXEL_FORMAT_MJPEG},
+      {MEDIASUBTYPE_UYVY, PIXEL_FORMAT_UYVY},
+      {MEDIASUBTYPE_ARGB32, PIXEL_FORMAT_ARGB},
+      {kMediaSubTypeHDYC, PIXEL_FORMAT_UYVY},
+      {kMediaSubTypeY16, PIXEL_FORMAT_Y16},
+      {kMediaSubTypeZ16, PIXEL_FORMAT_Y16},
+      {kMediaSubTypeINVZ, PIXEL_FORMAT_Y16},
+  };
+  for (const auto& pixel_format : kMediaSubtypeToPixelFormatCorrespondence) {
+    if (sub_type == pixel_format.sub_type)
+      return pixel_format.format;
+  }
+#ifndef NDEBUG
+  WCHAR guid_str[128];
+  StringFromGUID2(sub_type, guid_str, arraysize(guid_str));
+  DVLOG(2) << "Device (also) supports an unknown media type " << guid_str;
+#endif
+  return PIXEL_FORMAT_UNKNOWN;
 }
 
 ScopedComPtr<IPin> DirectShow::GetPinByName(IBaseFilter* filter,

@@ -75,11 +75,7 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
   return fake_list_;
 }
 
-void DirectShowDeviceFactory::GetDeviceCapabilityList(DirectShowType type,
-            std::string device_id,
-            DirectShowDeviceCapabilityList* device_capablity_list) {
-  // FIXME
-}
+
 
 /*
  * [ ] should this run on it's own thread?
@@ -87,7 +83,12 @@ void DirectShowDeviceFactory::GetDeviceCapabilityList(DirectShowType type,
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors) {
 
   DCHECK(device_descriptors);
-  DVLOG(1) << __func__;
+  LOG(INFO) << "bebo " <<  __func__;
+
+  if (type == DirectShowType::Audio) {
+    LOG(INFO) << "bebo " <<  __func__ << "ignore audio request";
+    return;
+  }
 
   DirectShowDeviceDescriptors update;
 
@@ -123,9 +124,8 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectSh
         continue;
 
       const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
-      // FIXME
-      /* if (! IsWhiteListed(device_name)) */
-      /*   continue; */
+      if (! DirectShow::IsDeviceWhiteListed(device_name))
+        continue;
 
       name.Reset();
       hr = prop_bag->Read(L"DevicePath", name.Receive(), 0);

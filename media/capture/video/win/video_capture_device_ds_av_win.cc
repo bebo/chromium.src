@@ -123,9 +123,9 @@ void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
     CapabilityList* out_capability_list) {
 
   DirectShowDeviceCapabilityList ds_caps; 
-  DirectShowDeviceFactory::GetInstance()->GetDeviceCapabilityList(
-      DirectShowType::Video,
+  DirectShow::GetVideoDeviceCapabilityList(
       device_id,
+      query_detailed_frame_rates,
       &ds_caps);
 
   for (const auto cap: ds_caps) {

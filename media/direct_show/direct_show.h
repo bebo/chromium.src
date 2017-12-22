@@ -28,6 +28,7 @@
 #include "media/direct_show/audio_sink_filter.h"
 #include "media/direct_show/audio_sink_input_pin.h"
 #include "media/direct_show/video_capture_types.h"
+#include "media/direct_show/capability_list_win.h"
 
 using media::directshow::DirectShowVideoCaptureFormat;
 
@@ -49,6 +50,12 @@ class MEDIA_EXPORT DirectShow:
     void UnregisterObserver(AudioSinkFilterObserver* observer);
     void RegisterObserver(VideoSinkFilterObserver* observer);
     void UnregisterObserver(VideoSinkFilterObserver* observer);
+
+    static void GetVideoDeviceCapabilityList(
+        const std::string& device_id,
+        bool query_detailed_frame_rates,
+        DirectShowDeviceCapabilityList* out_capability_list);
+    static bool IsDeviceWhiteListed(const std::string& name);
 
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
   // we free the structure when exiting the scope.  DCHECKing is also done to
@@ -84,10 +91,12 @@ class MEDIA_EXPORT DirectShow:
   HRESULT GetAudioEngineStreamFormat();
   bool DesiredFormatIsSupported();
 
+  static VideoPixelFormat TranslateMediaSubtypeToPixelFormat(const GUID& sub_type);
   static void GetPinCapabilityList(
       base::win::ScopedComPtr<IBaseFilter> capture_filter,
       base::win::ScopedComPtr<IPin> output_capture_pin,
-      bool query_detailed_frame_rates);
+      bool query_detailed_frame_rates,
+      DirectShowDeviceCapabilityList* out_capablility_list);
   static HRESULT GetDeviceFilter(const std::string& device_id,
                                  IBaseFilter** filter);
   static HRESULT GetCrossbarFilter(const std::string& device_id,
