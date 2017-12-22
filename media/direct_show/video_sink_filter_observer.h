@@ -28,7 +28,7 @@ class VideoSinkFilterObserver {
   virtual void FormatChanged() {}; // FIXME parameter
 
  protected:
-  virtual ~VideoSinkFilterObserver();
+  virtual ~VideoSinkFilterObserver() {}; // FIXME, without {} the capture_lib.dll fail to link
 };
 
 }  // namespace media

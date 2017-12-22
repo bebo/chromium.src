@@ -41,8 +41,11 @@ GUID kMediaSubTypeY16 = {0x20363159,
                          {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 } // namespace directshow
 
+
+#if 0
 VideoSinkFilterObserver::~VideoSinkFilterObserver() {
 }
+#endif
 
 VideoSinkFilter::VideoSinkFilter(VideoSinkFilterObserver* observer) : input_pin_(NULL) {
   input_pin_ = new VideoSinkInputPin(this, observer);
