@@ -458,8 +458,12 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
 
   } else if (device_descriptor.capture_api ==
              VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
-    //TODO
     LOG(ERROR) << "DON'T FORGET TO IMPLEMENT ME";
+    device.reset(new VideoCaptureDeviceDirectShowAV(device_descriptor));
+    DVLOG(1) << " DirectShow AV Device: " << device_descriptor.display_name;
+    LOG(INFO) << " DirectShow AV Device: " << device_descriptor.display_name;
+    if (!static_cast<VideoCaptureDeviceDirectShowAV*>(device.get())->Init())
+      device.reset();
 
   } else {
     NOTREACHED();
@@ -495,7 +499,7 @@ void VideoCaptureDeviceFactoryWin::GetSupportedFormats(
     GetDeviceSupportedFormatsMediaFoundation(device, formats);
   } else if (device.capture_api ==
              VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
-    GetDeviceSupportedFormatsDirectShow(device, formats);
+    GetDeviceSupportedFormatsDirectShowAV(device, formats);
   }
 
 }
