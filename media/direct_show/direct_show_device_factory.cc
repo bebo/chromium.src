@@ -51,6 +51,10 @@ namespace media {
   }
 
   bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
+    // FIXME not to fake this
+    if (device_id.compare("loopback") == 0) {
+      return true;
+    }
 
     for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
       if (ds.device_id == device_id) {

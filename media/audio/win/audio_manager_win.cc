@@ -264,9 +264,10 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
     const std::string& device_id,
     const LogCallback& log_callback) {
   // Used for both AUDIO_PCM_LOW_LATENCY and AUDIO_PCM_LINEAR.
+
   DVLOG(1) << "MakeLowLatencyInputStream: " << device_id;
   if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
-    // FIXME: device_id
+    // FIXME: maybe not to intercept MakeLowLatencyInputStream, but move isDirectShowDevice 1 layer up. 
     return new DirectSoundAudioInputStream(this, params, "Elgato Game Capture HD");
   }
   return new WASAPIAudioInputStream(this, params, device_id);

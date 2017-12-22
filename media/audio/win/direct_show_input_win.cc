@@ -66,62 +66,41 @@ bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
 DirectSoundAudioInputStream::DirectSoundAudioInputStream(AudioManagerWin* manager,
                                                const AudioParameters& params,
                                                const std::string& device_id)
-    : manager_(manager), device_id_(device_id), params_(params), direct_show_(nullptr) {
+    : manager_(manager), device_id_(device_id), params_(params) {
   DCHECK(manager_);
   DCHECK(!device_id_.empty());
 
-  /* is_loopback_device_ = device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0; */
-  friendly_name_ = "DirectShow";
+  direct_show_.reset(DirectShowDeviceFactory::GetInstance()->GetController(device_id));
 
-  /* // Load the Avrt DLL if not already loaded. Required to support MMCSS. */
-  /* bool avrt_init = avrt::Initialize(); */
-  /* DCHECK(avrt_init) << "Failed to load the Avrt.dll"; */
+  friendly_name_ = "DirectShow";
 
   LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::DirectSoundAudioInputStream "
     << params.AsHumanReadableString();
 
-  // Store size of audio packets which we expect to get from the audio
-  // endpoint device in each capture event.
-  //packet_size_frames_ = params.GetBytesPerBuffer() / format->nBlockAlign; FIXME:
-
-  packet_size_frames_ = params.GetBytesPerBuffer() / (params.bits_per_sample()/8 * params.channels());
+  frame_size_ = (params.bits_per_sample() / 8 * params.channels());
+  packet_size_frames_ = params.GetBytesPerBuffer() / frame_size_;
   packet_size_bytes_ = params.GetBytesPerBuffer();
 
-  DirectShowDeviceFactory *factory = DirectShowDeviceFactory::GetInstance();
-  direct_show_ = factory->GetController(device_id);
-
-
-  // 3840
-
-  /* DVLOG(1) << "Number of bytes per audio frame  : " << frame_size_; */
-  DVLOG(1) << "Number of audio frames per packet: " << packet_size_frames_;
-  /* LOG(INFO) << friendly_name_ << " Number of bytes per audio frame  : " << frame_size_; */
   LOG(INFO) << friendly_name_ << " Number of audio frames per packet: " << packet_size_frames_;
 
-  size_t capture_buffer_size = 24 * 24 /*ms*/ * 48 /*sample rate*/ * frame_size_;
 #if 0
-  endpoint_buffer_size_frames_ = 1056 * 2;
   size_t capture_buffer_size = 
     std::max(2 * endpoint_buffer_size_frames_ * frame_size_,
       2 * packet_size_frames_ * frame_size_);
 #endif
-  int buffers_required = (int) capture_buffer_size / packet_size_bytes_; // FIXME
+
+  // TODO: capture_buffer_size be more dynamic and do this in formatChanged
+  size_t capture_buffer_size = 24 * 24 /*buffer duaration ms*/ * 48 /*sample rate*/ * frame_size_;
+  int buffers_required = capture_buffer_size / packet_size_bytes_;
   if (converter_ && imperfect_buffer_size_conversion_)
     ++buffers_required;
 
-  DCHECK(!fifo_);
-  LOG(INFO) << "DirectShow::Run() about to reset fifo";
-
-  //fifo_.reset(new AudioBlockFifo(format_.Format.nChannels, packet_size_frames_,
-  fifo_.reset(new AudioBlockFifo(2, packet_size_frames_,
+  fifo_.reset(new AudioBlockFifo(params.channels(), packet_size_frames_,
                                  buffers_required));
-
-  // All events are auto-reset events and non-signaled initially.
 }
 
 DirectSoundAudioInputStream::~DirectSoundAudioInputStream() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
 }
 
 bool DirectSoundAudioInputStream::Open() {
@@ -130,7 +109,7 @@ bool DirectSoundAudioInputStream::Open() {
 
   LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Open()";
 
-  opened_ = true; // SUCCEEDED(hr);
+  opened_ = true;
 
   return opened_;
 }
@@ -153,12 +132,11 @@ void DirectSoundAudioInputStream::Start(AudioInputCallback* callback) {
 
   sink_ = callback;
 
-
   StartAgc();
 
-  started_ = true; // SUCCEEDED(hr);
+  direct_show_->RegisterObserver(this);
 
-  LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::Start() " << started_;
+  started_ = true; // SUCCEEDED(hr);
 }
 
 void DirectSoundAudioInputStream::Stop() {
@@ -231,7 +209,6 @@ bool DirectSoundAudioInputStream::IsMuted() {
   DCHECK(opened_) << "Open() has not been called successfully";
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   VLOG(3) << friendly_name_ << " DirectSoundAudioInputStream::IsMuted()";
-  // LOG(INFO) << friendly_name_ << " DirectSoundAudioInputStream::IsMuted()";
   if (!opened_)
     return false;
 
@@ -259,7 +236,7 @@ void DirectSoundAudioInputStream::AudioFrameReceived(const uint8_t* buffer,
   static base::TimeDelta last_called;
   static uint64_t frame_count = 0;
 
-  base::TimeTicks capture_time = first_ref_time_ + timestamp; // + timestamp;
+  base::TimeTicks capture_time = first_ref_time_ + timestamp;
 
 //  LOG(INFO) << "frame received length: " << length << ", timestamp: " << timestamp << " delta: " << (timestamp - last_called) << ", capture_time: " << capture_time << ", first_ref_time: " << first_ref_time_;
 
@@ -301,11 +278,7 @@ void DirectSoundAudioInputStream::AudioFrameReceived(const uint8_t* buffer,
 }
 
 void DirectSoundAudioInputStream::FormatChanged(WAVEFORMATEXTENSIBLE* format) {
-
-  if (capture_format_) {
-    delete capture_format_;
-  }
-  capture_format_ = format;
+  capture_format_.reset(std::move(format));
 
   LOG(INFO) << friendly_name_ << " DirectShow::FormatChanged()";
 
@@ -318,18 +291,21 @@ void DirectSoundAudioInputStream::FormatChanged(WAVEFORMATEXTENSIBLE* format) {
 
   LOG(INFO) << "buffer_ratio: " << buffer_ratio << ", new_frames_per_buffer: " << new_frames_per_buffer;
 
-  const auto input_layout = GuessChannelLayout(format->Format.nChannels);
+  // TODO: check to see if we really need to convert
+// if (need convert) {
+
+  const auto input_layout = GuessChannelLayout(capture_format_->Format.nChannels);
   DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, input_layout);
   const auto output_layout = GuessChannelLayout(params_.channels());
   DCHECK_NE(CHANNEL_LAYOUT_UNSUPPORTED, output_layout);
 
-  LOG(INFO) << "Input: nSamplesPerSec: " << format->Format.nSamplesPerSec << ", wBitsPerSample: " << format->Format.wBitsPerSample << ", Channels: " << format->Format.nChannels;
+  LOG(INFO) << "Input: nSamplesPerSec: " << capture_format_->Format.nSamplesPerSec << ", wBitsPerSample: " << capture_format_->Format.wBitsPerSample << ", Channels: " << capture_format_->Format.nChannels;
   LOG(INFO) << "Output: nSamplesPerSec: " << params_.sample_rate() << ", wBitsPerSample: " << params_.bits_per_sample() << ", Channels: " << params_.channels();
 
   const AudioParameters input(AudioParameters::AUDIO_PCM_LOW_LATENCY,
       input_layout,
-      format->Format.nSamplesPerSec,
-      format->Format.wBitsPerSample,
+      capture_format_->Format.nSamplesPerSec,
+      capture_format_->Format.wBitsPerSample,
       static_cast<int>(new_frames_per_buffer));
 
   const AudioParameters output(AudioParameters::AUDIO_PCM_LOW_LATENCY,
@@ -364,18 +340,22 @@ void DirectSoundAudioInputStream::FormatChanged(WAVEFORMATEXTENSIBLE* format) {
   if (imperfect_buffer_size_conversion_) {
     LOG(INFO) << "Audio capture data conversion: Need to inject fifo";
   }
+
+  // }
+
+  size_t capture_buffer_size = 24 * 24 /*buffer duaration ms*/ * 48 /*sample rate*/ * frame_size_;
+  int buffers_required = capture_buffer_size / packet_size_bytes_;
+  if (converter_ && imperfect_buffer_size_conversion_)
+    ++buffers_required;
+
+  fifo_.reset(new AudioBlockFifo(capture_format_->Format.nChannels, packet_size_frames_,
+                                 buffers_required));
 }
-/* void DirectShow::HandleError(HRESULT err) { */
-/*   NOTREACHED() << "Error code: " << err; */
-/*   if (sink_) */
-/*     sink_->OnError(); */
-/* } */
 
 double DirectSoundAudioInputStream::ProvideInput(AudioBus* audio_bus,
-                                            uint32_t frames_delayed) {
+                                                 uint32_t frames_delayed) {
   fifo_->Consume()->CopyTo(audio_bus);
   return 1.0;
 }
-
 
 }  // namespace media

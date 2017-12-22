@@ -13,7 +13,6 @@ using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 using base::win::ScopedVariant;
 
-
 EXTERN_C const CLSID CLSID_NullRenderer;
 
 GUID kElgatoGameCaptureHD = {0x39f50f4c,
@@ -76,9 +75,6 @@ bool PinMatchesCategory(IPin* pin, REFGUID category) {
   if (SUCCEEDED(hr)) {
     GUID pin_category;
     DWORD return_value;
-    hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
-                          &pin_category, sizeof(pin_category), &return_value);
-
     hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
                           &pin_category, sizeof(pin_category), &return_value);
 
@@ -149,8 +145,9 @@ void PrintPinInfo(IPin* pin) {
 
 namespace media {
 
-DirectShow::DirectShow(std::string device_id) {
-  LOG(INFO) << __func__ ;
+DirectShow::DirectShow(std::string device_id)
+  : device_id_(device_id) {
+  LOG(INFO) << __func__;
   friendly_name_ = "DirectShow";  // FIXME device name??
 
   // Load the Avrt DLL if not already loaded. Required to support MMCSS.
@@ -166,11 +163,6 @@ DirectShow::DirectShow(std::string device_id) {
   format->nBlockAlign = (format->wBitsPerSample / 8) * format->nChannels;
   format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
   format->cbSize = 0;
-
-  // Size in bytes of each audio frame.
-  frame_size_ = format->nBlockAlign;
-
-
 }
 
 DirectShow::~DirectShow() {
@@ -240,7 +232,7 @@ void DirectShow::StopThread() {
 // Finds and creates a DirectShow Video Capture filter matching the |device_id|.
 // static
 HRESULT DirectShow::GetDeviceFilter(const std::string& device_id,
-                                               IBaseFilter** filter) {
+                                    IBaseFilter** filter) {
   DCHECK(filter);
 
 #ifdef AVERMEDIA
@@ -459,6 +451,7 @@ HRESULT DirectShow::SetCaptureDevice() {
 
 ////// open
   HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to CoInitializeEx", hr);
 
 #ifdef AVERMEDIA
   hr = GetCrossbarFilter("AVerMedia GC550 Crossbar",
@@ -531,6 +524,7 @@ HRESULT DirectShow::SetCaptureDevice() {
 #else 
 
 #ifdef AVERMEDIA
+
 #if 0
   hr = capture_graph_builder_->FindPin(crossbar_filter_.Get(), PINDIR_OUTPUT,
       &GUID_NULL, &MEDIATYPE_Video, TRUE, 
@@ -567,7 +561,7 @@ HRESULT DirectShow::SetCaptureDevice() {
     LOG(ERROR) << "Failed to get audio input pin";
     return E_OUTOFMEMORY;
   }
-#endif
+#endif // AVERMEDIA
 
   hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
       &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 
@@ -674,19 +668,7 @@ HRESULT DirectShow::SetCaptureDevice() {
   if (FAILED(hr)) {
     return hr;
   }
-#endif
 
-  WAVEFORMATEX* format = new WAVEFORMATEX;
-  format->wFormatTag = WAVE_FORMAT_PCM;
-  format->nSamplesPerSec = 48000; // params.sample_rate();
-  format->wBitsPerSample = 16; // params.bits_per_sample();
-  format->nChannels = 2; // params.channels();
-  format->nBlockAlign = (format->wBitsPerSample / 8) * format->nChannels;
-  format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
-  format->cbSize = 0;
-  /* ResetFormat(format); */
-
-#if 0
   ALLOCATOR_PROPERTIES props;
   props.cBuffers = -1;
   props.cbBuffer = format->nAvgBytesPerSec * 20 / 1000;
@@ -695,10 +677,7 @@ HRESULT DirectShow::SetCaptureDevice() {
   hr = neg->SuggestAllocatorProperties(&props);
 #endif
 
-
-  delete format;
- 
-#else 
+#else // if ALAX_AUDIO_TEST case
   ScopedComPtr<IAMBufferNegotiation> neg;
   hr = output_audio_capture_pin_.CopyTo(neg.GetAddressOf());
   DLOG_IF_FAILED_WITH_HRESULT("Can't get the iam buffer negotiation", hr);
@@ -716,8 +695,6 @@ HRESULT DirectShow::SetCaptureDevice() {
   format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
   format->cbSize = 0;
 
-  /* ResetFormat(format); */
-
   ALLOCATOR_PROPERTIES props;
   props.cBuffers = -1;
   props.cbBuffer = format->nAvgBytesPerSec * 20 / 1000;
@@ -730,17 +707,6 @@ HRESULT DirectShow::SetCaptureDevice() {
 
   return hr;
 }
-
-
-HRESULT DirectShow::InitializeAudioEngine() {
-  return S_OK;
-}
-
-/* void DirectShow::ReportOpenResult() const { */
-/*   DCHECK(!opened_);  // This method must be called before we set this flag. */
-/*   UMA_HISTOGRAM_ENUMERATION("Media.Audio.Capture.Win.Open", open_result_, */
-/*                             OPEN_RESULT_MAX + 1); */
-/* } */
 
 // Finds an IPin on an IBaseFilter given the direction, Category and/or Major
 // Type. If either |category| or |major_type| are GUID_NULL, they are ignored.
@@ -850,9 +816,7 @@ void DirectShow::ScopedMediaType::DeleteMediaType(
 }
 
 void DirectShow::EnsureGraphIsRunning() {
-
   if (!running_) {
-
     capture_thread_.reset(new base::DelegateSimpleThread(
         this, "capture_thread",
         base::SimpleThread::Options(base::ThreadPriority::REALTIME_AUDIO)));
@@ -870,16 +834,15 @@ void DirectShow::RegisterObserver(AudioSinkFilterObserver* observer) {
 }
 
 void DirectShow::UnregisterObserver(AudioSinkFilterObserver* observer) {
-    audio_observer_ = nullptr;
+    audio_observer_ = NULL;
     //ShouldGraphBeRunning(); FIXME
 }
 
 void DirectShow::AudioFrameReceived(const uint8_t* buffer,
-                                          int length,
-                                          base::TimeDelta timestamp) {
-
+                                    int length,
+                                    base::TimeDelta timestamp) {
   if (audio_observer_ != NULL) {  // TODO make atomic
-    audio_observer_->AudioFrameReceived(buffer,length, timestamp);
+    audio_observer_->AudioFrameReceived(buffer, length, timestamp);
   }
 }
 

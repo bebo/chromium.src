@@ -23,11 +23,6 @@
 #include "base/compiler_specific.h"
 #include "base/macros.h"
 #include "base/sequence_checker.h"
-/* #include "base/win/scoped_co_mem.h" */
-/* #include "base/win/scoped_com_initializer.h" */
-/* #include "base/win/scoped_comptr.h" */
-/* #include "base/win/scoped_variant.h" */
-/* #include "base/win/scoped_handle.h" */
 #include "media/audio/agc_audio_stream.h"
 #include "media/base/audio_converter.h"
 #include "media/base/audio_parameters.h"
@@ -71,17 +66,14 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
 
  private:
 
-  /* // Issues the OnError() callback to the |sink_|. */
-  /* void HandleError(HRESULT err); */
-
   // AudioConverter::InputCallback implementation.
   double ProvideInput(AudioBus* audio_bus, uint32_t frames_delayed) override;
 
 
   // AudioSinkFilterObserverer
   void AudioFrameReceived(const uint8_t* buffer,
-                     int length,
-                     base::TimeDelta timestamp) override;
+                         int length,
+                         base::TimeDelta timestamp) override;
 
   void FormatChanged(WAVEFORMATEXTENSIBLE *format) override;
 
@@ -113,13 +105,12 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   // Our creator, the audio manager needs to be notified when we close.
   AudioManagerWin* const manager_;
 
-  DirectShow* direct_show_;
+  std::unique_ptr<DirectShow> direct_show_;
 
   bool opened_ = false;
   bool started_ = false;
   StreamOpenResult open_result_ = OPEN_RESULT_OK;
 
-  WAVEFORMATEXTENSIBLE *capture_format_ = NULL;
 
   // Size in bytes of each audio frame (4 bytes for 16-bit stereo PCM)
   size_t frame_size_ = 0;
@@ -146,54 +137,10 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   // Pointer to the object that will receive the recorded audio samples.
   AudioInputCallback* sink_ = nullptr;
 
-  // Windows Multimedia Device (MMDevice) API interfaces.
-
-  // An IMMDevice interface which represents an audio endpoint device.
-  /* base::win::ScopedComPtr<IMMDevice> endpoint_device_; */
-
-  // Windows Audio Session API (WASAPI) interfaces.
-
-  // An IAudioClient interface which enables a client to create and initialize
-  // an audio stream between an audio application and the audio engine.
-  /* base::win::ScopedComPtr<IAudioClient> audio_client_; */
-
-  // Loopback IAudioClient doesn't support event-driven mode, so a separate
-  // IAudioClient is needed to receive notifications when data is available in
-  // the buffer. For loopback input |audio_client_| is used to receive data,
-  // while |audio_render_client_for_loopback_| is used to get notifications
-  // when a new buffer is ready. See comment in InitializeAudioEngine() for
-  // details.
-  /* base::win::ScopedComPtr<IAudioClient> audio_render_client_for_loopback_; */
-
-  // The IAudioCaptureClient interface enables a client to read input data
-  // from a capture endpoint buffer.
-  /* base::win::ScopedComPtr<IAudioCaptureClient> audio_capture_client_; */
-
-  // The ISimpleAudioVolume interface enables a client to control the
-  // master volume level of an audio session.
-  // The volume-level is a value in the range 0.0 to 1.0.
-  // This interface does only work with shared-mode streams.
-  /* base::win::ScopedComPtr<ISimpleAudioVolume> simple_audio_volume_; */
-
-  // The IAudioEndpointVolume allows a client to control the volume level of
-  // the whole system.
-  /* base::win::ScopedComPtr<IAudioEndpointVolume> system_audio_volume_; */
-
-  // The audio engine will signal this event each time a buffer has been
-  // recorded.
-  /* base::win::ScopedHandle audio_samples_ready_event_; */
-
-  // This event will be signaled when capturing shall stop.
-  /* base::win::ScopedHandle stop_capture_event_; */
-
-  // Never set it through external API. Only used when |device_id_| ==
-  // kLoopbackWithMuteDeviceId.
-  // True, if we have muted the system audio for the stream capturing, and
-  // indicates that we need to unmute the system audio when stopping capturing.
-  /* bool mute_done_ = false; */
-
   // Used for the captured audio on the callback thread.
   std::unique_ptr<AudioBlockFifo> fifo_;
+
+  std::unique_ptr<WAVEFORMATEXTENSIBLE> capture_format_;
 
   // If the caller requires resampling (should only be in exceptional cases and
   // ideally, never), we support using an AudioConverter.

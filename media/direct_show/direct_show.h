@@ -1,6 +1,6 @@
 
-#ifndef MEDIA_DIREACT_SHOW_H_
-#define MEDIA_DIREACT_SHOW_H_
+#ifndef MEDIA_DIRECT_SHOW_DIRECT_SHOW_H_
+#define MEDIA_DIRECT_SHOW_DIRECT_SHOW_H_
 
 
 #include <memory>
@@ -8,12 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* #include <windows.h> */
-
-#include <Audioclient.h> // FIXME
-/* #include <MMDeviceAPI.h> */
-#undef AM_KSCATEGORY_AUDIO
 #include <dshow.h>
+#include <mmreg.h>
 
 #include "base/compiler_specific.h"
 #include "base/macros.h"
@@ -38,10 +34,8 @@ namespace media {
 
 class MEDIA_EXPORT DirectShow:
       public base::DelegateSimpleThread::Delegate,
-      public AudioSinkFilterObserver
-{
+      public AudioSinkFilterObserver {
   public:
-
   void RegisterObserver(AudioSinkFilterObserver* observer);
   void UnregisterObserver(AudioSinkFilterObserver* observer);
   ~DirectShow();
@@ -71,6 +65,7 @@ class MEDIA_EXPORT DirectShow:
  private:
   friend class DirectShowDeviceFactory;
   DirectShow(std::string device_id);
+
   // DelegateSimpleThread::Delegate implementation.
   void Run() override;
   void StopThread();
@@ -78,8 +73,6 @@ class MEDIA_EXPORT DirectShow:
   HRESULT SetCaptureDevice();
   HRESULT GetAudioEngineStreamFormat();
   bool DesiredFormatIsSupported();
-  HRESULT InitializeAudioEngine();
-  /* void ReportOpenResult() const; */
 
   static void GetPinCapabilityList(
       base::win::ScopedComPtr<IBaseFilter> capture_filter,
@@ -112,9 +105,6 @@ class MEDIA_EXPORT DirectShow:
   AudioSinkFilterObserver* audio_observer_;
 
   bool running_ = false; // FIXME make atomic
-  size_t frame_size_ = 0;
-  size_t packet_size_frames_ = 0;
-  size_t packet_size_bytes_ = 0;
 
   base::win::ScopedComPtr<IBaseFilter> capture_filter_;
   base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
@@ -136,10 +126,11 @@ class MEDIA_EXPORT DirectShow:
   scoped_refptr<AudioSinkFilter> audio_sink_filter_;
 
   std::string friendly_name_;
+  std::string device_id_;
 
   /* DISALLOW_COPY_AND_ASSIGN(DirectShow); */
 };
 
 }  // namespace media
 
-#endif  // MEDIA_DIREACT_SHOW_H_
+#endif  // MEDIA_DIRECT_SHOW_DIRECT_SHOW_H_
