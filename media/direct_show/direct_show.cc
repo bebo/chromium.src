@@ -57,7 +57,6 @@ GUID kAvermediaVideoCapture = {0x8ec460c4,
                           0x46fd,
                           {0xad, 0x9b, 0x33, 0x1f, 0xf3, 0x3d, 0xe3, 0xb6}};
 
-#undef ALAX_AUDIO_TEST
 #undef AVERMEDIA
 
 enum FILTER {
@@ -181,23 +180,26 @@ DirectShow::DirectShow(std::string device_id)
 
 DirectShow::~DirectShow() {
   LOG(INFO) << __func__ ;
-  if (media_control_.Get())
+  if (media_control_.Get()) {
     media_control_->Stop();
+  }
 
-  if (graph_builder_.Get()) {
-    if (audio_sink_filter_.get()) {
-      graph_builder_->RemoveFilter(audio_sink_filter_.get());
+  if (has_audio_) {
+    if (graph_builder_.Get()) {
+      if (audio_sink_filter_.get()) {
+        graph_builder_->RemoveFilter(audio_sink_filter_.get());
+      }
     }
+  }
 
-#ifndef ALAX_AUDIO_TEST
+  if (has_video_) {
     if (video_sink_filter_.get()) {
       graph_builder_->RemoveFilter(video_sink_filter_.get());
     }
-#endif
+  }
 
-    if (capture_filter_.Get()) {
-      graph_builder_->RemoveFilter(capture_filter_.Get());
-    }
+  if (capture_filter_.Get()) {
+    graph_builder_->RemoveFilter(capture_filter_.Get());
   }
 
   if (capture_graph_builder_.Get())
@@ -237,11 +239,11 @@ void DirectShow::StopThread() {
       graph_builder_->RemoveFilter(audio_sink_filter_.get());
     }
 
-#ifndef ALAX_AUDIO_TEST
-    if (video_sink_filter_.get()) {
-      graph_builder_->RemoveFilter(video_sink_filter_.get());
+    if (has_video_) {
+      if (video_sink_filter_.get()) {
+        graph_builder_->RemoveFilter(video_sink_filter_.get());
+      }
     }
-#endif
 
     if (capture_filter_.Get()) {
       graph_builder_->RemoveFilter(capture_filter_.Get());
@@ -250,10 +252,10 @@ void DirectShow::StopThread() {
 
   graph_builder_->Disconnect(input_audio_sink_pin_.Get());
 
-#ifndef ALAX_AUDIO_TEST
-  graph_builder_->Disconnect(output_video_capture_pin_.Get());
-  graph_builder_->Disconnect(input_video_sink_pin_.Get());
-#endif
+  if (has_video_) {
+    graph_builder_->Disconnect(output_video_capture_pin_.Get());
+    graph_builder_->Disconnect(input_video_sink_pin_.Get());
+  }
 }
 
 // Finds and creates a DirectShow Video Capture filter matching the |device_id|.
@@ -417,16 +419,17 @@ void DirectShow::Run() {
     PrintPinInfo(output_audio_capture_pin_.Get());
   }
 
-#ifndef ALAX_AUDIO_TEST
-  LOG(INFO) << "DirectShow::Run() about to connect direct (video)";
+  if (has_video_) {
 
-  hr = graph_builder_->ConnectDirect(output_video_capture_pin_.Get(),
-      input_video_sink_pin_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
-  if (FAILED(hr)) {
-    return;
+    LOG(INFO) << "DirectShow::Run() about to connect direct (video)";
+
+    hr = graph_builder_->ConnectDirect(output_video_capture_pin_.Get(),
+        input_video_sink_pin_.Get(), NULL);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
+    if (FAILED(hr)) {
+      return;
+    }
   }
-#endif
 
   LOG(INFO) << "output_video_capture_pin_ (2)";
   PrintPinInfo(output_video_capture_pin_.Get());
@@ -516,10 +519,6 @@ HRESULT DirectShow::SetCaptureDevice() {
   if (FAILED(hr))
     return hr;
 
-#ifdef ALAX_AUDIO_TEST
-  output_audio_capture_pin_ = GetPin(capture_filter_.Get(), PINDIR_OUTPUT,
-      GUID_NULL, GUID_NULL);
-#else 
 
 #ifdef AVERMEDIA
 
@@ -565,12 +564,13 @@ HRESULT DirectShow::SetCaptureDevice() {
       &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 
       0, &output_video_capture_pin_);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to find video output pin", hr);
-  if (FAILED(hr))
-    return hr;
 
   if (output_video_capture_pin_.Get() == NULL) {
     LOG(ERROR) << "Failed to get device video pin";
-    return E_OUTOFMEMORY;
+    has_video_ = false;
+  } else {
+    LOG(INFO) << "output_video_capture_pin_";
+    PrintPinInfo(output_video_capture_pin_.Get());
   }
 
   /* output_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_OUTPUT, /1* "Audio" *1/ "1"); */
@@ -590,13 +590,6 @@ HRESULT DirectShow::SetCaptureDevice() {
     LOG(INFO) << "output_audio_capture_pin_";
     PrintPinInfo(output_audio_capture_pin_.Get());
   }
-#endif
-
-#if 1
-
-  LOG(INFO) << "output_video_capture_pin_";
-  PrintPinInfo(output_video_capture_pin_.Get());
-#endif
 
 #ifdef AVERMEDIA
   hr = graph_builder_->AddFilter(crossbar_filter_.Get(), NULL);
@@ -619,96 +612,52 @@ HRESULT DirectShow::SetCaptureDevice() {
     return hr;
   }
 
-#ifndef ALAX_AUDIO_TEST
-  hr = graph_builder_->AddFilter(video_sink_filter_.get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the video sink filter to the graph", hr);
-  if (FAILED(hr))
-    return hr;
-#endif
-
-///////// start
-#ifndef ALAX_AUDIO_TEST
-  ScopedComPtr<IAMStreamConfig> stream_config;
-  hr = output_video_capture_pin_.CopyTo(stream_config.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Can't get the Capture format settings", hr);
-  if (FAILED(hr)) {
-    return hr;
+  if (has_video_) {
+    hr = graph_builder_->AddFilter(video_sink_filter_.get(), NULL);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to add the video sink filter to the graph", hr);
+    if (FAILED(hr))
+      return hr;
   }
 
-  int count = 0, size = 0;
-  hr = stream_config->GetNumberOfCapabilities(&count, &size);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to GetNumberOfCapabilities", hr);
-  if (FAILED(hr)) {
-    return hr;
+  ///////// start
+  if (has_video_) {
+    ScopedComPtr<IAMStreamConfig> stream_config;
+    hr = output_video_capture_pin_.CopyTo(stream_config.GetAddressOf());
+    DLOG_IF_FAILED_WITH_HRESULT("Can't get the Capture format settings", hr);
+    if (FAILED(hr)) {
+      return hr;
+    }
+
+    int count = 0, size = 0;
+    hr = stream_config->GetNumberOfCapabilities(&count, &size);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to GetNumberOfCapabilities", hr);
+    if (FAILED(hr)) {
+      return hr;
+    }
+
+    LOG(INFO) << "number of capabilities, count: " << count << ", size: " << size;
+
+    std::unique_ptr<BYTE[]> caps(new BYTE[size]);
+    ScopedMediaType media_type;
+
+    // Get the windows capability from the capture device.
+    // GetStreamCaps can return S_FALSE which we consider an error. Therefore the
+    // FAILED macro can't be used.
+    int cap_index = 1;
+    hr = stream_config->GetStreamCaps(cap_index,
+                                      media_type.Receive(), caps.get());
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to get capture device capabilities", hr);
+    if (hr != S_OK) {
+      return hr;
+    }
+
+    // Order the capture device to use this format.
+    hr = stream_config->SetFormat(media_type.get());
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to set capture device output format", hr);
+    if (FAILED(hr)) {
+     return hr;
+    }
   }
-
-  LOG(INFO) << "number of capabilities, count: " << count << ", size: " << size;
-
-  std::unique_ptr<BYTE[]> caps(new BYTE[size]);
-  ScopedMediaType media_type;
-
-  // Get the windows capability from the capture device.
-  // GetStreamCaps can return S_FALSE which we consider an error. Therefore the
-  // FAILED macro can't be used.
-  int cap_index = 1;
-  hr = stream_config->GetStreamCaps(cap_index,
-                                    media_type.Receive(), caps.get());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to get capture device capabilities", hr);
-  if (hr != S_OK) {
-    return hr;
-  }
-
-  // Order the capture device to use this format.
-  hr = stream_config->SetFormat(media_type.get());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to set capture device output format", hr);
-  if (FAILED(hr)) {
-   return hr;
-  }
-
-#if 0
-  ScopedComPtr<IAMBufferNegotiation> neg;
-  hr = output_audio_capture_pin_.CopyTo(neg.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Can't get the iam buffer negotiation", hr);
-  if (FAILED(hr)) {
-    return hr;
-  }
-
-  ALLOCATOR_PROPERTIES props;
-  props.cBuffers = -1;
-  props.cbBuffer = format->nAvgBytesPerSec * 20 / 1000;
-  props.cbAlign = -1;
-  props.cbPrefix = -1;
-  hr = neg->SuggestAllocatorProperties(&props);
-#endif
-
-#else // if ALAX_AUDIO_TEST case
-  ScopedComPtr<IAMBufferNegotiation> neg;
-  hr = output_audio_capture_pin_.CopyTo(neg.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Can't get the iam buffer negotiation", hr);
-  if (FAILED(hr)) {
-    return hr;
-  }
-
-
-  WAVEFORMATEX* format = new WAVEFORMATEX;
-  format->wFormatTag = WAVE_FORMAT_PCM;
-  format->nSamplesPerSec = 48000; // params.sample_rate();
-  format->wBitsPerSample = 16; // params.bits_per_sample();
-  format->nChannels = 2; // params.channels();
-  format->nBlockAlign = (format->wBitsPerSample / 8) * format->nChannels;
-  format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
-  format->cbSize = 0;
-
-  ALLOCATOR_PROPERTIES props;
-  props.cBuffers = -1;
-  props.cbBuffer = format->nAvgBytesPerSec * 20 / 1000;
-  props.cbAlign = -1;
-  props.cbPrefix = -1;
-  hr = neg->SuggestAllocatorProperties(&props);
-
-  delete format;
-#endif
-
   return hr;
 }
 
