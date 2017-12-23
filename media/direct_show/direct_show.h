@@ -11,6 +11,7 @@
 #include <dshow.h>
 #include <mmreg.h>
 
+#include "base/atomic_ref_count.h"
 #include "base/compiler_specific.h"
 #include "base/macros.h"
 #include "base/threading/platform_thread.h"
@@ -77,6 +78,12 @@ class MEDIA_EXPORT DirectShow:
     AM_MEDIA_TYPE* media_type_;
   };
 
+  struct AVER_PARAMETERS {
+    ULONG index;
+    ULONG param1;
+    ULONG param2;
+    ULONG param3;
+  };
 
 
  private:
@@ -109,6 +116,7 @@ class MEDIA_EXPORT DirectShow:
                                                     PIN_DIRECTION pin_dir,
                                                     const std::string& pin_name);
   void EnsureGraphIsRunning();
+  void SetEncoderSetting();
 
   void AudioFrameReceived(const uint8_t* buffer,
                      int length,
@@ -129,7 +137,7 @@ class MEDIA_EXPORT DirectShow:
   AudioSinkFilterObserver* audio_observer_;
   VideoSinkFilterObserver* video_observer_;
 
-  bool running_ = false; // FIXME make atomic
+  base::AtomicRefCount running_;
 
   bool has_audio_;
   bool has_video_;

@@ -10,8 +10,6 @@
 #include <objbase.h>
 #include <dshow.h>
 
-//#include <stddef.h>
-
 #include <algorithm>
 #include <list>
 #include <utility>
@@ -35,10 +33,7 @@ using base::win::ScopedVariant;
 
 namespace media {
 
-DirectShowDeviceFactory::DirectShowDeviceFactory():
-  device_descriptors_(),
-  devices_()
-{
+DirectShowDeviceFactory::DirectShowDeviceFactory() {
   LOG(INFO) << __func__ ;
 }
 
@@ -52,11 +47,18 @@ DirectShowDeviceFactory * DirectShowDeviceFactory::GetInstance() {
 
 bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
 
+  if (device_descriptors_.empty()) {
+    GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors_);
+    GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors_);
+  }
+
   for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
     if (ds.device_id == device_id) {
+      LOG(INFO) << __func__ << ", found device_id: " << device_id;
       return true;
     }
   }
+
   return false;
 }
 
@@ -64,8 +66,10 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
   auto search = devices_.find(device_id);
   DirectShow* device = NULL;
   if (search != devices_.end()) {
+    LOG(INFO) << "Controller found: " << device_id;
     device = search->second;
   } else {
+    LOG(INFO) << "Controller NOT FOUND, creating: " << device_id;
     device  = new DirectShow(device_id);
     devices_.emplace(std::make_pair(device_id, device));
   }
@@ -74,23 +78,17 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
 
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors) {
   if (type == DirectShowType::Audio) {
-    LOG(INFO) << "fpn GetDeviceDescriptors (Audio)";
-    GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
+    LOG(INFO) << "bebo GetDeviceDescriptors (Audio)";
+  } else {
+    LOG(INFO) << "bebo GetDeviceDescriptors (Video)";
   }
+  GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
   GetDeviceDescriptors(type, CLSID_VideoInputDeviceCategory, device_descriptors);
+  device_descriptors_ = *device_descriptors;
 }
 
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category, DirectShowDeviceDescriptors* device_descriptors) {
-
   DCHECK(device_descriptors);
-  LOG(INFO) << "bebo " <<  __func__;
-
-  /* if (type == DirectShowType::Audio) { */
-  /*   LOG(INFO) << "bebo " <<  __func__ << "ignore audio request"; */
-  /*   return; */
-  /* } */
-
-  DirectShowDeviceDescriptors update;
 
   ScopedComPtr<ICreateDevEnum> dev_enum;
   HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
@@ -136,15 +134,15 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         DCHECK_EQ(name.type(), VT_BSTR);
         id = base::SysWideToUTF8(V_BSTR(name.ptr()));
       }
+
       // FIXME
       //const std::string model_id = GetDeviceModelId(id);
       const std::string model_id = "CaptureCard - 0000::0000";
 
       device_descriptors->emplace_back(device_name, id, model_id);
-      update.emplace_back(device_name, id, model_id);
     }
   }
-  device_descriptors_ = update;
+
 }
 
 DirectShowDeviceDescriptor::DirectShowDeviceDescriptor(

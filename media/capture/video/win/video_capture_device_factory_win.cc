@@ -31,8 +31,6 @@ using base::win::ScopedVariant;
 using Descriptor = media::VideoCaptureDeviceDescriptor;
 using Descriptors = media::VideoCaptureDeviceDescriptors;
 
-#undef BEBO_GAME_CAPTURE_TO_CAPTURE_CARD
-
 namespace media {
 
 // In Windows device identifiers, the USB VID and PID are preceded by the string
@@ -461,15 +459,6 @@ std::unique_ptr<VideoCaptureDevice> VideoCaptureDeviceFactoryWin::CreateDevice(
       LOG(INFO) << "bebo DirectShow Device: " << device_descriptor.display_name;
       if (!static_cast<VideoCaptureDeviceWin*>(device.get())->Init())
         device.reset();
-
-      LOG(INFO) << "bebo DirectShow Device: " << device_descriptor.display_name;
-#ifdef BEBO_GAME_CAPTURE_TO_CAPTURE_CARD
-  } else if (device_descriptor.display_name.compare("bebo-game-capture") == 0) {
-      LOG(INFO) << "bebo redirect bebo-game-capture to capture card??? " << device_descriptor.display_name;
-      device.reset(new VideoCaptureDeviceDirectShowAV(device_descriptor));
-      if (!static_cast<VideoCaptureDeviceDirectShowAV*>(device.get())->Init())
-        device.reset();
-#endif
   } else if (device_descriptor.capture_api ==
              VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
     device.reset(new VideoCaptureDeviceDirectShowAV(device_descriptor));

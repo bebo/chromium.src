@@ -175,20 +175,31 @@ void AudioManagerWin::GetAudioOutputDeviceNames(
 AudioParameters AudioManagerWin::GetInputStreamParameters(
     const std::string& device_id) {
   AudioParameters parameters;
-  HRESULT hr =
+
+  if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
+    //FIXME: this should go to the factory and get audio parameters
+    //
+    parameters = AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                               CHANNEL_LAYOUT_STEREO,
+                               48000,
+                               16,
+                               kFallbackBufferSize);
+  } else {
+    HRESULT hr =
       CoreAudioUtil::GetPreferredAudioParameters(device_id, false, &parameters);
 
-  if (FAILED(hr) || !parameters.IsValid()) {
-    LOG(WARNING) << "Unable to get preferred audio params for " << device_id
-                 << " 0x" << std::hex << hr;
-    // TODO(tommi): We appear to have callers to GetInputStreamParameters that
-    // rely on getting valid audio parameters returned for an invalid or
-    // unavailable device. We should track down those code paths (it is likely
-    // that they actually don't need a real device but depend on the audio
-    // code path somehow for a configuration - e.g. tab capture).
-    parameters =
+    if (FAILED(hr) || !parameters.IsValid()) {
+      LOG(WARNING) << "Unable to get preferred audio params for " << device_id
+        << " 0x" << std::hex << hr;
+      // TODO(tommi): We appear to have callers to GetInputStreamParameters that
+      // rely on getting valid audio parameters returned for an invalid or
+      // unavailable device. We should track down those code paths (it is likely
+      // that they actually don't need a real device but depend on the audio
+      // code path somehow for a configuration - e.g. tab capture).
+      parameters =
         AudioParameters(AudioParameters::AUDIO_PCM_LINEAR,
-                        CHANNEL_LAYOUT_STEREO, 48000, 16, kFallbackBufferSize);
+            CHANNEL_LAYOUT_STEREO, 48000, 16, kFallbackBufferSize);
+    }
   }
 
   int user_buffer_size = GetUserBufferSize();
@@ -264,7 +275,6 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
     const std::string& device_id,
     const LogCallback& log_callback) {
   // Used for both AUDIO_PCM_LOW_LATENCY and AUDIO_PCM_LINEAR.
-
   DVLOG(1) << "MakeLowLatencyInputStream: " << device_id;
   if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
     return new DirectSoundAudioInputStream(this, params, device_id);
