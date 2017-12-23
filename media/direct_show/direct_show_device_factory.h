@@ -1,8 +1,6 @@
 #ifndef MEDIA_DIRECT_SHOW_DEVICE_FACTORY_H_
 #define MEDIA_DIRECT_SHOW_DEVICE_FACTORY_H_
 
-/* #include <windows.h> */
-
 #include <memory>
 #include <string>
 #include <vector>
@@ -51,8 +49,10 @@ namespace media {
       virtual ~DirectShowDeviceFactory();
       friend struct base::StaticMemorySingletonTraits<DirectShowDeviceFactory>;
 
+      void GetDeviceDescriptors(DirectShowType type, GUID category, DirectShowDeviceDescriptors* device_descriptors);
+
       DirectShowDeviceDescriptors device_descriptors_;
-      DirectShow* fake_list_;
+      std::map<std::string, DirectShow*> devices_;
 
       DISALLOW_COPY_AND_ASSIGN(DirectShowDeviceFactory);
   };
@@ -60,6 +60,3 @@ namespace media {
 }
 
 #endif // MEDIA_DIRECT_SHOW_DEVICE_FACTORY_H_
-
-
-

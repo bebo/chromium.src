@@ -134,7 +134,6 @@ class MEDIA_EXPORT DirectShow:
   bool has_audio_;
   bool has_video_;
 
-
   base::win::ScopedComPtr<IBaseFilter> capture_filter_;
   base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
 

@@ -37,7 +37,7 @@ namespace media {
 
 DirectShowDeviceFactory::DirectShowDeviceFactory():
   device_descriptors_(),
-  fake_list_(nullptr)
+  devices_()
 {
   LOG(INFO) << __func__ ;
 }
@@ -51,10 +51,6 @@ DirectShowDeviceFactory * DirectShowDeviceFactory::GetInstance() {
 }
 
 bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
-  // FIXME not to fake this
-  if (device_id.compare("loopback") == 0) {
-    return true;
-  }
 
   for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
     if (ds.device_id == device_id) {
@@ -65,30 +61,34 @@ bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
 }
 
 DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
-  /* FIXME:
-   * * get correct enumeration
-   * * get from list and if not return;
-   */
-  if (fake_list_ == NULL) {
-     fake_list_ = new DirectShow(device_id);
+  auto search = devices_.find(device_id);
+  DirectShow* device = NULL;
+  if (search != devices_.end()) {
+    device = search->second;
+  } else {
+    device  = new DirectShow(device_id);
+    devices_.emplace(std::make_pair(device_id, device));
   }
-  return fake_list_;
+  return device;
 }
 
-
-
-/*
- * [ ] should this run on it's own thread?
- */
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors) {
+  if (type == DirectShowType::Audio) {
+    LOG(INFO) << "fpn GetDeviceDescriptors (Audio)";
+    GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
+  }
+  GetDeviceDescriptors(type, CLSID_VideoInputDeviceCategory, device_descriptors);
+}
+
+void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category, DirectShowDeviceDescriptors* device_descriptors) {
 
   DCHECK(device_descriptors);
   LOG(INFO) << "bebo " <<  __func__;
 
-  if (type == DirectShowType::Audio) {
-    LOG(INFO) << "bebo " <<  __func__ << "ignore audio request";
-    return;
-  }
+  /* if (type == DirectShowType::Audio) { */
+  /*   LOG(INFO) << "bebo " <<  __func__ << "ignore audio request"; */
+  /*   return; */
+  /* } */
 
   DirectShowDeviceDescriptors update;
 
@@ -99,7 +99,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectSh
     return;
 
   ScopedComPtr<IEnumMoniker> enum_moniker;
-  hr = dev_enum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory,
+  hr = dev_enum->CreateClassEnumerator(category,
                                        enum_moniker.GetAddressOf(), 0);
   // CreateClassEnumerator returns S_FALSE on some Windows OS
   // when no camera exist. Therefore the FAILED macro can't be used.
@@ -138,7 +138,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectSh
       }
       // FIXME
       //const std::string model_id = GetDeviceModelId(id);
-      const std::string model_id = "TEST";
+      const std::string model_id = "CaptureCard - 0000::0000";
 
       device_descriptors->emplace_back(device_name, id, model_id);
       update.emplace_back(device_name, id, model_id);
