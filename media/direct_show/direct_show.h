@@ -2,7 +2,6 @@
 #ifndef MEDIA_DIRECT_SHOW_DIRECT_SHOW_H_
 #define MEDIA_DIRECT_SHOW_DIRECT_SHOW_H_
 
-
 #include <memory>
 
 #include <stddef.h>
@@ -46,6 +45,7 @@ class MEDIA_EXPORT DirectShow:
   public:
     ~DirectShow();
     /* void GetVideoPinCapabilityList(bool query_detailed_framerate, &capabilities_); */
+    static bool IsDeviceWhiteListed(const std::string& name);
 
     void RegisterObserver(AudioSinkFilterObserver* observer);
     void UnregisterObserver(AudioSinkFilterObserver* observer);
@@ -56,7 +56,6 @@ class MEDIA_EXPORT DirectShow:
         const std::string& device_id,
         bool query_detailed_frame_rates,
         DirectShowDeviceCapabilityList* out_capability_list);
-    static bool IsDeviceWhiteListed(const std::string& name);
 
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
   // we free the structure when exiting the scope.  DCHECKing is also done to
@@ -90,14 +89,6 @@ class MEDIA_EXPORT DirectShow:
   friend class DirectShowDeviceFactory;
   DirectShow(std::string device_id);
 
-  // DelegateSimpleThread::Delegate implementation.
-  void Run() override;
-  void StopThread();
-
-  HRESULT SetCaptureDevice();
-  HRESULT GetAudioEngineStreamFormat();
-  bool DesiredFormatIsSupported();
-
   static VideoPixelFormat TranslateMediaSubtypeToPixelFormat(const GUID& sub_type);
   static void GetPinCapabilityList(
       base::win::ScopedComPtr<IBaseFilter> capture_filter,
@@ -106,8 +97,9 @@ class MEDIA_EXPORT DirectShow:
       DirectShowDeviceCapabilityList* out_capablility_list);
   static HRESULT GetDeviceFilter(const std::string& device_id,
                                  IBaseFilter** filter);
-  static HRESULT GetCrossbarFilter(const std::string& device_id,
-                                 IBaseFilter** filter);
+  static HRESULT GetCrossbarFilter(ICaptureGraphBuilder2* graph_builder,
+                                   IBaseFilter* capture_filter,
+                                   IBaseFilter** filter);
   static base::win::ScopedComPtr<IPin> GetPin(IBaseFilter* filter,
                                               PIN_DIRECTION pin_dir,
                                               REFGUID category,
@@ -115,17 +107,28 @@ class MEDIA_EXPORT DirectShow:
   static base::win::ScopedComPtr<IPin> GetPinByName(IBaseFilter* filter,
                                                     PIN_DIRECTION pin_dir,
                                                     const std::string& pin_name);
+
+  void StopThread();
   void EnsureGraphIsRunning();
   void SetEncoderSetting();
 
+  HRESULT SetCaptureDevice();
+  HRESULT GetAudioEngineStreamFormat();
+  bool DesiredFormatIsSupported();
+
+  //  AudioSinkFilterObserver implementation
   void AudioFrameReceived(const uint8_t* buffer,
                      int length,
                      base::TimeDelta timestamp) override;
+
+  //  VideoSinkFilterObserver implementation
   void VideoFrameReceived(const uint8_t* buffer,
                           int length,
                           const DirectShowVideoCaptureFormat& format,
                           base::TimeDelta timestamp) override;
 
+  // DelegateSimpleThread::Delegate implementation.
+  void Run() override;
 
   // Capturing is driven by this thread (which has no message loop).
   // All OnData() callbacks will be called from this thread.
@@ -151,12 +154,8 @@ class MEDIA_EXPORT DirectShow:
   base::win::ScopedComPtr<IMediaControl> media_control_;
   base::win::ScopedComPtr<IPin> input_audio_sink_pin_;
   base::win::ScopedComPtr<IPin> input_video_sink_pin_;
-  base::win::ScopedComPtr<IPin> input_video_capture_pin_;
-  base::win::ScopedComPtr<IPin> input_audio_capture_pin_;
   base::win::ScopedComPtr<IPin> output_video_capture_pin_;
   base::win::ScopedComPtr<IPin> output_audio_capture_pin_;
-  base::win::ScopedComPtr<IPin> output_video_crossbar_pin_;
-  base::win::ScopedComPtr<IPin> output_audio_crossbar_pin_;
 
   scoped_refptr<AudioSinkFilter> audio_sink_filter_;
   scoped_refptr<VideoSinkFilter> video_sink_filter_;

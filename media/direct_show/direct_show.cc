@@ -2,9 +2,10 @@
 
 #include <ks.h>
 #include <ksmedia.h>
+#define __STREAMS__ // workaround for ikspin typedef
+#include <ksproxy.h>
+#undef __STREAMS__
 #include <objbase.h>
-#define NO_DSHOW_STRSAFE
-#include <dshow.h>
 
 #include "media/direct_show/video_sink_filter.h"
 
@@ -73,10 +74,6 @@ bool PinMatchesCategory(IPin* pin, REFGUID category) {
     hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
                           &pin_category, sizeof(pin_category), &return_value);
 
-    WCHAR cat[128];
-    StringFromGUID2(pin_category, cat, arraysize(cat));
-    LOG(INFO) << "pin matches category, return_value: " << cat;
-
     if (SUCCEEDED(hr) && (return_value == sizeof(pin_category))) {
       found = (pin_category == category);
     }
@@ -92,6 +89,60 @@ bool PinMatchesMajorType(IPin* pin, REFGUID major_type) {
   return SUCCEEDED(hr) && connection_media_type.majortype == major_type;
 }
 
+bool GetPinMedium(IPin* pin, REGPINMEDIUM& medium) {
+  ScopedComPtr<IKsPin> iks_pin;
+  HRESULT hr = pin->QueryInterface(IID_IKsPin, &iks_pin);
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  ScopedCoMem<KSMULTIPLE_ITEM> items;
+  hr = iks_pin->KsQueryMediums(&items);
+  if (FAILED(hr)) { // pins do not support medium
+    return false;
+  }
+
+  ULONG item_count = items->Count;
+  if (!item_count) {
+    return false;
+  }
+
+  REGPINMEDIUM* pin_medium = (REGPINMEDIUM*)(items + 1);
+  for (ULONG i = 0; i < item_count; i++, pin_medium++) {
+    // Do not connect a pin if the medium has a CLSID of GUID_NULL or
+    // KSMEDIUMSETID_Standard. These are default values indicating 
+    // that the pin does not support mediums.
+    if (pin_medium->clsMedium != GUID_NULL &&
+        pin_medium->clsMedium != KSMEDIUMSETID_Standard) {
+      medium = *pin_medium;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool FilterMatchesMedium(IBaseFilter* filter, REGPINMEDIUM medium) {
+  ScopedComPtr<IPin> pin;
+  ScopedComPtr<IEnumPins> pin_enum;
+  HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
+  if (pin_enum.Get() == NULL) {
+    return false;
+  }
+
+  hr = pin_enum->Reset();  // set to first pin
+  while ((hr = pin_enum->Next(1, pin.GetAddressOf(), NULL)) == S_OK) {
+    REGPINMEDIUM cur_pin_medium;
+    if (GetPinMedium(pin.Get(), cur_pin_medium)) {
+      if (cur_pin_medium.clsMedium == medium.clsMedium) {
+        return true;
+      }
+    }
+    pin.Reset();
+  }
+
+  pin.Reset();
+  return false;
+}
 
 void PrintPinInfo(IPin* pin) {
   HRESULT hr;
@@ -163,30 +214,7 @@ DirectShow::DirectShow(std::string device_id)
 
 DirectShow::~DirectShow() {
   LOG(INFO) << __func__ ;
-  if (media_control_.Get()) {
-    media_control_->Stop();
-  }
-
-  if (has_audio_) {
-    if (graph_builder_.Get()) {
-      if (audio_sink_filter_.get()) {
-        graph_builder_->RemoveFilter(audio_sink_filter_.get());
-      }
-    }
-  }
-
-  if (has_video_) {
-    if (video_sink_filter_.get()) {
-      graph_builder_->RemoveFilter(video_sink_filter_.get());
-    }
-  }
-
-  if (capture_filter_.Get()) {
-    graph_builder_->RemoveFilter(capture_filter_.Get());
-  }
-
-  if (capture_graph_builder_.Get())
-    capture_graph_builder_.Reset();
+  StopThread();
 }
 
 bool DirectShow::IsDeviceWhiteListed(const std::string& name) {
@@ -203,41 +231,48 @@ bool DirectShow::IsDeviceWhiteListed(const std::string& name) {
   return false;
 }
 
-// FIXME: cleanup needs works
 void DirectShow::StopThread() {
   if (capture_thread_) {
-    /* SetEvent(stop_capture_event_.Get()); FIXME */
     capture_thread_->Join();
     capture_thread_.reset();
   }
 
-  HRESULT hr = media_control_->Stop();
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to stop the capture graph", hr);
-  if (FAILED(hr)) {
-    return;
+  if (media_control_.Get()) {
+    media_control_->Stop();
   }
 
   if (graph_builder_.Get()) {
-    if (audio_sink_filter_.get()) {
-      graph_builder_->RemoveFilter(audio_sink_filter_.get());
+    if (has_audio_) {
+      graph_builder_->Disconnect(output_audio_capture_pin_.Get());
+      graph_builder_->Disconnect(input_audio_sink_pin_.Get());
     }
 
     if (has_video_) {
-      if (video_sink_filter_.get()) {
-        graph_builder_->RemoveFilter(video_sink_filter_.get());
-      }
+      graph_builder_->Disconnect(output_video_capture_pin_.Get());
+      graph_builder_->Disconnect(input_video_sink_pin_.Get());
+    }
+
+    if (audio_sink_filter_.get()) {
+      graph_builder_->RemoveFilter(audio_sink_filter_.get());
+      audio_sink_filter_ = NULL;
+    }
+
+    if (video_sink_filter_.get()) {
+      graph_builder_->RemoveFilter(video_sink_filter_.get());
+      video_sink_filter_ = NULL;
     }
 
     if (capture_filter_.Get()) {
       graph_builder_->RemoveFilter(capture_filter_.Get());
     }
+
+    if (crossbar_filter_.Get()) {
+      graph_builder_->RemoveFilter(crossbar_filter_.Get());
+    }
   }
 
-  graph_builder_->Disconnect(input_audio_sink_pin_.Get());
-
-  if (has_video_) {
-    graph_builder_->Disconnect(output_video_capture_pin_.Get());
-    graph_builder_->Disconnect(input_video_sink_pin_.Get());
+  if (capture_graph_builder_.Get()) {
+    capture_graph_builder_.Reset();
   }
 }
 
@@ -302,15 +337,43 @@ HRESULT DirectShow::GetDeviceFilter(const std::string& device_id,
 
 }
 
-HRESULT DirectShow::GetCrossbarFilter(const std::string& device_id,
-                                               IBaseFilter** filter) {
-  DCHECK(filter);
+HRESULT DirectShow::GetCrossbarFilter(ICaptureGraphBuilder2* graph_builder,
+                                      IBaseFilter* capture_filter,
+                                      IBaseFilter** filter) {
+  // "AVerMedia GC550 Crossbar"
+  ScopedComPtr<IAMCrossbar> crossbar;
+
+  HRESULT hr = graph_builder->FindInterface(&LOOK_UPSTREAM_ONLY, NULL,
+      capture_filter, IID_PPV_ARGS(&crossbar));
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to find upstream crossbar", hr);
+  if (FAILED(hr)) { // no crossbar
+    return hr;
+  }
+
+  ScopedComPtr<IBaseFilter> crossbar_filter;
+  crossbar.CopyTo(crossbar_filter.GetAddressOf());
+
+  ScopedComPtr<IPin> pin;
+  pin = GetPin(crossbar_filter.Get(), PINDIR_OUTPUT, GUID_NULL, GUID_NULL);
+  if (pin.Get() == NULL) { // no pin?
+    LOG(ERROR) << "Failed to get any crossbar output pin", hr;
+    return E_NOTIMPL;
+  }
+
+  // get pin medium to find kernel filter
+  REGPINMEDIUM pin_medium;
+  bool pin_medium_result = GetPinMedium(pin.Get(), pin_medium);
+  if (!pin_medium_result) { // no pin medium
+    LOG(ERROR) << "Failed to get crossbar output pin medium", hr;
+    return E_NOTIMPL;
+  }
 
   ScopedComPtr<ICreateDevEnum> dev_enum;
-  HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
-                                  IID_PPV_ARGS(&dev_enum));
-  if (FAILED(hr))
+  hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
+                          IID_PPV_ARGS(&dev_enum));
+  if (FAILED(hr)) {
     return hr;
+  }
 
   ScopedComPtr<IEnumMoniker> enum_moniker;
   hr = dev_enum->CreateClassEnumerator(AM_KSCATEGORY_CROSSBAR,
@@ -319,7 +382,7 @@ HRESULT DirectShow::GetCrossbarFilter(const std::string& device_id,
     return hr;
   }
 
-  ScopedComPtr<IBaseFilter> capture_filter;
+  ScopedComPtr<IBaseFilter> cur_capture_filter;
   for (ScopedComPtr<IMoniker> moniker;
        enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
        moniker.Reset()) {
@@ -328,74 +391,41 @@ HRESULT DirectShow::GetCrossbarFilter(const std::string& device_id,
     if (FAILED(hr))
       continue;
 
-    // Find |device_id| via DevicePath, Description or FriendlyName, whichever
-    // is available first and is a VT_BSTR (i.e. String) type.
+    hr = moniker->BindToObject(0, 0, IID_PPV_ARGS(&cur_capture_filter));
+    DLOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
+      << logging::SystemErrorCodeToString(hr);
 
-    static const wchar_t* kPropertyNames[] = {
-    //L"DevicePath", L"Description",
-                                              L"FriendlyName"};
-
-    ScopedVariant name;
-    for (const auto* property_name : kPropertyNames) {
-      prop_bag->Read(property_name, name.Receive(), 0);
-      if (name.type() == VT_BSTR)
-        break;
+    bool match = FilterMatchesMedium(cur_capture_filter.Get(), pin_medium);
+    if (match) {
+      LOG(INFO) << "Found matching filter by medium";
+      break;
     }
-
-    if (name.type() == VT_BSTR) {
-      const std::string device_path(base::SysWideToUTF8(V_BSTR(name.ptr())));
-      if (device_path.compare(device_id) == 0) {
-        // We have found the requested device
-        hr = moniker->BindToObject(0, 0, IID_PPV_ARGS(&capture_filter));
-        DLOG_IF(ERROR, FAILED(hr)) << "Failed to bind camera filter: "
-                                   << logging::SystemErrorCodeToString(hr);
-        break;
-      }
-    }
+    cur_capture_filter.Reset();
   }
 
-  *filter = capture_filter.Detach();
+  *filter = cur_capture_filter.Detach();
   if (!*filter && SUCCEEDED(hr))
     hr = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 
   return hr;
 }
 
-
-
-  /* stop_capture_event_.Set(CreateEvent(NULL, FALSE, FALSE, NULL)); */
-  /* DCHECK(stop_capture_event_.IsValid()); */
-
 void DirectShow::Run() {
   LOG(INFO) << friendly_name_ << " DirectShow::Run()";
 
   HRESULT hr = SetCaptureDevice();
-  LOG(INFO) << friendly_name_ << " DirectShow::Run() - SetCaptureDevice - " << hr;
+  LOG(INFO) << friendly_name_ << " DirectShow::Run() - SetCaptureDevice - " << std::hex << hr;
 
 
 #ifdef AVERMEDIA
   SetEncoderSetting();
-
-  hr = graph_builder_->ConnectDirect(output_video_crossbar_pin_.Get(),
-      input_video_capture_pin_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
-  if (FAILED(hr)) {
-    return;
-  }
-
-  hr = graph_builder_->ConnectDirect(output_audio_crossbar_pin_.Get(),
-      input_audio_capture_pin_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
-  if (FAILED(hr)) {
-    return;
-  }
 #endif
 
   if (has_audio_) {
     LOG(INFO) << "DirectShow::Run() about to connect direct (audio) ";
     hr = graph_builder_->ConnectDirect(output_audio_capture_pin_.Get(),
         input_audio_sink_pin_.Get(), NULL);
-    DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the Capture graph", hr);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to connect the capture audio", hr);
     if (FAILED(hr)) {
       return;
     }
@@ -436,10 +466,6 @@ void DirectShow::Run() {
   }
 
   LOG(INFO) << "DirectShow::Run() running";
-
-  /* FIXME */
-  /* DWORD ret = WaitForSingleObject(stop_capture_event_.Get(), INFINITE); */
-  /* LOG(INFO) << "DirectShow::Run() Ret: " << ret; */
 }
 
 
@@ -449,37 +475,6 @@ HRESULT DirectShow::SetCaptureDevice() {
 ////// open
   HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to CoInitializeEx", hr);
-
-#ifdef AVERMEDIA
-  hr = GetCrossbarFilter("AVerMedia GC550 Crossbar",
-                         crossbar_filter_.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to get crossbar filter", hr);
-  if (!crossbar_filter_.Get())
-    return hr;
-#endif
-
-  hr = GetDeviceFilter(device_id_,
-                      capture_filter_.GetAddressOf());
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
-  if (!capture_filter_.Get())
-    return hr;
-
-  // Create the sink filter used for receiving Captured frames.
-  audio_sink_filter_ = new AudioSinkFilter(this);
-  if (audio_sink_filter_.get() == NULL) {
-    LOG(ERROR) << "Failed to create sink filter";
-    return E_OUTOFMEMORY;
-  }
-
-  input_audio_sink_pin_ = audio_sink_filter_->GetPin(0);
-
-  video_sink_filter_ = new VideoSinkFilter(this);
-  if (video_sink_filter_.get() == NULL) {
-    LOG(ERROR) << "Failed to create sink filter";
-    return E_OUTOFMEMORY;
-  }
-
-  input_video_sink_pin_ = video_sink_filter_->GetPin(0);
 
   hr = ::CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
                           IID_PPV_ARGS(&graph_builder_));
@@ -504,37 +499,49 @@ HRESULT DirectShow::SetCaptureDevice() {
   if (FAILED(hr))
     return hr;
 
+/////// do device stuff
 
-#ifdef AVERMEDIA
-  output_video_crossbar_pin_ = GetPinByName(crossbar_filter_.Get(), PINDIR_OUTPUT, 
-     "0: Video Decoder Out");
-  if (output_video_crossbar_pin_.Get() == NULL) {
-    LOG(ERROR) << "Failed to get crossbar video pin";
+  hr = GetDeviceFilter(device_id_,
+                       capture_filter_.GetAddressOf());
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to create capture filter", hr);
+  if (!capture_filter_.Get())
+    return hr;
+
+  hr = graph_builder_->AddFilter(capture_filter_.Get(), NULL);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the capture device to the graph", hr);
+
+
+/// crossbar 
+  hr = GetCrossbarFilter(capture_graph_builder_.Get(),
+                         capture_filter_.Get(),
+                         crossbar_filter_.GetAddressOf());
+  if (crossbar_filter_.Get() != NULL) {
+    LOG(INFO) << "Found Crossbar";
+    hr = graph_builder_->AddFilter(crossbar_filter_.Get(), NULL);
+    DLOG_IF_FAILED_WITH_HRESULT("Failed to add the crossbar to the graph",
+        hr);
+    if (FAILED(hr))
+      return hr;
+  } else {
+    LOG(INFO) << "Crossbar not found";
+  }
+
+  // Create the sink filter used for receiving Captured frames.
+  audio_sink_filter_ = new AudioSinkFilter(this);
+  if (audio_sink_filter_.get() == NULL) {
+    LOG(ERROR) << "Failed to create sink filter";
     return E_OUTOFMEMORY;
   }
 
-  output_audio_crossbar_pin_ = GetPinByName(crossbar_filter_.Get(), PINDIR_OUTPUT, 
-     "1: Audio Decoder Out");
-  if (output_audio_crossbar_pin_.Get() == NULL) {
-    LOG(ERROR) << "Failed to get crossbar audio pin";
+  input_audio_sink_pin_ = audio_sink_filter_->GetPin(0);
+
+  video_sink_filter_ = new VideoSinkFilter(this);
+  if (video_sink_filter_.get() == NULL) {
+    LOG(ERROR) << "Failed to create sink filter";
     return E_OUTOFMEMORY;
   }
 
-  // capture filter input pins
-  input_video_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_INPUT,
-     "Analog Video In");
-  if (input_video_capture_pin_.Get() == NULL) {
-    LOG(ERROR) << "Failed to get video input pin";
-    return E_OUTOFMEMORY;
-  }
-
-  input_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_INPUT,
-     "Audio In");
-  if (input_audio_capture_pin_.Get() == NULL) {
-    LOG(ERROR) << "Failed to get audio input pin";
-    return E_OUTOFMEMORY;
-  }
-#endif // AVERMEDIA
+  input_video_sink_pin_ = video_sink_filter_->GetPin(0);
 
   hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
       &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, TRUE, 
@@ -549,9 +556,8 @@ HRESULT DirectShow::SetCaptureDevice() {
     PrintPinInfo(output_video_capture_pin_.Get());
   }
 
-  /* output_audio_capture_pin_ = GetPinByName(capture_filter_.Get(), PINDIR_OUTPUT, "Audio"); */
   hr = capture_graph_builder_->FindPin(capture_filter_.Get(), PINDIR_OUTPUT,
-      &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE, 
+      &PIN_CATEGORY_CAPTURE, &MEDIATYPE_Audio, TRUE,
       0, &output_audio_capture_pin_);
   DLOG_IF_FAILED_WITH_HRESULT("Failed to find audio output pin", hr);
   if (FAILED(hr)) {
@@ -565,19 +571,6 @@ HRESULT DirectShow::SetCaptureDevice() {
     LOG(INFO) << "output_audio_capture_pin_";
     PrintPinInfo(output_audio_capture_pin_.Get());
   }
-
-#ifdef AVERMEDIA
-  hr = graph_builder_->AddFilter(crossbar_filter_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the crossbar to the graph",
-                              hr);
-  if (FAILED(hr))
-    return hr;
-#endif
-
-  hr = graph_builder_->AddFilter(capture_filter_.Get(), NULL);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to add the capture device to the graph", hr);
-  if (FAILED(hr))
-    return hr;
 
   if (has_audio_) {
     hr = graph_builder_->AddFilter(audio_sink_filter_.get(), NULL);
@@ -780,9 +773,9 @@ void DirectShow::GetPinCapabilityList(
 // Type. If either |category| or |major_type| are GUID_NULL, they are ignored.
 // static
 ScopedComPtr<IPin> DirectShow::GetPin(IBaseFilter* filter,
-                                                 PIN_DIRECTION pin_dir,
-                                                 REFGUID category,
-                                                 REFGUID major_type) {
+                                      PIN_DIRECTION pin_dir,
+                                      REFGUID category,
+                                      REFGUID major_type) {
   ScopedComPtr<IPin> pin;
   ScopedComPtr<IEnumPins> pin_enum;
   HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
