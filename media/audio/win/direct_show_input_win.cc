@@ -134,6 +134,7 @@ void DirectSoundAudioInputStream::Start(AudioInputCallback* callback) {
 
   StartAgc();
 
+  direct_show_->SetRequestedAudioFormat(params_);
   direct_show_->RegisterObserver(this);
 
   started_ = true; // SUCCEEDED(hr);
@@ -238,7 +239,7 @@ void DirectSoundAudioInputStream::AudioFrameReceived(const uint8_t* buffer,
 
   base::TimeTicks capture_time = first_ref_time_ + timestamp;
 
-  LOG(INFO) << "frame received length: " << length << ", timestamp: " << timestamp << " delta: " << (timestamp - last_called) << ", capture_time: " << capture_time << ", first_ref_time: " << first_ref_time_;
+  // LOG(INFO) << "frame received length: " << length << ", timestamp: " << timestamp << " delta: " << (timestamp - last_called) << ", capture_time: " << capture_time << ", first_ref_time: " << first_ref_time_;
 
   last_called = timestamp;
 

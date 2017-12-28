@@ -16,6 +16,10 @@ AudioSinkFilter::AudioSinkFilter(AudioSinkFilterObserver* observer) : input_pin_
   input_pin_ = new AudioSinkInputPin(this, observer);
 }
 
+void AudioSinkFilter::SetRequestedMediaFormat(WAVEFORMATEX format) {
+  input_pin_->SetRequestedMediaFormat(format);
+}
+
 size_t AudioSinkFilter::NoOfPins() {
   return 1;
 }

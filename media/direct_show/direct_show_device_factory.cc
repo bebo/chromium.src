@@ -42,11 +42,20 @@ DirectShowDeviceFactory::~DirectShowDeviceFactory() {
 }
 
 DirectShowDeviceFactory * DirectShowDeviceFactory::GetInstance() {
-  return base::Singleton<DirectShowDeviceFactory, base::StaticMemorySingletonTraits<DirectShowDeviceFactory>>::get();
+  return base::Singleton<DirectShowDeviceFactory, 
+         base::StaticMemorySingletonTraits<DirectShowDeviceFactory>>::get();
 }
 
 bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
 
+  // TODO: need to be smarter on this one
+  // currently we show both (Video) and (Audio)
+  // AVerMedia for example is a capture device that has both audio and video
+  // Elgato has two separate category of filter for both audio and video.
+  // I think we can check the device path and filter it off. 
+  // device path's last section is the device instance id. (Elgato's both video and audio has the same instance id)
+  // One option is: we can check if there are more than two instance id then 
+  // we can do matching on the category of the device path.
   if (device_descriptors_.empty()) {
     GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors_);
     GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors_);
@@ -54,7 +63,6 @@ bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
 
   for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
     if (ds.device_id == device_id) {
-      LOG(INFO) << __func__ << ", found device_id: " << device_id;
       return true;
     }
   }

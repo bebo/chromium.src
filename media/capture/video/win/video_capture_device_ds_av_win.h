@@ -40,36 +40,9 @@ namespace media {
 class VideoCaptureDeviceDirectShowAV : public VideoCaptureDevice,
                                        public VideoSinkFilterObserver {
  public:
-  // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
-  // we free the structure when exiting the scope.  DCHECKing is also done to
-  // avoid memory leaks.
-  class ScopedMediaType {
-   public:
-    ScopedMediaType() : media_type_(NULL) {}
-    ~ScopedMediaType() { Free(); }
-
-    AM_MEDIA_TYPE* operator->() { return media_type_; }
-    AM_MEDIA_TYPE* get() { return media_type_; }
-    void Free();
-    AM_MEDIA_TYPE** Receive();
-
-   private:
-    void FreeMediaType(AM_MEDIA_TYPE* mt);
-    void DeleteMediaType(AM_MEDIA_TYPE* mt);
-
-    AM_MEDIA_TYPE* media_type_;
-  };
-
   static void GetDeviceCapabilityList(const std::string& device_id,
                                       bool query_detailed_frame_rates,
                                       CapabilityList* out_capability_list);
-  static void GetPinCapabilityList(
-      base::win::ScopedComPtr<IBaseFilter> capture_filter,
-      base::win::ScopedComPtr<IPin> output_capture_pin,
-      bool query_detailed_frame_rates,
-      CapabilityList* out_capability_list);
-  static VideoPixelFormat TranslateMediaSubtypeToPixelFormat(
-      const GUID& sub_type);
 
   explicit VideoCaptureDeviceDirectShowAV(
       const VideoCaptureDeviceDescriptor& device_descriptor);
@@ -105,7 +78,6 @@ class VideoCaptureDeviceDirectShowAV : public VideoCaptureDevice,
                      base::TimeDelta timestamp) override;
   void FormatChanged() override;
 
-  /* bool CreateCapabilityMap(); */
   void SetAntiFlickerInCaptureFilter(const VideoCaptureParams& params);
   void SetErrorState(const base::Location& from_here,
                      const std::string& reason,

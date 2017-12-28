@@ -23,6 +23,7 @@
 #include "media/capture/video/win/video_capture_device_factory_win.h"
 #include "media/direct_show/direct_show_device_factory.h"
 #include "media/direct_show/direct_show.h"
+#include "media/direct_show/video_capture_types.h"
 #include "media/direct_show/capability_list_win.h"
 
 using base::win::ScopedCoMem;
@@ -49,81 +50,14 @@ namespace media {
   {}
 #endif
 
-#if 0
-// Check if a Pin matches a category.
-bool PinMatchesCategoryDSAV(IPin* pin, REFGUID category) {
-  DCHECK(pin);
-  bool found = false;
-  ScopedComPtr<IKsPropertySet> ks_property;
-  HRESULT hr = pin->QueryInterface(IID_PPV_ARGS(&ks_property));
-  if (SUCCEEDED(hr)) {
-    GUID pin_category;
-    DWORD return_value;
-    hr = ks_property->Get(AMPROPSETID_Pin, AMPROPERTY_PIN_CATEGORY, NULL, 0,
-                          &pin_category, sizeof(pin_category), &return_value);
-    if (SUCCEEDED(hr) && (return_value == sizeof(pin_category))) {
-      found = (pin_category == category);
-    }
-  }
-  return found;
-}
-
-// Check if a Pin's MediaType matches a given |major_type|.
-bool PinMatchesMajorTypeDSAV(IPin* pin, REFGUID major_type) {
-  DCHECK(pin);
-  AM_MEDIA_TYPE connection_media_type;
-  const HRESULT hr = pin->ConnectionMediaType(&connection_media_type);
-  return SUCCEEDED(hr) && connection_media_type.majortype == major_type;
-}
-
-// Retrieves the control range and value using the provided getters, and
-// optionally returns the associated supported and current mode.
-template <typename RangeGetter, typename ValueGetter>
-mojom::RangePtr RetrieveControlRangeAndCurrent(
-    RangeGetter range_getter,
-    ValueGetter value_getter,
-    std::vector<mojom::MeteringMode>* supported_modes = nullptr,
-    mojom::MeteringMode* current_mode = nullptr) {
-  auto control_range = mojom::Range::New();
-  long min, max, step, default_value, flags;
-  HRESULT hr = range_getter(&min, &max, &step, &default_value, &flags);
-  DLOG_IF_FAILED_WITH_HRESULT("Control range reading failed", hr);
-  if (SUCCEEDED(hr)) {
-    control_range->min = min;
-    control_range->max = max;
-    control_range->step = step;
-    if (supported_modes != nullptr) {
-      if (flags && CameraControl_Flags_Auto)
-        supported_modes->push_back(mojom::MeteringMode::CONTINUOUS);
-      if (flags && CameraControl_Flags_Manual)
-        supported_modes->push_back(mojom::MeteringMode::MANUAL);
-    }
-  }
-  long current;
-  hr = value_getter(&current, &flags);
-  DLOG_IF_FAILED_WITH_HRESULT("Control value reading failed", hr);
-  if (SUCCEEDED(hr)) {
-    control_range->current = current;
-    if (current_mode != nullptr) {
-      if (flags && CameraControl_Flags_Auto)
-        *current_mode = mojom::MeteringMode::CONTINUOUS;
-      else if (flags && CameraControl_Flags_Manual)
-        *current_mode = mojom::MeteringMode::MANUAL;
-    }
-  }
-
-  return control_range;
-}
-#endif
-
 // static
 void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
     const std::string& device_id,
     bool query_detailed_frame_rates,
     CapabilityList* out_capability_list) {
 
-  DirectShowDeviceCapabilityList ds_caps; 
-  DirectShow::GetVideoDeviceCapabilityList(
+  DirectShowVideoCapabilityList ds_caps; 
+  DirectShow::GetDeviceVideoCapabilityList(
       device_id,
       query_detailed_frame_rates,
       &ds_caps);
@@ -136,168 +70,6 @@ void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
   }
 }
 
-// static
-void VideoCaptureDeviceDirectShowAV::GetPinCapabilityList(
-    base::win::ScopedComPtr<IBaseFilter> capture_filter,
-    base::win::ScopedComPtr<IPin> output_capture_pin,
-    bool query_detailed_frame_rates,
-    CapabilityList* out_capability_list) {
-#if 0
-  ScopedComPtr<IAMStreamConfig> stream_config;
-  HRESULT hr = output_capture_pin.CopyTo(stream_config.GetAddressOf());
-  if (FAILED(hr)) {
-    DLOG(ERROR) << "Failed to get IAMStreamConfig interface from "
-                   "capture device: "
-                << logging::SystemErrorCodeToString(hr);
-    return;
-  }
-
-  // Get interface used for getting the frame rate.
-  ScopedComPtr<IAMVideoControl> video_control;
-  hr = capture_filter.CopyTo(video_control.GetAddressOf());
-
-  int count = 0, size = 0;
-  hr = stream_config->GetNumberOfCapabilities(&count, &size);
-  if (FAILED(hr)) {
-    DLOG(ERROR) << "GetNumberOfCapabilities failed: "
-                << logging::SystemErrorCodeToString(hr);
-    return;
-  }
-
-  std::unique_ptr<BYTE[]> caps(new BYTE[size]);
-  for (int i = 0; i < count; ++i) {
-    VideoCaptureDeviceDirectShowAV::ScopedMediaType media_type;
-    hr = stream_config->GetStreamCaps(i, media_type.Receive(), caps.get());
-    // GetStreamCaps() may return S_FALSE, so don't use FAILED() or SUCCEED()
-    // macros here since they'll trigger incorrectly.
-    if (hr != S_OK || !media_type.get()) {
-      DLOG(ERROR) << "GetStreamCaps failed: "
-                  << logging::SystemErrorCodeToString(hr);
-      return;
-    }
-
-    if (media_type->majortype == MEDIATYPE_Video &&
-        media_type->formattype == FORMAT_VideoInfo) {
-      VideoCaptureFormat format;
-      format.pixel_format =
-          VideoCaptureDeviceDirectShowAV::TranslateMediaSubtypeToPixelFormat(
-              media_type->subtype);
-      if (format.pixel_format == PIXEL_FORMAT_UNKNOWN)
-        continue;
-      VIDEOINFOHEADER* h =
-          reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
-      format.frame_size.SetSize(h->bmiHeader.biWidth, h->bmiHeader.biHeight);
-
-      std::vector<float> frame_rates;
-      if (query_detailed_frame_rates && video_control.Get()) {
-        // Try to get a better |time_per_frame| from IAMVideoControl. If not,
-        // use the value from VIDEOINFOHEADER.
-        ScopedCoMem<LONGLONG> time_per_frame_list;
-        LONG list_size = 0;
-        const SIZE size = {format.frame_size.width(),
-                           format.frame_size.height()};
-        hr = video_control->GetFrameRateList(output_capture_pin.Get(), i, size,
-                                             &list_size, &time_per_frame_list);
-        // Sometimes |list_size| will be > 0, but time_per_frame_list will be
-        // NULL. Some drivers may return an HRESULT of S_FALSE which
-        // SUCCEEDED() translates into success, so explicitly check S_OK. See
-        // http://crbug.com/306237.
-        if (hr == S_OK && list_size > 0 && time_per_frame_list) {
-          for (int k = 0; k < list_size; k++) {
-            LONGLONG time_per_frame = *(time_per_frame_list.get() + k);
-            if (time_per_frame <= 0)
-              continue;
-            frame_rates.push_back(kSecondsToReferenceTime /
-                                  static_cast<float>(time_per_frame));
-          }
-        }
-      }
-
-      if (frame_rates.empty() && h->AvgTimePerFrame > 0) {
-        frame_rates.push_back(kSecondsToReferenceTime /
-                              static_cast<float>(h->AvgTimePerFrame));
-      }
-      if (frame_rates.empty())
-        frame_rates.push_back(0.0f);
-
-      for (const auto& frame_rate : frame_rates) {
-        format.frame_rate = frame_rate;
-        out_capability_list->emplace_back(i, format, h->bmiHeader);
-      }
-    }
-  }
-#endif
-}
-
-// static
-VideoPixelFormat VideoCaptureDeviceDirectShowAV::TranslateMediaSubtypeToPixelFormat(
-    const GUID& sub_type) {
-  static struct {
-    const GUID& sub_type;
-    VideoPixelFormat format;
-  } const kMediaSubtypeToPixelFormatCorrespondence[] = {
-      {kMediaSubTypeI420, PIXEL_FORMAT_I420},
-      {MEDIASUBTYPE_IYUV, PIXEL_FORMAT_I420},
-      {MEDIASUBTYPE_RGB24, PIXEL_FORMAT_RGB24},
-      {MEDIASUBTYPE_YUY2, PIXEL_FORMAT_YUY2},
-      {MEDIASUBTYPE_MJPG, PIXEL_FORMAT_MJPEG},
-      {MEDIASUBTYPE_UYVY, PIXEL_FORMAT_UYVY},
-      {MEDIASUBTYPE_ARGB32, PIXEL_FORMAT_ARGB},
-      {kMediaSubTypeHDYC, PIXEL_FORMAT_UYVY},
-      {kMediaSubTypeY16, PIXEL_FORMAT_Y16},
-      {kMediaSubTypeZ16, PIXEL_FORMAT_Y16},
-      {kMediaSubTypeINVZ, PIXEL_FORMAT_Y16},
-  };
-  for (const auto& pixel_format : kMediaSubtypeToPixelFormatCorrespondence) {
-    if (sub_type == pixel_format.sub_type)
-      return pixel_format.format;
-  }
-#ifndef NDEBUG
-  WCHAR guid_str[128];
-  StringFromGUID2(sub_type, guid_str, arraysize(guid_str));
-  DVLOG(2) << "Device (also) supports an unknown media type " << guid_str;
-#endif
-  return PIXEL_FORMAT_UNKNOWN;
-}
-
-void VideoCaptureDeviceDirectShowAV::ScopedMediaType::Free() {
-  if (!media_type_)
-    return;
-
-  DeleteMediaType(media_type_);
-  media_type_ = NULL;
-}
-
-AM_MEDIA_TYPE** VideoCaptureDeviceDirectShowAV::ScopedMediaType::Receive() {
-  DCHECK(!media_type_);
-  return &media_type_;
-}
-
-// Release the format block for a media type.
-// http://msdn.microsoft.com/en-us/library/dd375432(VS.85).aspx
-void VideoCaptureDeviceDirectShowAV::ScopedMediaType::FreeMediaType(AM_MEDIA_TYPE* mt) {
-  if (mt->cbFormat != 0) {
-    CoTaskMemFree(mt->pbFormat);
-    mt->cbFormat = 0;
-    mt->pbFormat = NULL;
-  }
-  if (mt->pUnk != NULL) {
-    NOTREACHED();
-    // pUnk should not be used.
-    mt->pUnk->Release();
-    mt->pUnk = NULL;
-  }
-}
-
-// Delete a media type structure that was allocated on the heap.
-// http://msdn.microsoft.com/en-us/library/dd375432(VS.85).aspx
-void VideoCaptureDeviceDirectShowAV::ScopedMediaType::DeleteMediaType(
-    AM_MEDIA_TYPE* mt) {
-  if (mt != NULL) {
-    FreeMediaType(mt);
-    CoTaskMemFree(mt);
-  }
-}
 
 VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
     const VideoCaptureDeviceDescriptor& device_descriptor)
@@ -305,7 +77,7 @@ VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
       state_(kIdle),
       white_balance_mode_manual_(false),
       exposure_mode_manual_(false),
-      direct_show_(nullptr) {
+      direct_show_(NULL) {
   // TODO(mcasas): Check that CoInitializeEx() has been called with the
   // appropriate Apartment model, i.e., Single Threaded.
 }
@@ -419,6 +191,7 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
   }
 #endif
 
+  direct_show_->SetRequestedVideoFormat(params.requested_format);
   direct_show_->RegisterObserver(this);
 
   client_->OnStarted();
@@ -430,16 +203,6 @@ void VideoCaptureDeviceDirectShowAV::StopAndDeAllocate() {
   if (state_ != kCapturing)
     return;
 
-#if 0
-  HRESULT hr = media_control_->Stop();
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to stop the capture graph.", hr);
-    return;
-  }
-
-  graph_builder_->Disconnect(output_capture_pin_.Get());
-  graph_builder_->Disconnect(input_sink_pin_.Get());
-#endif
   direct_show_->UnregisterObserver(this);
 
   client_.reset();
@@ -447,242 +210,17 @@ void VideoCaptureDeviceDirectShowAV::StopAndDeAllocate() {
 }
 
 void VideoCaptureDeviceDirectShowAV::TakePhoto(TakePhotoCallback callback) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  // DirectShow has other means of capturing still pictures, e.g. connecting a
-  // SampleGrabber filter to a PIN_CATEGORY_STILL of |capture_filter_|. This
-  // way, however, is not widespread and proves too cumbersome, so we just grab
-  // the next captured frame instead.
-  take_photo_callbacks_.push(std::move(callback));
 }
 
 void VideoCaptureDeviceDirectShowAV::GetPhotoState(GetPhotoStateCallback callback) {
-#if 0
-  DCHECK(thread_checker_.CalledOnValidThread());
-
-  if (!camera_control_ || !video_control_) {
-    if (!InitializeVideoAndCameraControls())
-      return;
-  }
-
-  auto photo_capabilities = mojom::PhotoState::New();
-
-  photo_capabilities->exposure_compensation = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->camera_control_->getRange_Exposure(args...);
-      },
-      [this](auto... args) {
-        return this->camera_control_->get_Exposure(args...);
-      },
-      &photo_capabilities->supported_exposure_modes,
-      &photo_capabilities->current_exposure_mode);
-
-  photo_capabilities->color_temperature = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->video_control_->getRange_WhiteBalance(args...);
-      },
-      [this](auto... args) {
-        return this->video_control_->get_WhiteBalance(args...);
-      },
-      &photo_capabilities->supported_white_balance_modes,
-      &photo_capabilities->current_white_balance_mode);
-
-  // Ignore the returned Focus control range and status.
-  RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->camera_control_->getRange_Focus(args...);
-      },
-      [this](auto... args) {
-        return this->camera_control_->get_Focus(args...);
-      },
-      &photo_capabilities->supported_focus_modes,
-      &photo_capabilities->current_focus_mode);
-
-  photo_capabilities->iso = mojom::Range::New();
-
-  photo_capabilities->brightness = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->video_control_->getRange_Brightness(args...);
-      },
-      [this](auto... args) {
-        return this->video_control_->get_Brightness(args...);
-      });
-  photo_capabilities->contrast = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->video_control_->getRange_Contrast(args...);
-      },
-      [this](auto... args) {
-        return this->video_control_->get_Contrast(args...);
-      });
-  photo_capabilities->saturation = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->video_control_->getRange_Saturation(args...);
-      },
-      [this](auto... args) {
-        return this->video_control_->get_Saturation(args...);
-      });
-  photo_capabilities->sharpness = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->video_control_->getRange_Sharpness(args...);
-      },
-      [this](auto... args) {
-        return this->video_control_->get_Sharpness(args...);
-      });
-
-  photo_capabilities->zoom = RetrieveControlRangeAndCurrent(
-      [this](auto... args) {
-        return this->camera_control_->getRange_Zoom(args...);
-      },
-      [this](auto... args) {
-        return this->camera_control_->get_Zoom(args...);
-      });
-
-  photo_capabilities->red_eye_reduction = mojom::RedEyeReduction::NEVER;
-  photo_capabilities->height = mojom::Range::New(
-      capture_format_.frame_size.height(), capture_format_.frame_size.height(),
-      capture_format_.frame_size.height(), 0 /* step */);
-  photo_capabilities->width = mojom::Range::New(
-      capture_format_.frame_size.width(), capture_format_.frame_size.width(),
-      capture_format_.frame_size.width(), 0 /* step */);
-  photo_capabilities->torch = false;
-
-  std::move(callback).Run(std::move(photo_capabilities));
-#endif
 }
 
 void VideoCaptureDeviceDirectShowAV::SetPhotoOptions(
     mojom::PhotoSettingsPtr settings,
     VideoCaptureDevice::SetPhotoOptionsCallback callback) {
-#if 0
-  DCHECK(thread_checker_.CalledOnValidThread());
-
-  if (!camera_control_ || !video_control_) {
-    if (!InitializeVideoAndCameraControls())
-      return;
-  }
-
-  HRESULT hr;
-
-  if (settings->has_zoom) {
-    hr = camera_control_->put_Zoom(settings->zoom, CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Zoom config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-
-  if (settings->has_white_balance_mode) {
-    if (settings->white_balance_mode == mojom::MeteringMode::CONTINUOUS) {
-      hr = video_control_->put_WhiteBalance(0L, VideoProcAmp_Flags_Auto);
-      DLOG_IF_FAILED_WITH_HRESULT("Auto white balance config failed", hr);
-      if (FAILED(hr))
-        return;
-
-      white_balance_mode_manual_ = false;
-    } else {
-      white_balance_mode_manual_ = true;
-    }
-  }
-  if (white_balance_mode_manual_ && settings->has_color_temperature) {
-    hr = video_control_->put_WhiteBalance(settings->color_temperature,
-                                          CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Color temperature config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-
-  if (settings->has_exposure_mode) {
-    if (settings->exposure_mode == mojom::MeteringMode::CONTINUOUS) {
-      hr = camera_control_->put_Exposure(0L, VideoProcAmp_Flags_Auto);
-      DLOG_IF_FAILED_WITH_HRESULT("Auto exposure config failed", hr);
-      if (FAILED(hr))
-        return;
-
-      exposure_mode_manual_ = false;
-    } else {
-      exposure_mode_manual_ = true;
-    }
-  }
-  if (exposure_mode_manual_ && settings->has_exposure_compensation) {
-    hr = camera_control_->put_Exposure(settings->exposure_compensation,
-                                       CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Exposure Compensation config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-
-  if (settings->has_brightness) {
-    hr = video_control_->put_Brightness(settings->brightness,
-                                        CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Brightness config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-  if (settings->has_contrast) {
-    hr = video_control_->put_Contrast(settings->contrast,
-                                      CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Contrast config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-  if (settings->has_saturation) {
-    hr = video_control_->put_Saturation(settings->saturation,
-                                        CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Saturation config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-  if (settings->has_sharpness) {
-    hr = video_control_->put_Sharpness(settings->sharpness,
-                                       CameraControl_Flags_Manual);
-    DLOG_IF_FAILED_WITH_HRESULT("Sharpness config failed", hr);
-    if (FAILED(hr))
-      return;
-  }
-
-  std::move(callback).Run(true);
-#endif
 }
 
 bool VideoCaptureDeviceDirectShowAV::InitializeVideoAndCameraControls() {
-#if 0
-  base::win::ScopedComPtr<IKsTopologyInfo> info;
-  HRESULT hr = capture_filter_.CopyTo(info.GetAddressOf());
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to obtain the topology info.", hr);
-    return false;
-  }
-
-  DWORD num_nodes = 0;
-  hr = info->get_NumNodes(&num_nodes);
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to obtain the number of nodes.", hr);
-    return false;
-  }
-
-  // Every UVC camera is expected to have a single ICameraControl and a single
-  // IVideoProcAmp nodes, and both are needed; ignore any unlikely later ones.
-  GUID node_type;
-  for (size_t i = 0; i < num_nodes; i++) {
-    info->get_NodeType(i, &node_type);
-    if (IsEqualGUID(node_type, KSNODETYPE_VIDEO_CAMERA_TERMINAL)) {
-      hr = info->CreateNodeInstance(i, IID_PPV_ARGS(&camera_control_));
-      if (SUCCEEDED(hr))
-        break;
-      SetErrorState(FROM_HERE, "Failed to retrieve the ICameraControl.", hr);
-      return false;
-    }
-  }
-  for (size_t i = 0; i < num_nodes; i++) {
-    info->get_NodeType(i, &node_type);
-    if (IsEqualGUID(node_type, KSNODETYPE_VIDEO_PROCESSING)) {
-      hr = info->CreateNodeInstance(i, IID_PPV_ARGS(&video_control_));
-      if (SUCCEEDED(hr))
-        break;
-      SetErrorState(FROM_HERE, "Failed to retrieve the IVideoProcAmp.", hr);
-      return false;
-    }
-  }
-  return camera_control_ && video_control_;
-#endif
   return false;
 }
 
@@ -700,23 +238,13 @@ void VideoCaptureDeviceDirectShowAV::VideoFrameReceived(const uint8_t* buffer,
     timestamp = base::TimeTicks::Now() - first_ref_time_;
 
 
-  VideoPixelStorage actual_pixel_storage = VideoPixelStorage::PIXEL_STORAGE_CPU; // FIXME: format.pixel_storage;
+  // FIXME: VideoPixelStorage mapping format.pixel_storage;
+  VideoPixelStorage actual_pixel_storage = VideoPixelStorage::PIXEL_STORAGE_CPU; 
   VideoCaptureFormat actual_format(format.frame_size,
     format.frame_rate, format.pixel_format, actual_pixel_storage);
 
   client_->OnIncomingCapturedData(buffer, length, actual_format, 0,
                                   base::TimeTicks::Now(), timestamp);
-
-#if 0
-  while (!take_photo_callbacks_.empty()) {
-    TakePhotoCallback cb = std::move(take_photo_callbacks_.front());
-    take_photo_callbacks_.pop();
-
-    mojom::BlobPtr blob = Blobify(buffer, length, actual_format);
-    if (blob)
-      std::move(cb).Run(std::move(blob));
-  }
-#endif
 }
 
 void VideoCaptureDeviceDirectShowAV::FormatChanged() {
@@ -755,12 +283,13 @@ void VideoCaptureDeviceDirectShowAV::SetAntiFlickerInCaptureFilter(
   }
 }
 
-  void VideoCaptureDeviceDirectShowAV::SetErrorState(const base::Location& from_here,
-                                            const std::string& reason,
-                                            HRESULT hr) {
-    DCHECK(thread_checker_.CalledOnValidThread());
-    DLOG_IF_FAILED_WITH_HRESULT(reason, hr);
-    state_ = kError;
-    client_->OnError(from_here, reason);
-  }
+void VideoCaptureDeviceDirectShowAV::SetErrorState(const base::Location& from_here,
+    const std::string& reason,
+    HRESULT hr) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DLOG_IF_FAILED_WITH_HRESULT(reason, hr);
+  state_ = kError;
+  client_->OnError(from_here, reason);
+}
+
 }  // namespace media

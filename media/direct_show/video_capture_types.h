@@ -15,7 +15,6 @@
 #include "ui/gfx/geometry/size.h"
 
 namespace media {
-
 namespace directshow {
 
 // TODO(wjia): this type should be defined in a common place and
@@ -125,7 +124,7 @@ typedef std::vector<DirectShowVideoCaptureFormat> DirectShowVideoCaptureFormats;
 // format of frames in which the client would like to have captured frames
 // returned.
 //struct CAPTURE_EXPORT VideoCaptureParams {
-struct VideoCaptureParams {
+struct DirectShowVideoCaptureParams {
   // Result struct for SuggestContraints() method.
   struct SuggestedConstraints {
     gfx::Size min_frame_size;
@@ -133,7 +132,7 @@ struct VideoCaptureParams {
     bool fixed_aspect_ratio;
   };
 
-  VideoCaptureParams();
+  DirectShowVideoCaptureParams();
 
   // Returns true if requested_format.IsValid() and all other values are within
   // their expected ranges.
@@ -144,7 +143,7 @@ struct VideoCaptureParams {
   // resolution, and whether a fixed aspect ratio is required.
   SuggestedConstraints SuggestConstraints() const;
 
-  bool operator==(const VideoCaptureParams& other) const {
+  bool operator==(const DirectShowVideoCaptureParams& other) const {
     return requested_format == other.requested_format &&
            resolution_change_policy == other.resolution_change_policy &&
            power_line_frequency == other.power_line_frequency;

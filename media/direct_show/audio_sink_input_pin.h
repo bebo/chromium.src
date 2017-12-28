@@ -8,6 +8,9 @@
 #ifndef MEDIA_AUDIO_WIN_SINK_INPUT_PIN_WIN_H_
 #define MEDIA_AUDIO_WIN_SINK_INPUT_PIN_WIN_H_
 
+#include <windows.h>
+#include <mmreg.h>
+
 #include "base/macros.h"
 #include "media/direct_show/direct_show_pin_base.h"
 #include "media/direct_show/audio_sink_filter.h"
@@ -19,6 +22,8 @@ class AudioSinkInputPin : public DirectShowPinBase {
  public:
   AudioSinkInputPin(IBaseFilter* filter, AudioSinkFilterObserver* observer);
 
+  void SetRequestedMediaFormat(WAVEFORMATEX format);
+
   // Implement PinBase.
   bool IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) override;
   bool GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) override;
@@ -29,6 +34,7 @@ class AudioSinkInputPin : public DirectShowPinBase {
   ~AudioSinkInputPin() override;
 
   AudioSinkFilterObserver* observer_;
+  WAVEFORMATEX requested_format_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(AudioSinkInputPin);
 };

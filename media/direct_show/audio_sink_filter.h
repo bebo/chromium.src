@@ -10,6 +10,7 @@
 
 #include <windows.h>
 #include <stddef.h>
+#include <mmreg.h>
 
 #include "base/macros.h"
 #include "base/memory/ref_counted.h"
@@ -24,6 +25,8 @@ class __declspec(uuid("88cdbbdc-a73b-4afa-acbf-15d5e2ce12d4")) AudioSinkFilter
     : public DirectShowFilterBase {
  public:
   explicit AudioSinkFilter(AudioSinkFilterObserver* observer);
+
+  void SetRequestedMediaFormat(WAVEFORMATEX format);
 
   // Implement AudioFilterBase.
   size_t NoOfPins() override;

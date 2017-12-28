@@ -96,11 +96,11 @@ bool DirectShowVideoCaptureFormat::ComparePixelFormatPreference(
   return format_lhs < format_rhs;
 }
 
-VideoCaptureParams::VideoCaptureParams()
+DirectShowVideoCaptureParams::DirectShowVideoCaptureParams()
     : resolution_change_policy(RESOLUTION_POLICY_FIXED_RESOLUTION),
       power_line_frequency(PowerLineFrequency::FREQUENCY_DEFAULT) {}
 
-bool VideoCaptureParams::IsValid() const {
+bool DirectShowVideoCaptureParams::IsValid() const {
   return requested_format.IsValid() &&
          resolution_change_policy >= RESOLUTION_POLICY_FIXED_RESOLUTION &&
          resolution_change_policy <= RESOLUTION_POLICY_LAST &&
@@ -108,8 +108,8 @@ bool VideoCaptureParams::IsValid() const {
          power_line_frequency <= PowerLineFrequency::FREQUENCY_MAX;
 }
 
-VideoCaptureParams::SuggestedConstraints
-VideoCaptureParams::SuggestConstraints() const {
+DirectShowVideoCaptureParams::SuggestedConstraints
+DirectShowVideoCaptureParams::SuggestConstraints() const {
   // The requested frame size is always the maximum frame size. Ensure that it
   // rounds to even numbers (to match I420 chroma sample sizes).
   gfx::Size max_frame_size = requested_format.frame_size;

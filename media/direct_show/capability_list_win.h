@@ -11,18 +11,21 @@
 
 #include <list>
 #include <windows.h>
+#include <mmreg.h>
 
 #include "media/direct_show/video_capture_types.h"
 
 using media::directshow::DirectShowVideoCaptureFormat;
 namespace media {
 
-struct DirectShowDeviceCapability {
-  DirectShowDeviceCapability(int index, const DirectShowVideoCaptureFormat& format)
+// video
+
+struct DirectShowVideoCapability {
+  DirectShowVideoCapability(int index, const DirectShowVideoCaptureFormat& format)
       : stream_index(index), supported_format(format), info_header() {}
 
   // Used by VideoCaptureDeviceWin.
-  DirectShowDeviceCapability(int index,
+  DirectShowVideoCapability(int index,
                 const DirectShowVideoCaptureFormat& format,
                 const BITMAPINFOHEADER& info_header)
       : stream_index(index),
@@ -36,11 +39,28 @@ struct DirectShowDeviceCapability {
   const BITMAPINFOHEADER info_header;
 };
 
-typedef std::list<DirectShowDeviceCapability> DirectShowDeviceCapabilityList;
+typedef std::list<DirectShowVideoCapability> DirectShowVideoCapabilityList;
 
-const DirectShowDeviceCapability& GetBestMatchedCapability(
+const DirectShowVideoCapability& GetBestMatchedCapability(
     const DirectShowVideoCaptureFormat& requested,
-    const DirectShowDeviceCapabilityList& capabilities);
+    const DirectShowVideoCapabilityList& capabilities);
+
+// audio 
+
+struct DirectShowAudioCapability {
+  DirectShowAudioCapability(int index, const WAVEFORMATEX& format)
+      : stream_index(index), supported_format(format) {}
+
+  const int stream_index;
+  const WAVEFORMATEX supported_format;
+};
+
+typedef std::list<DirectShowAudioCapability> DirectShowAudioCapabilityList;
+
+const DirectShowAudioCapability& GetBestMatchedCapability(
+    const WAVEFORMATEX& requested,
+    const DirectShowAudioCapabilityList& capabilities);
+
 
 }  // namespace media
 

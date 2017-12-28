@@ -235,13 +235,6 @@ STDMETHODIMP DirectShowPinBase::NotifyAllocator(IMemAllocator* allocator,
 
 STDMETHODIMP DirectShowPinBase::GetAllocatorRequirements(
     ALLOCATOR_PROPERTIES* properties) {
-  LOG(INFO) << "GetAllocatorRequirements in align: " << properties->cbAlign
-    << ", size: " << properties->cbBuffer
-    << ", prefix: "<< properties->cbPrefix
-    << ", count: " << properties->cBuffers;
-  // properties->cbBuffer = 2;
-  // properties->cbBuffers = 10 * 480; // * avgBytes
-
   return E_NOTIMPL;
 }
 

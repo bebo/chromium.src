@@ -21,26 +21,25 @@ AudioSinkInputPin::AudioSinkInputPin(IBaseFilter* filter, AudioSinkFilterObserve
     : DirectShowPinBase(filter), observer_(observer) {
 }
 
+void AudioSinkInputPin::SetRequestedMediaFormat(WAVEFORMATEX format) {
+  requested_format_ = format;
+}
+
 bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
   const GUID type = media_type->majortype;
   if (type != MEDIATYPE_Audio) {
-    WCHAR guid_str[128];
-    StringFromGUID2(type, guid_str, arraysize(guid_str));
-    LOG(INFO) << "type != MEDIATYPE_Audio, " << guid_str;
     return false;
   }
 
   const GUID format_type = media_type->formattype;
   if (format_type != FORMAT_WaveFormatEx) {
-    WCHAR guid_str[128];
-    StringFromGUID2(format_type, guid_str, arraysize(guid_str));
-    LOG(INFO) << "format_type != FORMAT_WaveFormatEx, " << guid_str;
     return false;
   }
 
   // Check for the sub types we support.
   const GUID sub_type = media_type->subtype;
 
+  // for now let's prefer PCM only
   if (sub_type != MEDIASUBTYPE_PCM) {
     WCHAR guid_str[128];
     StringFromGUID2(sub_type, guid_str, arraysize(guid_str));
@@ -55,20 +54,12 @@ bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
     return false;
   }
 
-  if (pvi->nSamplesPerSec != 48000) {
-    LOG(INFO) << "wfex->nSamplesPerSec != 48000";
-    return false;
-  }
-
   LOG(INFO) << "IsMediaTypeVaild";
   return true;
 }
 
 bool AudioSinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) { 
-  LOG(INFO) << "GetValidMediaType, index: " << index;
-
   if (media_type->cbFormat < sizeof(WAVEFORMATEX)) {
-    LOG(INFO) << "media_type->cbFormat < sizeof(WAVEFORMATEX)";
     return false;
   }
 
@@ -80,29 +71,28 @@ bool AudioSinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) 
   media_type->cbFormat = sizeof(WAVEFORMATEX);
 
   WAVEFORMATEX* const format = reinterpret_cast<WAVEFORMATEX*>(media_type->pbFormat);
-  format->wFormatTag = WAVE_FORMAT_PCM;
-  format->nSamplesPerSec = 48000; // params.sample_rate();
-  format->wBitsPerSample = 16; // params.bits_per_sample();
-  format->nChannels = 2; // params.channels();
-  format->nBlockAlign = (format->wBitsPerSample / 8) * format->nChannels;
-  format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
-  format->cbSize = 0;
 
-  if (index == 1) return false;
+  // we only take in PCM
+  switch (index) {
+    case 0: {
+      format->wFormatTag = WAVE_FORMAT_PCM;
+      format->nSamplesPerSec = requested_format_.nSamplesPerSec;
+      format->wBitsPerSample = requested_format_.wBitsPerSample;
+      format->nChannels = requested_format_.nChannels;
+      format->nBlockAlign = requested_format_.nBlockAlign;
+      format->nAvgBytesPerSec = requested_format_.nAvgBytesPerSec;
+      format->cbSize = 0;
+      break;
+    }
+    default:
+      return false;
+  }
 
   return true;
 }
 
 HRESULT AudioSinkInputPin::Receive(IMediaSample* sample) {
   const int length = sample->GetActualDataLength();
-
-#if 0
-  if (length <= 0 ||
-      static_cast<size_t>(length) < resulting_format_.ImageAllocationSize()) {
-    DLOG(WARNING) << "Wrong media sample length: " << length;
-    return S_FALSE;
-  }
-#endif
 
   uint8_t* buffer = nullptr;
   if (FAILED(sample->GetPointer(&buffer)))
