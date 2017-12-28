@@ -34,17 +34,19 @@ using media::directshow::kMediaSubTypeY16;
 static const REFERENCE_TIME kSecondsToReferenceTime = 10000000;
 
 static const enum WhitelistedFilterNames {
-  GAME_CAPTURE_HD_60_PRO = 0,
-                         GAME_CAPTURE_HD_60_S = 1,
-                         GAME_CAPTURE_HD_60 = 2,
-                         AVERMEDIA_GC550_VIDEO_CAPTURE = 3,
-                         WHITELISTED_FILTER_MAX = AVERMEDIA_GC550_VIDEO_CAPTURE
+  GAME_CAPTURE_HD_60 = 0,
+  GAME_CAPTURE_HD_60S = 1,
+  GAME_CAPTURE_HD_60PRO = 2,
+  GAME_CAPTURE_HD_4K60_PRO = 3,
+  AVERMEDIA_GC550_VIDEO_CAPTURE= 4,
+  WHITELISTED_FILTER_MAX = AVERMEDIA_GC550_VIDEO_CAPTURE
 };
 
 static const char* const kWhitelistedFilterNames[] = {
-  "Game Capture HD60 Pro",
-  "Game Capture HD60S",
   "Game Capture HD60",
+  "Game Capture HD60 S",
+  "Game Capture HD60 Pro",
+  "Game Capture 4K60 Pro",
   "AVerMedia GC550 Video Capture",
 };
 
@@ -218,12 +220,13 @@ namespace media {
 
 DirectShow::DirectShow(std::string device_id): 
   device_id_(device_id),
+  state_(kIdle),
   has_audio_(true),
   has_video_(true),
   audio_observer_(NULL),
   video_observer_(NULL) {
-    LOG(INFO) << __func__;
-    friendly_name_ = "DirectShow";  // FIXME device name??
+  LOG(INFO) << __func__;
+  friendly_name_ = "DirectShow";  // FIXME device name??
 }
 
 DirectShow::~DirectShow() {
@@ -595,10 +598,8 @@ ScopedComPtr<IPin> DirectShow::GetPinByName(IBaseFilter* filter,
 }
 
 void DirectShow::StartThread() {
-#if 0
-  HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to CoInitializeEx", hr);
-#endif
+  video_capabilities_.clear();
+  audio_capabilities_.clear();
 
   GetDeviceVideoCapabilityList(device_id_, true, &video_capabilities_);
   GetDeviceAudioCapabilityList(device_id_, &audio_capabilities_);
@@ -607,13 +608,11 @@ void DirectShow::StartThread() {
         this, "capture_thread",
         base::SimpleThread::Options(base::ThreadPriority::REALTIME_AUDIO)));
   capture_thread_->Start();
+
+  state_ = kCapturing;
 }
 
 void DirectShow::StopThread() {
-#if 0
-  CoUninitialize();
-#endif
-
   if (capture_thread_) {
     capture_thread_->Join();
     capture_thread_.reset();
@@ -656,6 +655,8 @@ void DirectShow::StopThread() {
   if (capture_graph_builder_.Get()) {
     capture_graph_builder_.Reset();
   }
+
+  state_ = kIdle;
 }
 
 // Finds and creates a DirectShow Video Capture filter matching the |device_id|.
@@ -823,13 +824,9 @@ void DirectShow::SetRequestedVideoFormat(VideoCaptureFormat params) {
       params.pixel_format);
   requested_video_format_ = format;
 
-  // If there's an observer attached most likely it's running already?
-  {
-    base::AutoLock al(video_lock_);
-    if (video_observer_ != NULL) {
-      StopThread();
-      StartThread();
-    }
+  if (state_ == kCapturing) {
+    StopThread();
+    StartThread();
   }
 }
 
@@ -845,13 +842,9 @@ void DirectShow::SetRequestedAudioFormat(AudioParameters params) {
   format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
   format->cbSize = 0;
 
-  // If there's an observer attached most likely it's running already?
-  {
-    base::AutoLock al(audio_lock_);
-    if (audio_observer_ != NULL) {
-      StopThread();
-      StartThread();
-    }
+  if (state_ == kCapturing) {
+    StopThread();
+    StartThread();
   }
 }
 
@@ -878,7 +871,7 @@ void DirectShow::RegisterObserver(VideoSinkFilterObserver* observer) {
     video_observer_ = observer;
   }
   ShouldGraphBeRunning();
-  // observer->FormatChanged(new VideoPixelFormat(format_));
+  observer->FormatChanged(); // temporary unused
 }
 
 void DirectShow::UnregisterObserver(VideoSinkFilterObserver* observer) {

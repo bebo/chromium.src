@@ -75,8 +75,6 @@ VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
     const VideoCaptureDeviceDescriptor& device_descriptor)
     : device_descriptor_(device_descriptor),
       state_(kIdle),
-      white_balance_mode_manual_(false),
-      exposure_mode_manual_(false),
       direct_show_(NULL) {
   // TODO(mcasas): Check that CoInitializeEx() has been called with the
   // appropriate Apartment model, i.e., Single Threaded.
@@ -90,7 +88,8 @@ bool VideoCaptureDeviceDirectShowAV::Init() {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   if (direct_show_ == NULL) {
-    direct_show_ = DirectShowDeviceFactory::GetInstance()->GetController(device_descriptor_.device_id);
+    direct_show_ = DirectShowDeviceFactory::
+      GetInstance()->GetController(device_descriptor_.device_id);
   }
 
   return true;
@@ -104,92 +103,6 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
     return;
 
   client_ = std::move(client);
-
-#if 0
-  // Get the camera capability that best match the requested format.
-  const CapabilityWin found_capability =
-      GetBestMatchedCapability(params.requested_format, capabilities_);
-
-  // Reduce the frame rate if the requested frame rate is lower
-  // than the capability.
-  const float frame_rate =
-      std::min(params.requested_format.frame_rate,
-               found_capability.supported_format.frame_rate);
-
-  ScopedComPtr<IAMStreamConfig> stream_config;
-  HRESULT hr = output_capture_pin_.CopyTo(stream_config.GetAddressOf());
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Can't get the Capture format settings", hr);
-    return;
-  }
-
-  int count = 0, size = 0;
-  hr = stream_config->GetNumberOfCapabilities(&count, &size);
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to GetNumberOfCapabilities", hr);
-    return;
-  }
-
-  std::unique_ptr<BYTE[]> caps(new BYTE[size]);
-  ScopedMediaType media_type;
-
-  // Get the windows capability from the capture device.
-  // GetStreamCaps can return S_FALSE which we consider an error. Therefore the
-  // FAILED macro can't be used.
-  hr = stream_config->GetStreamCaps(found_capability.stream_index,
-                                    media_type.Receive(), caps.get());
-  if (hr != S_OK) {
-    SetErrorState(FROM_HERE, "Failed to get capture device capabilities", hr);
-    return;
-  }
-  if (media_type->formattype == FORMAT_VideoInfo) {
-    VIDEOINFOHEADER* h =
-        reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
-    if (frame_rate > 0)
-      h->AvgTimePerFrame = kSecondsToReferenceTime / frame_rate;
-  }
-  // Set the sink filter to request this format.
-  sink_filter_->SetRequestedMediaFormat(
-      found_capability.supported_format.pixel_format, frame_rate,
-      found_capability.info_header);
-  // Order the capture device to use this format.
-  hr = stream_config->SetFormat(media_type.get());
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to set capture device output format", hr);
-    return;
-  }
-  capture_format_ = found_capability.supported_format;
-
-  SetAntiFlickerInCaptureFilter(params);
-
-  if (media_type->subtype == kMediaSubTypeHDYC) {
-    // HDYC pixel format, used by the DeckLink capture card, needs an AVI
-    // decompressor filter after source, let |graph_builder_| add it.
-    hr = graph_builder_->Connect(output_capture_pin_.Get(),
-                                 input_sink_pin_.Get());
-  } else {
-    hr = graph_builder_->ConnectDirect(output_capture_pin_.Get(),
-                                       input_sink_pin_.Get(), NULL);
-  }
-
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to connect the Capture graph.", hr);
-    return;
-  }
-
-  hr = media_control_->Pause();
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to pause the Capture device", hr);
-    return;
-  }
-
-  // Start capturing.
-  hr = media_control_->Run();
-  if (FAILED(hr)) {
-    SetErrorState(FROM_HERE, "Failed to start the Capture device.", hr);
-    return;
-  }
-#endif
 
   direct_show_->SetRequestedVideoFormat(params.requested_format);
   direct_show_->RegisterObserver(this);
@@ -248,39 +161,6 @@ void VideoCaptureDeviceDirectShowAV::VideoFrameReceived(const uint8_t* buffer,
 }
 
 void VideoCaptureDeviceDirectShowAV::FormatChanged() {
-}
-
-
-// Set the power line frequency removal in |capture_filter_| if available.
-void VideoCaptureDeviceDirectShowAV::SetAntiFlickerInCaptureFilter(
-    const VideoCaptureParams& params) {
-  const PowerLineFrequency power_line_frequency = GetPowerLineFrequency(params);
-  if (power_line_frequency != media::PowerLineFrequency::FREQUENCY_50HZ &&
-      power_line_frequency != media::PowerLineFrequency::FREQUENCY_60HZ) {
-    return;
-  }
-  ScopedComPtr<IKsPropertySet> ks_propset;
-  DWORD type_support = 0;
-  HRESULT hr;
-  if (SUCCEEDED(hr = capture_filter_.CopyTo(ks_propset.GetAddressOf())) &&
-      SUCCEEDED(hr = ks_propset->QuerySupported(
-                    PROPSETID_VIDCAP_VIDEOPROCAMP,
-                    KSPROPERTY_VIDEOPROCAMP_POWERLINE_FREQUENCY,
-                    &type_support)) &&
-      (type_support & KSPROPERTY_SUPPORT_SET)) {
-    KSPROPERTY_VIDEOPROCAMP_S data = {};
-    data.Property.Set = PROPSETID_VIDCAP_VIDEOPROCAMP;
-    data.Property.Id = KSPROPERTY_VIDEOPROCAMP_POWERLINE_FREQUENCY;
-    data.Property.Flags = KSPROPERTY_TYPE_SET;
-    data.Value =
-        (power_line_frequency == media::PowerLineFrequency::FREQUENCY_50HZ) ? 1
-                                                                            : 2;
-    data.Flags = KSPROPERTY_VIDEOPROCAMP_FLAGS_MANUAL;
-    hr = ks_propset->Set(PROPSETID_VIDCAP_VIDEOPROCAMP,
-                         KSPROPERTY_VIDEOPROCAMP_POWERLINE_FREQUENCY, &data,
-                         sizeof(data), &data, sizeof(data));
-    DLOG_IF_FAILED_WITH_HRESULT("Anti-flicker setting failed", hr);
-  }
 }
 
 void VideoCaptureDeviceDirectShowAV::SetErrorState(const base::Location& from_here,

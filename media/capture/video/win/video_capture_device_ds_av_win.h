@@ -78,7 +78,6 @@ class VideoCaptureDeviceDirectShowAV : public VideoCaptureDevice,
                      base::TimeDelta timestamp) override;
   void FormatChanged() override;
 
-  void SetAntiFlickerInCaptureFilter(const VideoCaptureParams& params);
   void SetErrorState(const base::Location& from_here,
                      const std::string& reason,
                      HRESULT hr);
@@ -89,29 +88,7 @@ class VideoCaptureDeviceDirectShowAV : public VideoCaptureDevice,
   InternalState state_;
   std::unique_ptr<VideoCaptureDevice::Client> client_;
 
-  base::win::ScopedComPtr<IBaseFilter> capture_filter_;
-
-  base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
-  base::win::ScopedComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
-
-  base::win::ScopedComPtr<IMediaControl> media_control_;
-  base::win::ScopedComPtr<IPin> input_sink_pin_;
-  base::win::ScopedComPtr<IPin> output_capture_pin_;
-
-  // Map of all capabilities this device support.
-  CapabilityList capabilities_;
-
-  VideoCaptureFormat capture_format_;
-
-  base::win::ScopedComPtr<ICameraControl> camera_control_;
-  base::win::ScopedComPtr<IVideoProcAmp> video_control_;
-  // These flags keep the manual/auto mode between cycles of SetPhotoOptions().
-  bool white_balance_mode_manual_;
-  bool exposure_mode_manual_;
-
   base::TimeTicks first_ref_time_;
-
-  base::queue<TakePhotoCallback> take_photo_callbacks_;
 
   base::ThreadChecker thread_checker_;
 

@@ -46,23 +46,6 @@ class MEDIA_EXPORT DirectShow:
       public AudioSinkFilterObserver,
       public VideoSinkFilterObserver {
   public:
-    ~DirectShow();
-    static bool IsDeviceWhiteListed(const std::string& name);
-    static void GetDeviceVideoCapabilityList(
-        const std::string& device_id,
-        bool query_detailed_frame_rates,
-        DirectShowVideoCapabilityList* out_capability_list);
-    static void GetDeviceAudioCapabilityList(
-        const std::string& device_id,
-        DirectShowAudioCapabilityList* out_capability_list);
-
-    void SetRequestedVideoFormat(VideoCaptureFormat params);
-    void SetRequestedAudioFormat(AudioParameters params);
-    void RegisterObserver(AudioSinkFilterObserver* observer);
-    void UnregisterObserver(AudioSinkFilterObserver* observer);
-    void RegisterObserver(VideoSinkFilterObserver* observer);
-    void UnregisterObserver(VideoSinkFilterObserver* observer);
-
   // A utility class that wraps the AM_MEDIA_TYPE type and guarantees that
   // we free the structure when exiting the scope.  DCHECKing is also done to
   // avoid memory leaks.
@@ -83,7 +66,31 @@ class MEDIA_EXPORT DirectShow:
     AM_MEDIA_TYPE* media_type_;
   };
 
+  ~DirectShow();
+  static bool IsDeviceWhiteListed(const std::string& name);
+  static void GetDeviceVideoCapabilityList(
+      const std::string& device_id,
+      bool query_detailed_frame_rates,
+      DirectShowVideoCapabilityList* out_capability_list);
+  static void GetDeviceAudioCapabilityList(
+      const std::string& device_id,
+      DirectShowAudioCapabilityList* out_capability_list);
+
+  void SetRequestedVideoFormat(VideoCaptureFormat params);
+  void SetRequestedAudioFormat(AudioParameters params);
+  void RegisterObserver(AudioSinkFilterObserver* observer);
+  void UnregisterObserver(AudioSinkFilterObserver* observer);
+  void RegisterObserver(VideoSinkFilterObserver* observer);
+  void UnregisterObserver(VideoSinkFilterObserver* observer);
+
  private:
+  enum InternalState {
+    kIdle,       // The device driver is opened but camera is not in use.
+    kCapturing,  // Video is being captured.
+    kError       // Error accessing HW functions.
+                 // User needs to recover by destroying the object.
+  };
+
   friend class DirectShowDeviceFactory;
   DirectShow(std::string device_id);
 
@@ -157,6 +164,7 @@ class MEDIA_EXPORT DirectShow:
   // video and audio are separate, when an observer
   // is registered, running count would increase by 1
   base::AtomicRefCount running_count_;
+  InternalState state_;
 
   WAVEFORMATEXTENSIBLE requested_audio_format_;
   DirectShowVideoCaptureFormat requested_video_format_;
