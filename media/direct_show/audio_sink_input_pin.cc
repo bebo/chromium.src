@@ -18,7 +18,7 @@
 namespace media {
 
 AudioSinkInputPin::AudioSinkInputPin(IBaseFilter* filter, AudioSinkFilterObserver* observer)
-    : DirectShowPinBase(filter), observer_(observer) {
+    : DirectShowPinBase(filter, DirectShowPinType::Audio), observer_(observer) {
 }
 
 void AudioSinkInputPin::SetRequestedMediaFormat(WAVEFORMATEX format) {
@@ -54,7 +54,6 @@ bool AudioSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
     return false;
   }
 
-  LOG(INFO) << "IsMediaTypeVaild";
   return true;
 }
 

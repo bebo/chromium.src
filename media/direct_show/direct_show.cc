@@ -1031,6 +1031,9 @@ HRESULT DirectShow::SetupVideoCaptureFormat() {
       << h->bmiHeader.biWidth << "x" << h->bmiHeader.biHeight;
   }
 
+  hr = output_video_capture_pin_->QueryAccept(media_type.get());
+  LOG(INFO) << "QueryFormat: is format that'll be set accepted " << std::hex << hr;
+
   // Order the capture device to use this format.
   hr = stream_config->SetFormat(media_type.get());
   DLOG_IF_FAILED_WITH_HRESULT("Failed to set capture device output format", hr);

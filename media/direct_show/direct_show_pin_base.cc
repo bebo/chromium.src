@@ -49,10 +49,21 @@ class TypeEnumerator final : public IEnumMediaTypes,
       }
       ZeroMemory(type, sizeof(AM_MEDIA_TYPE));
 
-      // Allocate a WAVEFORMATEX and connect it to the AM_MEDIA_TYPE.
-      type->cbFormat = sizeof(WAVEFORMATEX);
-      BYTE* format = 
-        reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(WAVEFORMATEX)));
+      BYTE* format = NULL;
+      if (pin_->type_ == DirectShowPinType::Audio) {
+        // Allocate a WAVEFORMATEX and connect it to the AM_MEDIA_TYPE.
+        type->cbFormat = sizeof(WAVEFORMATEX);
+        format =
+          reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(WAVEFORMATEX)));
+      } else if (pin_->type_ == DirectShowPinType::Video) {
+        // Allocate a VIDEOINFOHEADER and connect it to the AM_MEDIA_TYPE.
+        type->cbFormat = sizeof(VIDEOINFOHEADER);
+        format =
+          reinterpret_cast<BYTE*>(CoTaskMemAlloc(sizeof(VIDEOINFOHEADER)));
+      } else {
+        return E_OUTOFMEMORY;
+      }
+
       if (!format) {
         CoTaskMemFree(type);
         FreeAllocatedMediaTypes(types_fetched, types);
@@ -110,7 +121,8 @@ class TypeEnumerator final : public IEnumMediaTypes,
   int index_;
 };
 
-DirectShowPinBase::DirectShowPinBase(IBaseFilter* owner) : owner_(owner) {
+DirectShowPinBase::DirectShowPinBase(IBaseFilter* owner, DirectShowPinType type) : owner_(owner),
+  type_(type) {
   memset(&current_media_type_, 0, sizeof(current_media_type_));
 }
 
@@ -121,7 +133,7 @@ void DirectShowPinBase::SetOwner(IBaseFilter* owner) {
 // Called on an output pin to and establish a
 //   connection.
 STDMETHODIMP DirectShowPinBase::Connect(IPin* receive_pin,
-                              const AM_MEDIA_TYPE* media_type) {
+    const AM_MEDIA_TYPE* media_type) {
   if (!receive_pin || !media_type)
     return E_POINTER;
 

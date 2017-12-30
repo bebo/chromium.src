@@ -17,11 +17,16 @@
 
 namespace media {
 
+enum DirectShowPinType {
+  Video,
+  Audio
+};
+
 class DirectShowPinBase : public IPin,
                 public IMemInputPin,
                 public base::RefCounted<DirectShowPinBase> {
  public:
-  explicit DirectShowPinBase(IBaseFilter* owner);
+  explicit DirectShowPinBase(IBaseFilter* owner, DirectShowPinType type);
 
   // Function used for changing the owner.
   // If the owner is deleted the owner should first call this function
@@ -93,6 +98,8 @@ class DirectShowPinBase : public IPin,
   STDMETHOD_(ULONG, AddRef)() override;
 
   STDMETHOD_(ULONG, Release)() override;
+
+  DirectShowPinType type_;
 
  protected:
   friend class base::RefCounted<DirectShowPinBase>;

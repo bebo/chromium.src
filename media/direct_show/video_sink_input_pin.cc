@@ -35,7 +35,7 @@ static DWORD GetArea(const BITMAPINFOHEADER& info_header) {
 }
 
 VideoSinkInputPin::VideoSinkInputPin(IBaseFilter* filter, VideoSinkFilterObserver* observer)
-    : DirectShowPinBase(filter), requested_frame_rate_(0), observer_(observer) {
+    : DirectShowPinBase(filter, DirectShowPinType::Video), requested_frame_rate_(0), observer_(observer) {
 }
 
 void VideoSinkInputPin::SetRequestedMediaFormat(
@@ -65,6 +65,14 @@ bool VideoSinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
       reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
   if (pvi == NULL)
     return false;
+
+
+  LOG(INFO) << __func__  << " "
+    << "VideoSinkInputPin resolution: " 
+    << pvi->bmiHeader.biWidth << "x" << pvi->bmiHeader.biHeight << " " 
+    << pvi->rcSource.left << "," << pvi->rcSource.top << ","
+    << pvi->rcSource.right << "," << pvi->rcSource.bottom << " "
+    << pvi->AvgTimePerFrame << "fps";
 
   // Store the incoming width and height.
   resulting_format_.frame_size.SetSize(pvi->bmiHeader.biWidth,

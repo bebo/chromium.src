@@ -95,7 +95,8 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectSh
   device_descriptors_ = *device_descriptors;
 }
 
-void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category, DirectShowDeviceDescriptors* device_descriptors) {
+void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category, 
+    DirectShowDeviceDescriptors* device_descriptors) {
   DCHECK(device_descriptors);
 
   ScopedComPtr<ICreateDevEnum> dev_enum;
@@ -130,7 +131,8 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         continue;
 
       const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
-      if (! DirectShow::IsDeviceWhiteListed(device_name))
+      LOG(INFO) << "Device name: " << device_name;
+      if (!DirectShow::IsDeviceWhiteListed(device_name))
         continue;
 
       name.Reset();
