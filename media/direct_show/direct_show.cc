@@ -38,7 +38,7 @@ static const enum WhitelistedFilterNames {
   GAME_CAPTURE_HD_60S = 1,
   GAME_CAPTURE_HD_60PRO = 2,
   GAME_CAPTURE_HD_4K60_PRO = 3,
-  AVERMEDIA_GC550_VIDEO_CAPTURE= 4,
+  AVERMEDIA_GC550_VIDEO_CAPTURE = 4,
   WHITELISTED_FILTER_MAX = AVERMEDIA_GC550_VIDEO_CAPTURE
 };
 
@@ -187,27 +187,19 @@ void PrintPinInfo(IPin* pin) {
     WCHAR format_type[128] = {0};
     StringFromGUID2(media_type.formattype, format_type, arraysize(format_type));
 
-    LOG(INFO) << "media_type, majortype: " << major_type
+    LOG(INFO) 
+      << "media_type, majortype: " << major_type
       << ", subtype: " << sub_type
       << ", formattype: " << format_type;
   } else {
     LOG(INFO) << "Failed to get connection media type";
   }
 
-
-  WCHAR *pin_id = new WCHAR[128];
-  hr = pin->QueryId(&pin_id);
-  if (SUCCEEDED(hr)) {
-    LOG(INFO) << "pin id: " << pin_id;
-  } else {
-    LOG(INFO) << "Failed to QueryId";
-  }
-  delete[] pin_id;
-
   PIN_INFO pin_info = {0};
   hr = pin->QueryPinInfo(&pin_info);
   if (SUCCEEDED(hr)) {
-    LOG(INFO) << "pFilter: " << pin_info.pFilter
+    LOG(INFO) 
+      << "pFilter: " << pin_info.pFilter
       << ", dir: " << pin_info.dir
       << ", achName: " << pin_info.achName;
   } else {
@@ -295,8 +287,8 @@ bool DirectShow::IsDeviceWhiteListed(const std::string& name) {
       LOG(INFO) << "Enumerated whitelist device: " << name;
       return true;
     }
-    LOG(INFO) << "Enumerated whitelist failed: device: " << name;
   }
+  LOG(INFO) << "Enumerated whitelist failed: device: " << name;
   return false;
 }
 
@@ -577,8 +569,6 @@ ScopedComPtr<IPin> DirectShow::GetPinByName(IBaseFilter* filter,
     PIN_DIRECTION this_pin_dir = static_cast<PIN_DIRECTION>(-1);
     hr = pin->QueryDirection(&this_pin_dir);
     if (pin_dir == this_pin_dir) {
-      PrintPinInfo(pin.Get());
-
       PIN_INFO pin_info = {0};
       hr = pin->QueryPinInfo(&pin_info);
 
@@ -1021,12 +1011,12 @@ HRESULT DirectShow::SetupVideoCaptureFormat() {
       found_capability.supported_format.pixel_format, frame_rate,
       found_capability.info_header);
 
-  ScopedMediaType get_media_type;
-  hr = stream_config->GetFormat(get_media_type.Receive());
+  ScopedMediaType preferred_media_type;
+  hr = stream_config->GetFormat(preferred_media_type.Receive());
   DLOG_IF_FAILED_WITH_HRESULT("Failed to get capture device output format", hr);
   if (SUCCEEDED(hr)) {
     VIDEOINFOHEADER* h =
-      reinterpret_cast<VIDEOINFOHEADER*>(get_media_type->pbFormat);
+      reinterpret_cast<VIDEOINFOHEADER*>(preferred_media_type->pbFormat);
     LOG(INFO) << "GetFormat: preferred video output format, "
       << h->bmiHeader.biWidth << "x" << h->bmiHeader.biHeight;
   }

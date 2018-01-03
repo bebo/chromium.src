@@ -32,6 +32,16 @@ using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
 
 namespace media {
+namespace {
+static std::string GetDeviceInstancePath(const std::string& device_id) {
+  const size_t end_token = device_id.find_last_of('#');
+  if (end_token == std::string::npos) {
+    return std::string();
+  }
+  const std::string path = device_id.substr(0, end_token);
+  return path;
+}
+} // namespace
 
 DirectShowDeviceFactory::DirectShowDeviceFactory() {
   LOG(INFO) << __func__ ;
@@ -47,18 +57,11 @@ DirectShowDeviceFactory * DirectShowDeviceFactory::GetInstance() {
 }
 
 bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
-
-  // TODO: need to be smarter on this one
-  // currently we show both (Video) and (Audio)
-  // AVerMedia for example is a capture device that has both audio and video
-  // Elgato has two separate category of filter for both audio and video.
-  // I think we can check the device path and filter it off. 
-  // device path's last section is the device instance id. (Elgato's both video and audio has the same instance id)
-  // One option is: we can check if there are more than two instance id then 
-  // we can do matching on the category of the device path.
   if (device_descriptors_.empty()) {
-    GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors_);
-    GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors_);
+    DirectShowDeviceDescriptors device_descriptors;
+    GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors);
+    GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors);
+    device_descriptors_ = device_descriptors;
   }
 
   for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
@@ -84,15 +87,24 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
   return device;
 }
 
-void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors) {
+void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type,
+    DirectShowDeviceDescriptors* device_descriptors) {
+  // TODO: need to be smarter on this one
+  // currently we show both (Video) and (Audio)
+  // AVerMedia for example is a capture device that has both audio and video
+  // Elgato has two separate category of filter for both audio and video.
+  // I think we can check the device path and filter it off. 
+  // device path's last section is the device instance id. (Elgato's both video and audio has the same instance id)
+  // One option is: we can check if there are more than two instance id then 
+  // we can do matching on the category of the device path.
+
   if (type == DirectShowType::Audio) {
     LOG(INFO) << "bebo GetDeviceDescriptors (Audio)";
+    GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
   } else {
     LOG(INFO) << "bebo GetDeviceDescriptors (Video)";
   }
-  GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
   GetDeviceDescriptors(type, CLSID_VideoInputDeviceCategory, device_descriptors);
-  device_descriptors_ = *device_descriptors;
 }
 
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category, 
@@ -145,9 +157,25 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         id = base::SysWideToUTF8(V_BSTR(name.ptr()));
       }
 
-      // FIXME
-      //const std::string model_id = GetDeviceModelId(id);
-      const std::string model_id = "CaptureCard - 0000::0000";
+      bool skip_device = false;
+      for (DirectShowDeviceDescriptor& ds : *device_descriptors) {
+        const std::string ds_model_id = GetDeviceInstancePath(ds.device_id);
+        const std::string model_id = GetDeviceInstancePath(id);
+        LOG(INFO) << "ds.device_id: " << ds.device_id << ", device_id: " << id;
+        LOG(INFO) << "ds_model_id: " << ds_model_id << ", model_id: " << model_id;
+        if (!ds_model_id.empty() && 
+            !model_id.empty() && 
+            ds_model_id.compare(model_id) == 0) {
+          skip_device = true;
+          break;
+        }
+      }
+
+      if (skip_device) {
+        continue;
+      }
+
+      const std::string model_id = "CaptureCard - 0000:0000";
 
       device_descriptors->emplace_back(device_name, id, model_id);
     }

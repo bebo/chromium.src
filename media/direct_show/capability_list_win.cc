@@ -68,7 +68,7 @@ static bool CompareCapability(const WAVEFORMATEX& requested,
     return diff_channel_lhs < diff_channel_rhs;
 
   // check pcm?
-  return true;
+  return false;
 }
 
 
