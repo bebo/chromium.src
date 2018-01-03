@@ -77,10 +77,8 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
   auto search = devices_.find(device_id);
   DirectShow* device = NULL;
   if (search != devices_.end()) {
-    LOG(INFO) << "Controller found: " << device_id;
     device = search->second;
   } else {
-    LOG(INFO) << "Controller NOT FOUND, creating: " << device_id;
     device  = new DirectShow(device_id);
     devices_.emplace(std::make_pair(device_id, device));
   }
@@ -89,15 +87,6 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
 
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type,
     DirectShowDeviceDescriptors* device_descriptors) {
-  // TODO: need to be smarter on this one
-  // currently we show both (Video) and (Audio)
-  // AVerMedia for example is a capture device that has both audio and video
-  // Elgato has two separate category of filter for both audio and video.
-  // I think we can check the device path and filter it off. 
-  // device path's last section is the device instance id. (Elgato's both video and audio has the same instance id)
-  // One option is: we can check if there are more than two instance id then 
-  // we can do matching on the category of the device path.
-
   if (type == DirectShowType::Audio) {
     LOG(INFO) << "bebo GetDeviceDescriptors (Audio)";
     GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
@@ -161,8 +150,6 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
       for (DirectShowDeviceDescriptor& ds : *device_descriptors) {
         const std::string ds_model_id = GetDeviceInstancePath(ds.device_id);
         const std::string model_id = GetDeviceInstancePath(id);
-        LOG(INFO) << "ds.device_id: " << ds.device_id << ", device_id: " << id;
-        LOG(INFO) << "ds_model_id: " << ds_model_id << ", model_id: " << model_id;
         if (!ds_model_id.empty() && 
             !model_id.empty() && 
             ds_model_id.compare(model_id) == 0) {
