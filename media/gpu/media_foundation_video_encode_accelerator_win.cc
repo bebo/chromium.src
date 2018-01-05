@@ -532,7 +532,8 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
                                          MFVideoInterlace_Progressive);
   RETURN_ON_HR_FAILURE(hr, "Couldn't set interlace mode", false);
 
-  DWORD AVEncH264VProfile = eAVEncH264VProfile_UCConstrainedHigh;
+  /* DWORD AVEncH264VProfile = eAVEncH264VProfile_UCConstrainedHigh; */
+  DWORD AVEncH264VProfile = eAVEncH264VProfile_High;; 
 
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   if (beboKey.Valid()) {
@@ -595,7 +596,7 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   DWORD AVEncCommonQualityVsSpeed = 75;
   DWORD AVEncNumWorkerThreads = 0;
-  DWORD AVEncMPVDefaultBPictureCount = 2;
+  DWORD AVEncMPVDefaultBPictureCount = 1;
   DWORD AVEncCommonRateControlMode = eAVEncCommonRateControlMode_CBR;
   DWORD AVEncCommonQuality = 0;
   DWORD AVEncH264CABACEnable = 0xDEADBEEF;
@@ -721,23 +722,34 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   }
   LOG(INFO) << "CODECAPI_AVEncH264CABACEnable: 0x" << std::hex << AVEncH264CABACEnable << std::dec;
 
+  var.vt = VT_UI4;
+  var.ulVal = AVEncMPVDefaultBPictureCount;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
+  if (hr != S_OK) {
+    LOG(ERROR) << "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount";
+    hr = S_OK;
+  } else {
+    LOG(INFO) << "CODECAPI_AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount;
+  }
   /* var.vt = VT_UI4; */
-  /* var.ulVal = AVEncMPVDefaultBPictureCount; */
-  /* hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var); */
-  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount", false); */
-  /* LOG(INFO) << "CODECAPI_AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount; */
+  /* var.ulVal = 120; */
+  /* hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMaxKeyframeDistance, &var); */
+  /* if (hr != S_OK) { */
+  /*   LOG(ERROR) << "Couldn't set CODECAPI_AVEncVideoMaxKeyframeDistance"; */
+  /*   hr = S_OK; */
+  /* } */
 
-  var.vt = VT_UI4;
-  var.ulVal = AVEncVideoMinQP;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMinQP, &var);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoMinQP", false);
-  LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP;
+  /* var.vt = VT_UI4; */
+  /* var.ulVal = AVEncVideoMinQP; */
+  /* hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMinQP, &var); */
+  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoMinQP", false); */
+  /* LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP; */
 
-  var.vt = VT_UI4;
-  var.ulVal = AVEncVideoTemporalLayerCount;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncVideoTemporalLayerCount, &var);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoTemporalLayerCount", false);
-  LOG(INFO) << "CODECAPI_AVEncVideoTemporalLayerCount: " << AVEncVideoTemporalLayerCount;
+  /* var.vt = VT_UI4; */
+  /* var.ulVal = AVEncVideoTemporalLayerCount; */
+  /* hr = codec_api_->SetValue(&CODECAPI_AVEncVideoTemporalLayerCount, &var); */
+  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoTemporalLayerCount", false); */
+  /* LOG(INFO) << "CODECAPI_AVEncVideoTemporalLayerCount: " << AVEncVideoTemporalLayerCount; */
 
   return SUCCEEDED(hr);
 
@@ -988,7 +1000,7 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
   LONGLONG sample_time;
   input_sample->GetSampleTime(&sample_time);
-  BVLOG(3) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
+  BVLOG(2) << "QueueFrame - keyframe: " << force_keyframe << " timestamp: " << sample_time;
 
   input_sample_queue_.push_back(std::move(input_sample));
 
