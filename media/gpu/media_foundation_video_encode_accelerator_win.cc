@@ -547,6 +547,18 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
 
   LOG(INFO) << "AVEncH264VProfile: " << AVEncH264VProfile;
 
+  /* hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_PROFILE, */
+  /*                                        AVEncH264VProfile); */
+  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set codec profile", false); */
+
+  /* LOG(INFO) << "AVEncH264VProfile: " << AVEncH264VProfile; */
+
+  hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_LEVEL,
+      (UINT32)-1);
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set codec level", false);
+  LOG(INFO) << "codec level: " << (UINT32)-1;
+
+
   // Initialize input parameters.
   hr = MFCreateMediaType(imf_input_media_type_.GetAddressOf());
   RETURN_ON_HR_FAILURE(hr, "Couldn't create media type", false);
@@ -596,7 +608,7 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   DWORD AVEncCommonQualityVsSpeed = 75;
   DWORD AVEncNumWorkerThreads = 0;
-  DWORD AVEncMPVDefaultBPictureCount = 1;
+  DWORD AVEncMPVDefaultBPictureCount = 2;
   DWORD AVEncCommonRateControlMode = eAVEncCommonRateControlMode_CBR;
   DWORD AVEncCommonQuality = 0;
   DWORD AVEncH264CABACEnable = 0xDEADBEEF;
@@ -646,6 +658,12 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
        beboKey.ReadValueDW(L"AVEncVideoTemporalLayerCount", &AVEncVideoTemporalLayerCount);
     }
   }
+
+  var.vt = VT_UI4;
+  var.ulVal = AVEncMPVDefaultBPictureCount;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
+  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount: 0x" << std::hex << hr << std::dec;
+  LOG(INFO) << "CODECAPI_AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount;
 
   var.vt = VT_UI4;
   var.ulVal = AVEncCommonRateControlMode;
@@ -722,36 +740,38 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   }
   LOG(INFO) << "CODECAPI_AVEncH264CABACEnable: 0x" << std::hex << AVEncH264CABACEnable << std::dec;
 
+
   var.vt = VT_UI4;
-  var.ulVal = AVEncMPVDefaultBPictureCount;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
-  if (hr != S_OK) {
-    LOG(ERROR) << "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount";
-    hr = S_OK;
-  } else {
-    LOG(INFO) << "CODECAPI_AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount;
+  var.ulVal = UINT32_MAX;
+
+  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVGOPSize, &var);
+  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncMPVGOPSize: 0x" << std::hex << hr << std::dec;
+  hr = S_OK;
+  LOG(INFO) << "CODECAPI_AVEncMPVGOPSize: " << var.ulVal;
+
+  var.vt = VT_UI4;
+  /* var.ulVal = MAX_INT; */
+  var.ulVal = 32000000;
+
+  LOG(INFO) << "CODECAPI_AVEncCommonBufferSize: " << var.ulVal;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonBufferSize, &var);
+  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncCommonBufferSize: 0x" << std::hex << hr << std::dec;
+
+  if (AVEncVideoMinQP != 0) {
+    var.vt = VT_UI4;
+    var.ulVal = AVEncVideoMinQP;
+    LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP;
+    hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMinQP, &var);
+    LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncVideoMinQP: 0x" << std::hex << hr << std::dec;
   }
-  /* var.vt = VT_UI4; */
-  /* var.ulVal = 120; */
-  /* hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMaxKeyframeDistance, &var); */
-  /* if (hr != S_OK) { */
-  /*   LOG(ERROR) << "Couldn't set CODECAPI_AVEncVideoMaxKeyframeDistance"; */
-  /*   hr = S_OK; */
-  /* } */
 
-  /* var.vt = VT_UI4; */
-  /* var.ulVal = AVEncVideoMinQP; */
-  /* hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMinQP, &var); */
-  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoMinQP", false); */
-  /* LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP; */
+  var.vt = VT_UI4;
+  var.ulVal = AVEncVideoTemporalLayerCount;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncVideoTemporalLayerCount, &var);
+  LOG(INFO) << "CODECAPI_AVEncVideoTemporalLayerCount: " << AVEncVideoTemporalLayerCount;
+  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncVideoTemporalLayerCount: 0x" << std::hex << hr << std::dec;
 
-  /* var.vt = VT_UI4; */
-  /* var.ulVal = AVEncVideoTemporalLayerCount; */
-  /* hr = codec_api_->SetValue(&CODECAPI_AVEncVideoTemporalLayerCount, &var); */
-  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncVideoTemporalLayerCount", false); */
-  /* LOG(INFO) << "CODECAPI_AVEncVideoTemporalLayerCount: " << AVEncVideoTemporalLayerCount; */
-
-  return SUCCEEDED(hr);
+  return SUCCEEDED(S_OK);
 
 }
 
