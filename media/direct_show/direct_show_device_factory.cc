@@ -14,12 +14,12 @@
 #include <list>
 #include <utility>
 
+#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/memory/singleton.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_util.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/win/scoped_co_mem.h"
@@ -59,8 +59,8 @@ DirectShowDeviceFactory * DirectShowDeviceFactory::GetInstance() {
 bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
   if (device_descriptors_.empty()) {
     DirectShowDeviceDescriptors device_descriptors;
-    GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors);
-    GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors);
+    GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors, false);
+    GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors, false);
     device_descriptors_ = device_descriptors;
   }
 
@@ -85,19 +85,32 @@ DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
   return device;
 }
 
+
+void DirectShowDeviceFactory::OpenPropertyPage(const std::string& device_id,
+    const std::string& type) {
+  LOG(INFO) << __func__ << " device_id: " << device_id << " - " << type;
+  if (!IsDirectShowDevice(device_id)) {
+    LOG(INFO) << __func__ 
+      << " Attempt to open property page with not whitelisted device: " << device_id
+      << ", type: " << type;
+    return;
+  }
+
+  DirectShow* controller = GetController(device_id);
+  controller->OpenPropertyPage(type);
+}
+
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type,
     DirectShowDeviceDescriptors* device_descriptors) {
   if (type == DirectShowType::Audio) {
-    LOG(INFO) << "bebo GetDeviceDescriptors (Audio)";
-    GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors);
-  } else {
-    LOG(INFO) << "bebo GetDeviceDescriptors (Video)";
+    GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors, true);
   }
-  GetDeviceDescriptors(type, CLSID_VideoInputDeviceCategory, device_descriptors);
+  GetDeviceDescriptors(type, CLSID_VideoInputDeviceCategory, device_descriptors, true);
 }
 
-void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category, 
-    DirectShowDeviceDescriptors* device_descriptors) {
+void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category,
+    DirectShowDeviceDescriptors* device_descriptors,
+    bool skip_same_device) {
   DCHECK(device_descriptors);
 
   ScopedComPtr<ICreateDevEnum> dev_enum;
@@ -132,7 +145,6 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         continue;
 
       const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
-      LOG(INFO) << "Device name: " << device_name;
       if (!DirectShow::IsDeviceWhiteListed(device_name))
         continue;
 
@@ -152,6 +164,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         const std::string model_id = GetDeviceInstancePath(id);
         if (!ds_model_id.empty() && 
             !model_id.empty() && 
+            skip_same_device &&
             ds_model_id.compare(model_id) == 0) {
           skip_device = true;
           break;

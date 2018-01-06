@@ -82,6 +82,7 @@ class MEDIA_EXPORT DirectShow:
   void UnregisterObserver(AudioSinkFilterObserver* observer);
   void RegisterObserver(VideoSinkFilterObserver* observer);
   void UnregisterObserver(VideoSinkFilterObserver* observer);
+  void OpenPropertyPage(const std::string& type);
 
  private:
   enum InternalState {
@@ -120,8 +121,10 @@ class MEDIA_EXPORT DirectShow:
   static void PrintPinCapabilities(const std::string& name,
                                    IAMStreamConfig* stream_config);
 
-  void StartThread();
-  void StopThread();
+  void CreateGraph();
+  void DestroyGraph();
+  void StartMedia();
+  void StopMedia();
   void ShouldGraphBeRunning();
   void ShouldGraphBeStopping();
 
@@ -146,6 +149,10 @@ class MEDIA_EXPORT DirectShow:
                           const DirectShowVideoCaptureFormat& format,
                           base::TimeDelta timestamp) override;
 
+  bool SupportPropertyPage(IBaseFilter* filter,
+                           const std::string& type);
+  void DoOpenPropertyPage(IBaseFilter* filter,
+                          const std::string& type);
 
   // Capturing is driven by this thread (which has no message loop).
   // All OnData() callbacks will be called from this thread.

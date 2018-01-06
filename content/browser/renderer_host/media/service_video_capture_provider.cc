@@ -76,6 +76,17 @@ void ServiceVideoCaptureProvider::GetDeviceInfosAsync(
       std::vector<media::VideoCaptureDeviceInfo>()));
 }
 
+void ServiceVideoCaptureProvider::OpenPropertyPage(
+    const std::string& device_id,
+    const std::string& type) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  emit_log_message_cb_.Run("ServiceVideoCaptureProvider::OpenPropertyPage");
+  IncreaseUsageCount();
+  LazyConnectToService();
+
+  device_factory_->OpenPropertyPage(device_id, type);
+}
+
 std::unique_ptr<VideoCaptureDeviceLauncher>
 ServiceVideoCaptureProvider::CreateDeviceLauncher() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);

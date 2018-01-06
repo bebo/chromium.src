@@ -16,7 +16,10 @@ namespace base {
 
 namespace media {
 
-  enum class MEDIA_EXPORT DirectShowType { Audio, Video };
+  enum class MEDIA_EXPORT DirectShowType {
+    Audio,
+    Video 
+  };
 
 
   class MEDIA_EXPORT DirectShowDeviceDescriptor {
@@ -44,12 +47,18 @@ namespace media {
       bool IsDirectShowDevice(std::string device_id);
       DirectShow *GetController(std::string device_id);
 
+      void OpenPropertyPage(const std::string& device_id,
+                            const std::string& type);
     private:
       DirectShowDeviceFactory();
       virtual ~DirectShowDeviceFactory();
       friend struct base::StaticMemorySingletonTraits<DirectShowDeviceFactory>;
 
-      void GetDeviceDescriptors(DirectShowType type, GUID category, DirectShowDeviceDescriptors* device_descriptors);
+      void GetDeviceDescriptors(DirectShowType type, 
+          GUID category, 
+          DirectShowDeviceDescriptors* device_descriptors,
+          bool skip_same_device);
+
 
       DirectShowDeviceDescriptors device_descriptors_;
       std::map<std::string, DirectShow*> devices_;

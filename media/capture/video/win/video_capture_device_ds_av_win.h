@@ -60,7 +60,6 @@ class VideoCaptureDeviceDirectShowAV : public VideoCaptureDevice,
   void GetPhotoState(GetPhotoStateCallback callback) override;
   void SetPhotoOptions(mojom::PhotoSettingsPtr settings,
                        SetPhotoOptionsCallback callback) override;
-
  private:
   enum InternalState {
     kIdle,       // The device driver is opened but camera is not in use.

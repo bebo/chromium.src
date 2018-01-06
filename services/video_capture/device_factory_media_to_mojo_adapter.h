@@ -32,6 +32,8 @@ class DeviceFactoryMediaToMojoAdapter : public mojom::DeviceFactory {
 
   // mojom::DeviceFactory implementation.
   void GetDeviceInfos(GetDeviceInfosCallback callback) override;
+  void OpenPropertyPage(const std::string& device_id,
+                        const std::string& type) override;
   void CreateDevice(const std::string& device_id,
                     mojom::DeviceRequest device_request,
                     CreateDeviceCallback callback) override;

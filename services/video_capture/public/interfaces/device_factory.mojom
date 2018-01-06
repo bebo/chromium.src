@@ -24,6 +24,8 @@ interface DeviceFactory {
   GetDeviceInfos()
       => (array<media.mojom.VideoCaptureDeviceInfo> device_infos);
 
+  OpenPropertyPage(string device_id, string type);
+
   // Provides exclusive access to the device identified by |device_id|.
   // The access is valid until either the message pipe associated with
   // |device_request| is closed by the client, or a subsequent call to

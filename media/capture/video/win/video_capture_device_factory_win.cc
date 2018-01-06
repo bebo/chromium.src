@@ -484,13 +484,13 @@ void VideoCaptureDeviceFactoryWin::GetDeviceDescriptors(
   DirectShowDeviceDescriptors ds_descriptors; 
   DirectShowDeviceFactory::GetInstance()->GetDeviceDescriptors(DirectShowType::Video, &ds_descriptors);
 
-  for(DirectShowDeviceDescriptor& ds : ds_descriptors) {
+  for (DirectShowDeviceDescriptor& ds : ds_descriptors) {
     LOG(INFO) << "bebo " << __func__ << " name: " << ds.display_name << " device_id: " << ds.device_id;
     std::string name = ds.display_name;
     device_descriptors->erase(
       std::remove_if(device_descriptors->begin(), 
                      device_descriptors->end(),
-                     [&name](const VideoCaptureDeviceDescriptor d){return d.display_name == name;}),
+                     [&name](const VideoCaptureDeviceDescriptor d) { return d.display_name == name; }),
       device_descriptors->end());
 
     device_descriptors->emplace_back(ds.display_name, ds.device_id, ds.model_id, VideoCaptureApi::WIN_DIRECT_SHOW_AV);
@@ -512,7 +512,13 @@ void VideoCaptureDeviceFactoryWin::GetSupportedFormats(
              VideoCaptureApi::WIN_DIRECT_SHOW_AV) {
     GetDeviceSupportedFormatsDirectShowAV(device, formats);
   }
+}
 
+void VideoCaptureDeviceFactoryWin::OpenPropertyPage(
+    const std::string& device_id,
+    const std::string& type) {
+  DirectShowDeviceFactory::GetInstance()->
+    OpenPropertyPage(device_id, type);
 }
 
 // static

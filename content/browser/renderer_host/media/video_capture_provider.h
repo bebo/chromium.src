@@ -81,6 +81,9 @@ class CONTENT_EXPORT VideoCaptureProvider {
   // instance stays alive until |result_callback| is invoked.
   virtual void GetDeviceInfosAsync(GetDeviceInfosCallback result_callback) = 0;
 
+  virtual void OpenPropertyPage(const std::string& device_id,
+                                const std::string& type) = 0;
+
   virtual std::unique_ptr<VideoCaptureDeviceLauncher>
   CreateDeviceLauncher() = 0;
 };

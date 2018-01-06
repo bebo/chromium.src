@@ -18,6 +18,14 @@
 #include "base/memory/singleton.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/strings/sys_string_conversions.h"
+#include "base/sequenced_task_runner.h"
+#include "base/sequenced_task_runner_helpers.h"
+#include "base/task_scheduler/post_task.h"
+#include "base/task_scheduler/task_scheduler.h"
+#include "base/task_scheduler/task_tracker.h"
+#include "base/task_scheduler/task_traits.h"
+#include "base/threading/sequenced_task_runner_handle.h"
+
 #include "media/base/timestamp_constants.h"
 
 using base::win::ScopedCoMem;
@@ -35,11 +43,14 @@ static const REFERENCE_TIME kSecondsToReferenceTime = 10000000;
 
 static const enum WhitelistedFilterNames {
   GAME_CAPTURE_HD_60 = 0,
-  GAME_CAPTURE_HD_60S = 1,
-  GAME_CAPTURE_HD_60PRO = 2,
-  GAME_CAPTURE_HD_4K60_PRO = 3,
-  AVERMEDIA_GC550_VIDEO_CAPTURE = 4,
-  WHITELISTED_FILTER_MAX = AVERMEDIA_GC550_VIDEO_CAPTURE
+  GAME_CAPTURE_HD_60S,
+  GAME_CAPTURE_HD_60PRO,
+  GAME_CAPTURE_HD_4K60_PRO,
+  AVERMEDIA_EXTREMECAP_U3,
+  AVERMEDIA_LIVE_GAMER_HD,
+  AVERMEDIA_LIVE_GAMER_HD_2,
+  AVERMEDIA_GC550,
+  WHITELISTED_FILTER_MAX = AVERMEDIA_GC550
 };
 
 static const char* const kWhitelistedFilterNames[] = {
@@ -47,7 +58,10 @@ static const char* const kWhitelistedFilterNames[] = {
   "Game Capture HD60 S",
   "Game Capture HD60 Pro",
   "Game Capture 4K60 Pro",
-  "AVerMedia GC550 Video Capture",
+  "AVerMedia ExtremeCap U3",
+  "AVerMedia Live Gamer HD",
+  "AVerMedia Live Gamer HD 2",
+  "AVerMedia GC550"
 };
 
 static_assert(arraysize(kWhitelistedFilterNames) == WHITELISTED_FILTER_MAX + 1,
@@ -219,11 +233,12 @@ DirectShow::DirectShow(std::string device_id):
   video_observer_(NULL) {
   LOG(INFO) << __func__;
   friendly_name_ = "DirectShow";  // FIXME device name??
+  CreateGraph();
 }
 
 DirectShow::~DirectShow() {
   LOG(INFO) << __func__;
-  StopThread();
+  DestroyGraph();
 }
 
 // static
@@ -284,11 +299,11 @@ bool DirectShow::IsDeviceWhiteListed(const std::string& name) {
   for (size_t i = 0; i < arraysize(kWhitelistedFilterNames); ++i) {
     if (base::StartsWith(name, kWhitelistedFilterNames[i],
           base::CompareCase::INSENSITIVE_ASCII) != 0) {
-      LOG(INFO) << "Enumerated whitelist device: " << name;
+      LOG(INFO) << "Enumerated whitelist success, name: " << name;
       return true;
     }
   }
-  LOG(INFO) << "Enumerated whitelist failed: device: " << name;
+  LOG(INFO) << "Enumerated whitelist failed, name: " << name;
   return false;
 }
 
@@ -312,7 +327,7 @@ void DirectShow::GetDeviceVideoCapabilityList(
       DirectShow::GetPin(capture_filter.Get(), PINDIR_OUTPUT,
         PIN_CATEGORY_CAPTURE, GUID_NULL));
   if (!output_capture_pin.Get()) {
-    LOG(ERROR) << "Failed to get capture output pin";
+    LOG(ERROR) << "Failed to get video capture output pin";
     return;
   }
 
@@ -345,7 +360,7 @@ void DirectShow::GetDeviceAudioCapabilityList(
       DirectShow::GetPin(capture_filter.Get(), PINDIR_OUTPUT,
         PIN_CATEGORY_CAPTURE, MEDIATYPE_Audio));
   if (!output_capture_pin.Get()) {
-    LOG(ERROR) << "Failed to get capture output pin";
+    LOG(ERROR) << "Failed to get audio capture output pin";
     return;
   }
 
@@ -587,7 +602,7 @@ ScopedComPtr<IPin> DirectShow::GetPinByName(IBaseFilter* filter,
   return pin;
 }
 
-void DirectShow::StartThread() {
+void DirectShow::CreateGraph() {
   video_capabilities_.clear();
   audio_capabilities_.clear();
 
@@ -598,19 +613,15 @@ void DirectShow::StartThread() {
         this, "capture_thread",
         base::SimpleThread::Options(base::ThreadPriority::REALTIME_AUDIO)));
   capture_thread_->Start();
-
-  state_ = kCapturing;
 }
 
-void DirectShow::StopThread() {
+void DirectShow::DestroyGraph() {
   if (capture_thread_) {
     capture_thread_->Join();
     capture_thread_.reset();
   }
 
-  if (media_control_.Get()) {
-    media_control_->Stop();
-  }
+  StopMedia();
 
   if (graph_builder_.Get()) {
     if (has_audio_) {
@@ -644,6 +655,35 @@ void DirectShow::StopThread() {
 
   if (capture_graph_builder_.Get()) {
     capture_graph_builder_.Reset();
+  }
+}
+
+void DirectShow::StartMedia() {
+  if (capture_thread_) {
+    capture_thread_->Join();
+    capture_thread_.reset();
+  }
+
+  HRESULT hr = media_control_->Pause();
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to pause the capture device", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  // Start capturing.
+  hr = media_control_->Run();
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to start the capture device", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  LOG(INFO) << "Successfully start the media control of capture device";
+  state_ = kCapturing;
+}
+
+void DirectShow::StopMedia() {
+  if (media_control_.Get()) {
+    media_control_->Stop();
   }
 
   state_ = kIdle;
@@ -790,7 +830,7 @@ void DirectShow::ShouldGraphBeRunning() {
   running_count_.Increment();
 
   if (running_count_.IsOne()) {
-    StartThread();
+    StartMedia();
   }
 }
 
@@ -798,7 +838,7 @@ void DirectShow::ShouldGraphBeStopping() {
   running_count_.Decrement();
 
   if (running_count_.IsZero()) {
-    StopThread();
+    StopMedia();
   }
 }
 
@@ -815,8 +855,10 @@ void DirectShow::SetRequestedVideoFormat(VideoCaptureFormat params) {
   requested_video_format_ = format;
 
   if (state_ == kCapturing) {
-    StopThread();
-    StartThread();
+    StopMedia();
+    DestroyGraph();
+    CreateGraph();
+    StartMedia();
   }
 }
 
@@ -833,8 +875,10 @@ void DirectShow::SetRequestedAudioFormat(AudioParameters params) {
   format->cbSize = 0;
 
   if (state_ == kCapturing) {
-    StopThread();
-    StartThread();
+    StopMedia();
+    DestroyGraph();
+    CreateGraph();
+    StartMedia();
   }
 }
 
@@ -870,6 +914,80 @@ void DirectShow::UnregisterObserver(VideoSinkFilterObserver* observer) {
     video_observer_ = NULL;
   }
   ShouldGraphBeStopping();
+}
+
+void DirectShow::DoOpenPropertyPage(IBaseFilter* filter,
+                                    const std::string& type) {
+  LOG(INFO) << __func__ << " type: " << type; 
+
+  ISpecifyPropertyPages* property_page;
+  HRESULT hr = filter->QueryInterface(IID_PPV_ARGS(&property_page));
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to query page interface", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  CAUUID cauuid;
+  hr = property_page->GetPages(&cauuid);
+  property_page->Release();
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to get property page", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  if (!cauuid.cElems) {
+    LOG(ERROR) << "Failed to get cauuid.cElems";
+    return;
+  }
+
+  IUnknown* filter_unk;
+  hr = filter->QueryInterface(IID_PPV_ARGS(&filter_unk));
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to query IUnknown", hr);
+  if (FAILED(hr)) {
+    return;
+  }
+
+  hr = OleCreatePropertyFrame(NULL,
+      0, 0,
+      NULL,
+      1,
+      (LPUNKNOWN*)&filter_unk,
+      cauuid.cElems, cauuid.pElems,
+      0,
+      0, NULL);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to create property frame", hr);
+  LOG(INFO) << "Opened Property Frame: " << std::hex << hr;
+
+  filter_unk->Release();
+  CoTaskMemFree(cauuid.pElems);
+}
+
+void DirectShow::OpenPropertyPage(const std::string& type) {
+  LOG(INFO) << __func__
+    << " device_id: " << device_id_ 
+    << ", type: " << type;
+
+  static auto com_sta_task_runner = 
+    base::CreateCOMSTATaskRunnerWithTraits(
+      {base::MayBlock(), base::TaskPriority::USER_VISIBLE});
+
+  IBaseFilter* filter = NULL;
+  if (type.compare("crossbar") == 0) {
+    filter = crossbar_filter_.Get();
+  } else if (type.compare("device") == 0) {
+    filter = capture_filter_.Get();
+  }
+
+  if (filter == NULL) {
+    LOG(ERROR) << __func__ << " Unsupported type for property page: " << type;
+    return;
+  }
+
+  com_sta_task_runner->PostTask(FROM_HERE,
+      base::BindOnce(&DirectShow::DoOpenPropertyPage,
+        base::Unretained(this),
+        filter,
+        type));
 }
 
 HRESULT DirectShow::SetupGraph() {
@@ -1137,7 +1255,7 @@ void DirectShow::Run() {
   DLOG_IF_FAILED_WITH_HRESULT("Failed to setup audio capture", hr);
 
   hr = SetupCrossbar();
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to setup crosbar", hr);
+  DLOG_IF_FAILED_WITH_HRESULT("Failed to setup crossbar", hr);
 
   hr = SetupVideoCaptureFormat();
   DLOG_IF_FAILED_WITH_HRESULT("Failed to setup video capture format", hr);
@@ -1159,19 +1277,6 @@ void DirectShow::Run() {
         input_audio_sink_pin_.Get(), NULL);
     DLOG_IF_FAILED_WITH_HRESULT("Failed to connect audio capture pin to audio sink pin", hr);
     PrintPinInfo(output_audio_capture_pin_.Get());
-  }
-
-  hr = media_control_->Pause();
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to pause the capture device", hr);
-  if (FAILED(hr)) {
-    return;
-  }
-
-  // Start capturing.
-  hr = media_control_->Run();
-  DLOG_IF_FAILED_WITH_HRESULT("Failed to start the capture device", hr);
-  if (FAILED(hr)) {
-    return;
   }
 }
 
