@@ -176,7 +176,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         continue;
       }
 
-      const std::string model_id = "0000:0000";
+      const std::string model_id = "";
 
       device_descriptors->emplace_back(device_name, id, model_id);
     }
