@@ -46,7 +46,7 @@ static const enum WhitelistedFilterNames {
   GAME_CAPTURE_HD_60S,
   GAME_CAPTURE_HD_60PRO,
   GAME_CAPTURE_HD_4K60_PRO,
-  AVERMEDIA_EXTREMECAP_U3,
+  AVERMEDIA_U3,
   AVERMEDIA_LIVE_GAMER_HD,
   AVERMEDIA_LIVE_GAMER_HD_2,
   AVERMEDIA_GC550,
@@ -58,7 +58,7 @@ static const char* const kWhitelistedFilterNames[] = {
   "Game Capture HD60 S",
   "Game Capture HD60 Pro",
   "Game Capture 4K60 Pro",
-  "AVerMedia ExtremeCap U3",
+  "AVerMedia U3",
   "AVerMedia Live Gamer HD",
   "AVerMedia Live Gamer HD 2",
   "AVerMedia GC550"
