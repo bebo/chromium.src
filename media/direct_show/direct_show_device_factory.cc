@@ -164,6 +164,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         const std::string model_id = GetDeviceInstancePath(id);
         if (!ds_model_id.empty() && 
             !model_id.empty() && 
+            ds.device_id.compare(id) != 0 && // only skip if it's same parent path but different device id
             skip_same_device &&
             ds_model_id.compare(model_id) == 0) {
           skip_device = true;
