@@ -144,7 +144,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
       if (FAILED(hr) || name.type() != VT_BSTR)
         continue;
 
-      const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
+      const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())) + " (BeboCaptureCard)");
       if (!DirectShow::IsDeviceWhiteListed(device_name))
         continue;
 
@@ -176,7 +176,7 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         continue;
       }
 
-      const std::string model_id = "CaptureCard - 0000:0000";
+      const std::string model_id = "0000:0000";
 
       device_descriptors->emplace_back(device_name, id, model_id);
     }
