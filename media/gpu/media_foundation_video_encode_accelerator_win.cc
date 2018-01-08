@@ -606,16 +606,19 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   VARIANT var;
 
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
-  DWORD AVEncCommonQualityVsSpeed = 75;
+  DWORD AVEncCommonQualityVsSpeed = 88;
   DWORD AVEncNumWorkerThreads = 0;
   DWORD AVEncMPVDefaultBPictureCount = 2;
   DWORD AVEncCommonRateControlMode = eAVEncCommonRateControlMode_CBR;
   DWORD AVEncCommonQuality = 0;
   DWORD AVEncH264CABACEnable = 0xDEADBEEF;
-  DWORD AVEncAdaptiveMode = eAVEncAdaptiveMode_Resolution;
+  DWORD AVEncAdaptiveMode =  eAVEncAdaptiveMode_None;
   DWORD AVEncVideoMinQP = 0;
   DWORD AVLowLatencyMode = true;
   DWORD AVEncVideoTemporalLayerCount = 1;
+  DWORD AVEncVideoMaxNumRefFrame = 2;
+  DWORD AVEncMPVGOPSize = UINT32_MAX;
+  DWORD AVEncCommonBufferSize = 32000000;
   int64_t AVEncVideoEncodeQP = 0x0;
 
   if (beboKey.Valid()) {
@@ -657,13 +660,16 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
     if (beboKey.HasValue(L"AVEncVideoTemporalLayerCount")) {
        beboKey.ReadValueDW(L"AVEncVideoTemporalLayerCount", &AVEncVideoTemporalLayerCount);
     }
+    if (beboKey.HasValue(L"AVEncVideoMaxNumRefFrame")) {
+       beboKey.ReadValueDW(L"AVEncVideoMaxNumRefFrame", &AVEncVideoMaxNumRefFrame);
+    }
+    if (beboKey.HasValue(L"AVEncMPVGOPSize ")) {
+       beboKey.ReadValueDW(L"AVEncMPVGOPSize ", &AVEncMPVGOPSize);
+    }
+    if (beboKey.HasValue(L"AVEncCommonBufferSize")) {
+       beboKey.ReadValueDW(L"AVEncCommonBufferSize", &AVEncCommonBufferSize);
+    }
   }
-
-  var.vt = VT_UI4;
-  var.ulVal = AVEncMPVDefaultBPictureCount;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
-  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount: 0x" << std::hex << hr << std::dec;
-  LOG(INFO) << "CODECAPI_AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount;
 
   var.vt = VT_UI4;
   var.ulVal = AVEncCommonRateControlMode;
@@ -675,16 +681,16 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
     var.vt = VT_UI4;
     var.ulVal = AVEncCommonQuality ;
     hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQuality, &var);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQuality", false);
     LOG(INFO) << "CODECAPI_AVEncCommonQuality: " << AVEncCommonQuality;
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQuality", false);
   }
 
   if (AVEncCommonMaxBitRate_) {
       var.vt = VT_UI4;
       var.ulVal = target_bitrate_;
       HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", false);
       LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << var.ulVal;
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", false);
 
       // var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
       // hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
@@ -694,73 +700,80 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
       var.vt = VT_UI4;
       var.ulVal = target_bitrate_;
       hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
       LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", false);
   }
 
+  LOG(INFO) << "CODECAPI_AVEncVideoEncodeQP: 0x" << std::hex << AVEncVideoEncodeQP << std::dec;
   if (AVEncVideoEncodeQP) {
     var.vt = VT_UI8;
     var.ullVal = AVEncVideoEncodeQP;
     hr = codec_api_->SetValue(&CODECAPI_AVEncVideoEncodeQP, &var);
     RETURN_ON_HR_FAILURE(hr, "Couldn't set encode QP", false);
   }
-  LOG(INFO) << "CODECAPI_AVEncVideoEncodeQP: 0x" << std::hex << AVEncVideoEncodeQP << std::dec;
 
-  /* var.vt = VT_UI4; */
-  /* var.ulVal = AVEncAdaptiveMode; */
-  /* hr = codec_api_->SetValue(&CODECAPI_AVEncAdaptiveMode, &var); */
-  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set AVEncAdaptiveMode", false); */
-  /* LOG(INFO) << std::hex << "CODECAPI_AVEncAdaptiveMode: 0x" << AVEncAdaptiveMode << std::dec ; */
+  LOG(INFO) << std::hex << "CODECAPI_AVEncAdaptiveMode: 0x" << AVEncAdaptiveMode << std::dec ;
+  if (AVEncAdaptiveMode != eAVEncAdaptiveMode_None) {
+    var.vt = VT_UI4;
+    var.ulVal = AVEncAdaptiveMode;
+    hr = codec_api_->SetValue(&CODECAPI_AVEncAdaptiveMode, &var);
+    LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncAdaptiveMode: 0x" << std::hex << hr << std::dec;
+  }
 
   var.vt = VT_BOOL;
   var.boolVal = AVLowLatencyMode > 0 ? VARIANT_TRUE : VARIANT_FALSE;
   hr = codec_api_->SetValue(&CODECAPI_AVLowLatencyMode, &var);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set LowLatencyMode", false);
   LOG(INFO) << std::hex << "CODECAPI_AVLowLatencyMode: 0x" << AVLowLatencyMode << std::dec ;
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVLowLatencyMode", false);
 
   var.vt = VT_UI4;
   var.ulVal = AVEncCommonQualityVsSpeed;
   hr = codec_api_->SetValue(&CODECAPI_AVEncCommonQualityVsSpeed, &var);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQualityVsSpeed", false);
   LOG(INFO) << "CODECAPI_AVEncCommonQualityVsSpeed: " << AVEncCommonQualityVsSpeed;
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncCommonQualityVsSpeed", false);
 
+  LOG(INFO) << "CODECAPI_AVEncNumWorkerThreads: " << AVEncNumWorkerThreads;
   if (AVEncNumWorkerThreads) {
     var.vt = VT_UI4;
     var.ulVal = AVEncNumWorkerThreads;
     hr = codec_api_->SetValue(&CODECAPI_AVEncNumWorkerThreads, &var);
     RETURN_ON_HR_FAILURE(hr, "Couldn't set CODECAPI_AVEncNumWorkerThreads", false);
   }
-  LOG(INFO) << "CODECAPI_AVEncNumWorkerThreads: " << AVEncNumWorkerThreads;
 
+  var.vt = VT_UI4;
+  var.ulVal = AVEncMPVDefaultBPictureCount;
+  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &var);
+  LOG(INFO) << "CODECAPI_AVEncMPVDefaultBPictureCount: " << AVEncMPVDefaultBPictureCount;
+  LOG_IF(WARNING, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncMPVDefaultBPictureCount: 0x" << std::hex << hr << std::dec;
+
+  LOG(INFO) << "CODECAPI_AVEncH264CABACEnable: 0x" << std::hex << AVEncH264CABACEnable << std::dec;
   if (AVEncH264CABACEnable != 0xDEADBEEF) {
     var.vt = VT_BOOL;
     var.boolVal = AVEncH264CABACEnable > 0 ? VARIANT_TRUE : VARIANT_FALSE;
     hr = codec_api_->SetValue(&CODECAPI_AVEncH264CABACEnable, &var);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set AVEncH264CABACEnable", false);
+    LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncH264CABACEnable: 0x" << std::hex << hr << std::dec;
   }
-  LOG(INFO) << "CODECAPI_AVEncH264CABACEnable: 0x" << std::hex << AVEncH264CABACEnable << std::dec;
 
+  LOG(INFO) << "CODECAPI_AVEncMPVGOPSize: " << AVEncMPVGOPSize;
+  if(AVEncMPVGOPSize != 0) {
+    var.vt = VT_UI4;
+    var.ulVal = AVEncMPVGOPSize;
+    hr = codec_api_->SetValue(&CODECAPI_AVEncMPVGOPSize, &var);
+    LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncMPVGOPSize: 0x" << std::hex << hr << std::dec;
+  }
 
-  var.vt = VT_UI4;
-  var.ulVal = UINT32_MAX;
+  LOG(INFO) << "CODECAPI_AVEncCommonBufferSize: " << AVEncCommonBufferSize;
+  if (AVEncCommonBufferSize != 0) {
+    var.vt = VT_UI4;
+    var.ulVal = AVEncCommonBufferSize;
+    hr = codec_api_->SetValue(&CODECAPI_AVEncCommonBufferSize, &var);
+    LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncCommonBufferSize: 0x" << std::hex << hr << std::dec;
+  }
 
-  hr = codec_api_->SetValue(&CODECAPI_AVEncMPVGOPSize, &var);
-  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncMPVGOPSize: 0x" << std::hex << hr << std::dec;
-  hr = S_OK;
-  LOG(INFO) << "CODECAPI_AVEncMPVGOPSize: " << var.ulVal;
-
-  var.vt = VT_UI4;
-  /* var.ulVal = MAX_INT; */
-  var.ulVal = 32000000;
-
-  LOG(INFO) << "CODECAPI_AVEncCommonBufferSize: " << var.ulVal;
-  hr = codec_api_->SetValue(&CODECAPI_AVEncCommonBufferSize, &var);
-  LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncCommonBufferSize: 0x" << std::hex << hr << std::dec;
-
+  LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP;
   if (AVEncVideoMinQP != 0) {
     var.vt = VT_UI4;
     var.ulVal = AVEncVideoMinQP;
-    LOG(INFO) << "CODECAPI_AVEncVideoMinQP: " << AVEncVideoMinQP;
     hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMinQP, &var);
     LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncVideoMinQP: 0x" << std::hex << hr << std::dec;
   }
@@ -771,8 +784,15 @@ bool MediaFoundationVideoEncodeAccelerator::SetEncoderModes() {
   LOG(INFO) << "CODECAPI_AVEncVideoTemporalLayerCount: " << AVEncVideoTemporalLayerCount;
   LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncVideoTemporalLayerCount: 0x" << std::hex << hr << std::dec;
 
-  return SUCCEEDED(S_OK);
+  LOG(INFO) << "CODECAPI_AVEncVideoMaxNumRefFrame: " << AVEncVideoMaxNumRefFrame;
+  if (AVEncVideoMaxNumRefFrame != 0) {
+    var.vt = VT_UI4;
+    var.ulVal = AVEncVideoMaxNumRefFrame;
+    hr = codec_api_->SetValue(&CODECAPI_AVEncVideoMaxNumRefFrame, &var);
+    LOG_IF(ERROR, hr != S_OK) <<  "Couldn't set CODECAPI_AVEncVideoMaxNumRefFrame: 0x" << std::hex << hr << std::dec;
+  }
 
+  return SUCCEEDED(S_OK);
 }
 
 bool MediaFoundationVideoEncodeAccelerator::IsResolutionSupported(
