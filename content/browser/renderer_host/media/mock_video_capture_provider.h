@@ -19,6 +19,9 @@ class MockVideoCaptureProvider : public VideoCaptureProvider {
     DoGetDeviceInfosAsync(result_callback);
   }
 
+  void OpenPropertyPage(const std::string& device_id, const std::string& type) override {
+  }
+
   MOCK_METHOD0(Uninitialize, void());
   MOCK_METHOD1(DoGetDeviceInfosAsync,
                void(GetDeviceInfosCallback& result_callback));

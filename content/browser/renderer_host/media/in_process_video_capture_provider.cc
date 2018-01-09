@@ -64,6 +64,22 @@ void InProcessVideoCaptureProvider::GetDeviceInfosAsync(
                                 std::move(result_callback)));
 }
 
+void InProcessVideoCaptureProvider::OpenPropertyPage(
+    const std::string& device_id,
+    const std::string& type) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!video_capture_system_) {
+    emit_log_message_cb_.Run(
+        "InProcessVideoCaptureProvider::OpenPropertyPage: No video capture "
+        "system, returning empty results.");
+    return;
+  }
+  emit_log_message_cb_.Run(
+      "InProcessVideoCaptureProvider::OpenPropertyPage");
+  video_capture_system_->OpenPropertyPage(device_id, type);
+}
+
+
 std::unique_ptr<VideoCaptureDeviceLauncher>
 InProcessVideoCaptureProvider::CreateDeviceLauncher() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);

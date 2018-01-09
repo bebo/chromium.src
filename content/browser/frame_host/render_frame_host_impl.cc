@@ -1302,9 +1302,9 @@ void RenderFrameHostImpl::OnDidAddMessageToConsole(
       HasWebUIScheme(delegate_->GetMainFrameLastCommittedURL());
   const int32_t resolved_level = is_web_ui ? level : ::logging::LOG_INFO;
 
-  if (!is_web_ui && resolved_level < ::logging::LOG_ERROR) {
-    return;
-  }
+  /* if (!is_web_ui && resolved_level < ::logging::LOG_ERROR) { */
+  /*   return; */
+  /* } */
   // LogMessages can be persisted so this shouldn't be logged in incognito mode.
   // This rule is not applied to WebUI pages, because source code of WebUI is a
   // part of Chrome source code, and we want to treat messages from WebUI the

@@ -26,6 +26,8 @@ source_set("base") {
   if (is_ios || is_mac) {
     visibility += [ "//media/base/mac" ]
   }
+  visibility += [ "//media/direct_show" ]
+  visibility += [ "//media/capture:capture_base" ]
 
   sources = [
     "android_overlay_config.cc",

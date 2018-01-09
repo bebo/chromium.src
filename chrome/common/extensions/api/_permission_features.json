@@ -51,6 +51,10 @@
       "0D209B5E4401BB8E7873B5AB5B1346A1CB067015"  // Autotest: crbug.com/654525
     ]
   },
+  "beboDevice": {
+    "channel": "stable",
+    "extension_types": ["extension"]
+  },
   "background": {
     "channel": "stable",
     "extension_types": [

@@ -36,12 +36,16 @@
 #include "media/base/channel_layout.h"
 #include "media/base/limits.h"
 #include "media/base/media_switches.h"
+#include "media/direct_show/direct_show_device_factory.h"
+#include "media/audio/win/direct_show_input_win.h"
 
 // The following are defined in various DDK headers, and we (re)define them here
 // to avoid adding the DDK as a chrome dependency.
 #define DRV_QUERYDEVICEINTERFACE 0x80c
 #define DRVM_MAPPER_PREFERRED_GET 0x2015
 #define DRV_QUERYDEVICEINTERFACESIZE 0x80d
+
+#if 0
 DEFINE_GUID(AM_KSCATEGORY_AUDIO,
             0x6994ad04,
             0x93ef,
@@ -54,6 +58,7 @@ DEFINE_GUID(AM_KSCATEGORY_AUDIO,
             0x22,
             0x31,
             0x96);
+#endif
 
 namespace media {
 
@@ -135,6 +140,7 @@ void AudioManagerWin::GetAudioDeviceNamesImpl(bool input,
   DCHECK(device_names->empty());
   // Enumerate all active audio-endpoint capture devices.
   if (input)  {
+
     GetInputDeviceNamesWin(device_names);
     AudioDeviceNames output_device_names;
     GetOutputDeviceNamesWin(&output_device_names);
@@ -169,20 +175,31 @@ void AudioManagerWin::GetAudioOutputDeviceNames(
 AudioParameters AudioManagerWin::GetInputStreamParameters(
     const std::string& device_id) {
   AudioParameters parameters;
-  HRESULT hr =
+
+  if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
+    //FIXME: this should go to the factory and get audio parameters
+    //
+    parameters = AudioParameters(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                               CHANNEL_LAYOUT_STEREO,
+                               48000,
+                               16,
+                               kFallbackBufferSize);
+  } else {
+    HRESULT hr =
       CoreAudioUtil::GetPreferredAudioParameters(device_id, false, &parameters);
 
-  if (FAILED(hr) || !parameters.IsValid()) {
-    LOG(WARNING) << "Unable to get preferred audio params for " << device_id
-                 << " 0x" << std::hex << hr;
-    // TODO(tommi): We appear to have callers to GetInputStreamParameters that
-    // rely on getting valid audio parameters returned for an invalid or
-    // unavailable device. We should track down those code paths (it is likely
-    // that they actually don't need a real device but depend on the audio
-    // code path somehow for a configuration - e.g. tab capture).
-    parameters =
+    if (FAILED(hr) || !parameters.IsValid()) {
+      LOG(WARNING) << "Unable to get preferred audio params for " << device_id
+        << " 0x" << std::hex << hr;
+      // TODO(tommi): We appear to have callers to GetInputStreamParameters that
+      // rely on getting valid audio parameters returned for an invalid or
+      // unavailable device. We should track down those code paths (it is likely
+      // that they actually don't need a real device but depend on the audio
+      // code path somehow for a configuration - e.g. tab capture).
+      parameters =
         AudioParameters(AudioParameters::AUDIO_PCM_LINEAR,
-                        CHANNEL_LAYOUT_STEREO, 48000, 16, kFallbackBufferSize);
+            CHANNEL_LAYOUT_STEREO, 48000, 16, kFallbackBufferSize);
+    }
   }
 
   int user_buffer_size = GetUserBufferSize();
@@ -259,6 +276,9 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
     const LogCallback& log_callback) {
   // Used for both AUDIO_PCM_LOW_LATENCY and AUDIO_PCM_LINEAR.
   DVLOG(1) << "MakeLowLatencyInputStream: " << device_id;
+  if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
+    return new DirectSoundAudioInputStream(this, params, device_id);
+  }
   return new WASAPIAudioInputStream(this, params, device_id);
 }
 

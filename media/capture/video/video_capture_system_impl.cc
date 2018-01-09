@@ -77,9 +77,11 @@ void VideoCaptureSystemImpl::GetDeviceInfosAsync(
   new_devices_info_cache.reserve(descriptors.size());
   for (const auto& descriptor : descriptors) {
     if (auto* cached_info = LookupDeviceInfoFromId(descriptor.device_id)) {
+      // LOG(INFO) << "bebo " << __func__ << " found in cache: " << descriptor.display_name << " - " << descriptor.device_id;
       new_devices_info_cache.push_back(*cached_info);
     } else {
       // Query for supported formats in order to create the entry.
+      // LOG(INFO) << "bebo " << __func__ << " query factory: " << descriptor.display_name << " - " << descriptor.device_id;
       VideoCaptureDeviceInfo device_info(descriptor);
       factory_->GetSupportedFormats(descriptor, &device_info.supported_formats);
       ConsolidateCaptureFormats(&device_info.supported_formats);
@@ -89,6 +91,11 @@ void VideoCaptureSystemImpl::GetDeviceInfosAsync(
 
   devices_info_cache_.swap(new_devices_info_cache);
   base::ResetAndReturn(&result_callback).Run(devices_info_cache_);
+}
+
+void VideoCaptureSystemImpl::OpenPropertyPage(const std::string& device_id,
+                      const std::string& type) {
+  factory_->OpenPropertyPage(device_id, type);
 }
 
 // Creates a VideoCaptureDevice object. Returns NULL if something goes wrong.

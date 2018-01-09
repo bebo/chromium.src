@@ -191,6 +191,9 @@ class CONTENT_EXPORT VideoCaptureManager
   base::Optional<CameraCalibration> GetCameraCalibration(
       const std::string& device_id);
 
+  void OpenPropertyPage(const std::string& device_id, 
+                        const std::string& type);
+
  private:
   class CaptureDeviceStartRequest;
 
