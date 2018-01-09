@@ -88,6 +88,7 @@ class MEDIA_EXPORT DirectShow:
   enum InternalState {
     kIdle,       // The device driver is opened but camera is not in use.
     kCapturing,  // Video is being captured.
+    kDestroyed,
     kError       // Error accessing HW functions.
                  // User needs to recover by destroying the object.
   };

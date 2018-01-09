@@ -51,7 +51,7 @@ DirectShowDeviceFactory::~DirectShowDeviceFactory() {
   LOG(INFO) << __func__ ;
 }
 
-DirectShowDeviceFactory * DirectShowDeviceFactory::GetInstance() {
+DirectShowDeviceFactory* DirectShowDeviceFactory::GetInstance() {
   return base::Singleton<DirectShowDeviceFactory, 
          base::StaticMemorySingletonTraits<DirectShowDeviceFactory>>::get();
 }
@@ -74,15 +74,24 @@ bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
 }
 
 DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
+  DirectShow* device;
   auto search = devices_.find(device_id);
-  DirectShow* device = NULL;
   if (search != devices_.end()) {
+    LOG(INFO) << __func__ << " found in devices map : " << device_id;
     device = search->second;
   } else {
-    device  = new DirectShow(device_id);
+    LOG(INFO) << __func__ << " NOT found in devices map : " << device_id;
+    device = new DirectShow(device_id);
     devices_.emplace(std::make_pair(device_id, device));
   }
   return device;
+}
+
+void DirectShowDeviceFactory::RemoveController(std::string device_id) {
+  auto search = devices_.find(device_id);
+  if (search != devices_.end()) {
+    devices_.erase(search);
+  }
 }
 
 

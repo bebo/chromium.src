@@ -45,7 +45,8 @@ namespace media {
       static DirectShowDeviceFactory* GetInstance();
       void GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors);
       bool IsDirectShowDevice(std::string device_id);
-      DirectShow *GetController(std::string device_id);
+      DirectShow* GetController(std::string device_id);
+      void RemoveController(std::string device_id);
 
       void OpenPropertyPage(const std::string& device_id,
                             const std::string& type);

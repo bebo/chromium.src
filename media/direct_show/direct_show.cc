@@ -12,6 +12,7 @@
 #include <wmsdkidl.h>
 
 #include "media/direct_show/video_sink_filter.h"
+#include "media/direct_show/direct_show_device_factory.h"
 
 #include "base/logging.h"
 #include "base/macros.h"
@@ -239,6 +240,7 @@ DirectShow::DirectShow(std::string device_id):
 DirectShow::~DirectShow() {
   LOG(INFO) << __func__;
   DestroyGraph();
+  DirectShowDeviceFactory::GetInstance()->RemoveController(device_id_);
 }
 
 // static
@@ -656,6 +658,8 @@ void DirectShow::DestroyGraph() {
   if (capture_graph_builder_.Get()) {
     capture_graph_builder_.Reset();
   }
+
+  state_ = kDestroyed;
 }
 
 void DirectShow::StartMedia() {
@@ -863,7 +867,7 @@ void DirectShow::SetRequestedVideoFormat(VideoCaptureFormat params) {
 }
 
 void DirectShow::SetRequestedAudioFormat(AudioParameters params) {
-  LOG(INFO) << __func__;
+  LOG(INFO) << __func__ << " - params: " << params.AsHumanReadableString();
 
   WAVEFORMATEX* format = &requested_audio_format_.Format;
   format->wFormatTag = WAVE_FORMAT_PCM;
@@ -1278,6 +1282,8 @@ void DirectShow::Run() {
     DLOG_IF_FAILED_WITH_HRESULT("Failed to connect audio capture pin to audio sink pin", hr);
     PrintPinInfo(output_audio_capture_pin_.Get());
   }
+
+  state_ = kIdle;
 }
 
 void DirectShow::AudioFrameReceived(const uint8_t* buffer,
