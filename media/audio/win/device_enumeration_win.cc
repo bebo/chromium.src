@@ -14,6 +14,7 @@
 #include "base/win/scoped_comptr.h"
 #include "base/win/scoped_propvariant.h"
 #include "media/audio/win/audio_manager_win.h"
+#include "media/direct_show/direct_show_device_factory.h"
 
 using base::win::ScopedComPtr;
 using base::win::ScopedCoMem;
@@ -137,8 +138,30 @@ static bool GetDeviceNamesWinXPImpl(AudioDeviceNames* device_names) {
   return true;
 }
 
+static bool GetDirectShowDeviceNamesWinImpl(EDataFlow data_flow,
+                                  AudioDeviceNames* device_names) {
+  if (data_flow != eCapture) {
+    return true;
+  }
+
+  DirectShowDeviceDescriptors ds_descriptors;
+  DirectShowDeviceFactory::GetInstance()->GetDeviceDescriptors(
+    DirectShowType::Audio,
+    &ds_descriptors);
+
+  for(DirectShowDeviceDescriptor& ds : ds_descriptors) {
+    AudioDeviceName device;
+    device.unique_id = ds.device_id;
+    device.device_name = ds.display_name;
+    device_names->push_back(device);
+  }
+  return true;
+}
+
 bool GetInputDeviceNamesWin(AudioDeviceNames* device_names) {
-  return GetDeviceNamesWinImpl(eCapture, device_names);
+  bool rc = GetDeviceNamesWinImpl(eCapture, device_names);
+  rc |= GetDirectShowDeviceNamesWinImpl(eCapture, device_names);
+  return rc;
 }
 
 bool GetOutputDeviceNamesWin(AudioDeviceNames* device_names) {

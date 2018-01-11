@@ -506,6 +506,7 @@ void WASAPIAudioInputStream::Run() {
             if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
               fifo_->PushSilence(num_frames_to_read);
             } else {
+              // LOG(INFO) << "num_frames_to_read: " << num_frames_to_read;
               fifo_->Push(data_ptr, num_frames_to_read,
                           format_.Format.wBitsPerSample / 8);
             }

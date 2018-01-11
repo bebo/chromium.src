@@ -274,6 +274,7 @@ void VideoCaptureManager::ProcessDeviceStartRequestQueue() {
   VideoCaptureController* const controller = request->controller();
 
   EmitLogMessage("VideoCaptureManager::ProcessDeviceStartRequestQueue", 3);
+
   // The unit test VideoCaptureManagerTest.OpenNotExisting requires us to fail
   // synchronously if the stream_type is MEDIA_DEVICE_VIDEO_CAPTURE and no
   // DeviceInfo matching the requested id is present (which is the case when
@@ -834,6 +835,12 @@ base::Optional<CameraCalibration> VideoCaptureManager::GetCameraCalibration(
     return base::Optional<CameraCalibration>();
   return info->descriptor.camera_calibration;
 }
+
+void VideoCaptureManager::OpenPropertyPage(const std::string& device_id, 
+    const std::string& type) {
+  video_capture_provider_->OpenPropertyPage(device_id, type);
+}
+
 
 #if defined(OS_ANDROID)
 void VideoCaptureManager::OnApplicationStateChange(

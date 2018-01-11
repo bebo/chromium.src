@@ -108,6 +108,10 @@
     "dependencies": ["permission:autotestPrivate"],
     "contexts": ["blessed_extension"]
   },
+  "beboDevice": {
+    "dependencies": ["permission:beboDevice"],
+    "contexts": ["blessed_extension"]
+  },
   "bookmarkManagerPrivate": [{
     "dependencies": ["permission:bookmarkManagerPrivate"],
     "contexts": ["blessed_extension"]

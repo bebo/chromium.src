@@ -880,6 +880,30 @@ void MediaStreamManager::TranslateDeviceIdToSourceId(
   }
 }
 
+void MediaStreamManager::TranslateSourceIdToDeviceId(
+    const std::string& label,
+    const std::string& source_id,
+    std::string* device_id) {
+  // FIXME: probably needs to be on browserthread::IO
+  DeviceRequest* request = FindRequest(label);
+
+  if (request->audio_type() == MEDIA_DEVICE_AUDIO_CAPTURE) {
+    TranslateSourceIdToDeviceId(
+        request->audio_type(),
+        request->salt,
+        request->security_origin,
+        source_id,
+        device_id);
+  } else if (request->video_type() == MEDIA_DEVICE_VIDEO_CAPTURE) {
+    TranslateSourceIdToDeviceId(
+        request->video_type(),
+        request->salt,
+        request->security_origin,
+        source_id,
+        device_id);
+  }
+}
+
 void MediaStreamManager::StartEnumeration(DeviceRequest* request,
                                           const std::string& label) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
@@ -917,6 +941,7 @@ std::string MediaStreamManager::AddRequest(DeviceRequest* request) {
     unique_label = RandomLabel();
   } while (FindRequest(unique_label) != NULL);
 
+  LOG(INFO) << __func__ << " label: " << unique_label;
   requests_.push_back(std::make_pair(unique_label, request));
 
   return unique_label;
@@ -924,6 +949,7 @@ std::string MediaStreamManager::AddRequest(DeviceRequest* request) {
 
 MediaStreamManager::DeviceRequest*
 MediaStreamManager::FindRequest(const std::string& label) const {
+  LOG(INFO) << __func__ << " label: " << label;
   for (const LabeledDeviceRequest& labeled_request : requests_) {
     if (labeled_request.first == label)
       return labeled_request.second;
@@ -933,6 +959,7 @@ MediaStreamManager::FindRequest(const std::string& label) const {
 
 void MediaStreamManager::DeleteRequest(const std::string& label) {
   DVLOG(1) << "DeleteRequest({label= " << label << "})";
+  LOG(INFO) << __func__ << " label: " << label;
   for (DeviceRequests::iterator request_it = requests_.begin();
        request_it != requests_.end(); ++request_it) {
     if (request_it->first == label) {
