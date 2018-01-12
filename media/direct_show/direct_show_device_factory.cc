@@ -43,7 +43,8 @@ static std::string GetDeviceInstancePath(const std::string& device_id) {
 }
 } // namespace
 
-DirectShowDeviceFactory::DirectShowDeviceFactory() {
+DirectShowDeviceFactory::DirectShowDeviceFactory():
+  skip_device_enumeration_logging_(false) {
   LOG(INFO) << __func__ ;
 }
 
@@ -56,11 +57,12 @@ DirectShowDeviceFactory* DirectShowDeviceFactory::GetInstance() {
          base::StaticMemorySingletonTraits<DirectShowDeviceFactory>>::get();
 }
 
-bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
+bool DirectShowDeviceFactory::IsDirectShowDevice(const std::string& device_id) {
   if (device_descriptors_.empty()) {
     DirectShowDeviceDescriptors device_descriptors;
     GetDeviceDescriptors(DirectShowType::Video, CLSID_VideoInputDeviceCategory, &device_descriptors, false);
     GetDeviceDescriptors(DirectShowType::Audio, CLSID_AudioInputDeviceCategory, &device_descriptors, false);
+    skip_device_enumeration_logging_ = true;
     device_descriptors_ = device_descriptors;
   }
 
@@ -73,21 +75,26 @@ bool DirectShowDeviceFactory::IsDirectShowDevice(std::string device_id) {
   return false;
 }
 
-DirectShow* DirectShowDeviceFactory::GetController(std::string device_id) {
+DirectShow* DirectShowDeviceFactory::GetController(
+    const std::string& device_id) {
+  DirectShowDeviceDescriptor descriptor;
+  GetCachedDeviceDescriptor(device_id, &descriptor);
+
   DirectShow* device;
   auto search = devices_.find(device_id);
   if (search != devices_.end()) {
-    LOG(INFO) << __func__ << " found in devices map : " << device_id;
+    LOG(INFO) << __func__ << " name: " << descriptor.display_name << " found: true";
     device = search->second;
   } else {
-    LOG(INFO) << __func__ << " NOT found in devices map : " << device_id;
-    device = new DirectShow(device_id);
+    LOG(INFO) << __func__ << " name: " << descriptor.display_name << " found: false";
+    device = new DirectShow(descriptor.device_id, descriptor.display_name);
     devices_.emplace(std::make_pair(device_id, device));
   }
   return device;
 }
 
-void DirectShowDeviceFactory::RemoveController(std::string device_id) {
+void DirectShowDeviceFactory::RemoveController(
+    const std::string& device_id) {
   auto search = devices_.find(device_id);
   if (search != devices_.end()) {
     devices_.erase(search);
@@ -95,7 +102,8 @@ void DirectShowDeviceFactory::RemoveController(std::string device_id) {
 }
 
 
-void DirectShowDeviceFactory::OpenPropertyPage(const std::string& device_id,
+void DirectShowDeviceFactory::OpenPropertyPage(
+    const std::string& device_id,
     const std::string& type) {
   LOG(INFO) << __func__ << " device_id: " << device_id << " - " << type;
   if (!IsDirectShowDevice(device_id)) {
@@ -109,12 +117,25 @@ void DirectShowDeviceFactory::OpenPropertyPage(const std::string& device_id,
   controller->OpenPropertyPage(type);
 }
 
+bool DirectShowDeviceFactory::GetCachedDeviceDescriptor(
+    const std::string& device_id,
+    DirectShowDeviceDescriptor* device) {
+  for (DirectShowDeviceDescriptor& ds : device_descriptors_) {
+    if (ds.device_id == device_id) {
+      *device = ds;
+      return true;
+    }
+  }
+  return false;
+}
+
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type,
     DirectShowDeviceDescriptors* device_descriptors) {
   if (type == DirectShowType::Audio) {
     GetDeviceDescriptors(type, CLSID_AudioInputDeviceCategory, device_descriptors, true);
   }
   GetDeviceDescriptors(type, CLSID_VideoInputDeviceCategory, device_descriptors, true);
+  skip_device_enumeration_logging_ = true;
 }
 
 void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID category,
@@ -153,9 +174,20 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
       if (FAILED(hr) || name.type() != VT_BSTR)
         continue;
 
-      const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())) + " (BeboCaptureCard)");
-      if (!DirectShow::IsDeviceWhiteListed(device_name))
+      const std::string actual_device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
+      const std::string device_name(actual_device_name + " (BeboCaptureCard)");
+
+      bool is_device_whitelisted = DirectShow::IsDeviceWhiteListed(device_name);
+
+      if (!skip_device_enumeration_logging_) {
+        LOG(INFO) << "Enumerated whitelist "
+          << ( is_device_whitelisted ? "success" : "fail" )
+          << ", name: " << actual_device_name;
+      }
+
+      if (!is_device_whitelisted) {
         continue;
+      }
 
       name.Reset();
       hr = prop_bag->Read(L"DevicePath", name.Receive(), 0);
@@ -167,31 +199,35 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
         id = base::SysWideToUTF8(V_BSTR(name.ptr()));
       }
 
-      bool skip_device = false;
-      for (DirectShowDeviceDescriptor& ds : *device_descriptors) {
-        const std::string ds_model_id = GetDeviceInstancePath(ds.device_id);
-        const std::string model_id = GetDeviceInstancePath(id);
-        if (!ds_model_id.empty() && 
-            !model_id.empty() && 
-            ds.device_id.compare(id) != 0 && // only skip if it's same parent path but different device id
-            skip_same_device &&
-            ds_model_id.compare(model_id) == 0) {
-          skip_device = true;
-          break;
+      if (skip_same_device) {
+        bool skip_device = false;
+
+        for (DirectShowDeviceDescriptor& ds : *device_descriptors) {
+          const std::string ds_model_id = GetDeviceInstancePath(ds.device_id);
+          const std::string model_id = GetDeviceInstancePath(id);
+          // only skip if it's same parent path but different device id, 
+          // we need it avermedia's video to appear in audio section
+          if (!ds_model_id.empty() && !model_id.empty() && 
+              ds.device_id.compare(id) != 0 && ds_model_id.compare(model_id) == 0) {
+            skip_device = true;
+            break;
+          }
+        }
+
+        if (skip_device) {
+          continue;
         }
       }
 
-      if (skip_device) {
-        continue;
-      }
-
       const std::string model_id = "";
-
       device_descriptors->emplace_back(device_name, id, model_id);
     }
   }
 
 }
+
+DirectShowDeviceDescriptor::DirectShowDeviceDescriptor()
+  : display_name(""), device_id(""), model_id("") {}
 
 DirectShowDeviceDescriptor::DirectShowDeviceDescriptor(
       const std::string& display_name,
@@ -200,6 +236,13 @@ DirectShowDeviceDescriptor::DirectShowDeviceDescriptor(
   : display_name(display_name),
     device_id(device_id),
     model_id(model_id) {}
+
+DirectShowDeviceDescriptor::DirectShowDeviceDescriptor(
+      const DirectShowDeviceDescriptor& descriptor)
+  : display_name(descriptor.display_name),
+    device_id(descriptor.device_id),
+    model_id(descriptor.model_id) {}
+
 
 DirectShowDeviceDescriptor::~DirectShowDeviceDescriptor() {};
 

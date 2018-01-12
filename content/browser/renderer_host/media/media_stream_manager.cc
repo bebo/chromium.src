@@ -941,7 +941,7 @@ std::string MediaStreamManager::AddRequest(DeviceRequest* request) {
     unique_label = RandomLabel();
   } while (FindRequest(unique_label) != NULL);
 
-  LOG(INFO) << __func__ << " label: " << unique_label;
+  // LOG(INFO) << __func__ << " label: " << unique_label;
   requests_.push_back(std::make_pair(unique_label, request));
 
   return unique_label;
@@ -949,7 +949,7 @@ std::string MediaStreamManager::AddRequest(DeviceRequest* request) {
 
 MediaStreamManager::DeviceRequest*
 MediaStreamManager::FindRequest(const std::string& label) const {
-  LOG(INFO) << __func__ << " label: " << label;
+  DVLOG(1) << __func__ << " label: " << label;
   for (const LabeledDeviceRequest& labeled_request : requests_) {
     if (labeled_request.first == label)
       return labeled_request.second;
@@ -959,7 +959,7 @@ MediaStreamManager::FindRequest(const std::string& label) const {
 
 void MediaStreamManager::DeleteRequest(const std::string& label) {
   DVLOG(1) << "DeleteRequest({label= " << label << "})";
-  LOG(INFO) << __func__ << " label: " << label;
+  //LOG(INFO) << __func__ << " label: " << label;
   for (DeviceRequests::iterator request_it = requests_.begin();
        request_it != requests_.end(); ++request_it) {
     if (request_it->first == label) {

@@ -32,37 +32,6 @@
 
 namespace media {
 
-
-#if 0 // used?
-namespace {
-
-bool IsSupportedFormatForConversion(const WAVEFORMATEX& format) {
-  if (format.nSamplesPerSec < limits::kMinSampleRate ||
-      format.nSamplesPerSec > limits::kMaxSampleRate) {
-    return false;
-  }
-
-  switch (format.wBitsPerSample) {
-    case 8:
-    case 16:
-    case 32:
-      break;
-    default:
-      return false;
-  }
-
-  if (GuessChannelLayout(format.nChannels) == CHANNEL_LAYOUT_UNSUPPORTED) {
-    LOG(ERROR) << "Hardware configuration not supported for audio conversion";
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace
-#endif
-
-
 DirectSoundAudioInputStream::DirectSoundAudioInputStream(AudioManagerWin* manager,
                                                const AudioParameters& params,
                                                const std::string& device_id)
@@ -91,6 +60,7 @@ DirectSoundAudioInputStream::DirectSoundAudioInputStream(AudioManagerWin* manage
 
   // TODO: capture_buffer_size be more dynamic and do this in formatChanged
   size_t capture_buffer_size = 24 * 24 /*buffer duaration ms*/ * 48 /*sample rate*/ * frame_size_;
+
   int buffers_required = capture_buffer_size / packet_size_bytes_;
   if (converter_ && imperfect_buffer_size_conversion_)
     ++buffers_required;

@@ -63,13 +63,9 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(AudioManagerWin* manager,
   is_loopback_device_ = device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0;
   friendly_name_ = CoreAudioUtil::GetFriendlyName(device_id_);
 
-
   // Load the Avrt DLL if not already loaded. Required to support MMCSS.
   bool avrt_init = avrt::Initialize();
   DCHECK(avrt_init) << "Failed to load the Avrt.dll";
-
-  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::WASAPIAudioInputStream "
-    << params.AsHumanReadableString();
 
   // Set up the desired capture format specified by the client.
   WAVEFORMATEX* format = &format_.Format;
@@ -116,8 +112,6 @@ bool WASAPIAudioInputStream::Open() {
   // Verify that we are not already opened.
   if (opened_)
     return false;
-
-  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::Open() - stream is not opened yet";
 
   // Obtain a reference to the IMMDevice interface of the capturing
   // device with the specified unique identifier or role which was
@@ -317,8 +311,8 @@ void WASAPIAudioInputStream::SetVolume(double volume) {
 }
 
 double WASAPIAudioInputStream::GetVolume() {
-  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::GetVolume()";
   DCHECK(opened_) << "Open() has not been called successfully";
+  // LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::GetVolume()";
   if (!opened_)
     return 0.0;
 
@@ -777,11 +771,11 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported() {
 
 
     /* DVLOG(1) << "Will convert audio from: \nbits: " << format_.wBitsPerSample */
-    LOG(INFO) << "Will convert audio from: \nbits: " << format_.Format.wBitsPerSample
-             << "\nsample rate: " << format_.Format.nSamplesPerSec
-             << "\nchannels: " << format_.Format.nChannels
-             << "\nblock align: " << format_.Format.nBlockAlign
-             << "\navg bytes per sec: " << format_.Format.nAvgBytesPerSec;
+    LOG(INFO) << "Will convert audio from: bits: " << format_.Format.wBitsPerSample
+             << ", sample rate: " << format_.Format.nSamplesPerSec
+             << ", channels: " << format_.Format.nChannels
+             << ", block align: " << format_.Format.nBlockAlign
+             << ", avg bytes per sec: " << format_.Format.nAvgBytesPerSec;
 
     // Update our packet size assumptions based on the new format.
     const auto new_bytes_per_buffer =

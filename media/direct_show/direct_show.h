@@ -24,12 +24,12 @@
 
 #include "media/base/media_export.h"
 #include "media/base/audio_parameters.h"
-#include "media/direct_show/video_sink_filter.h"
-#include "media/direct_show/video_sink_input_pin.h"
+#include "media/direct_show/capability_list_win.h"
 #include "media/direct_show/audio_sink_filter.h"
 #include "media/direct_show/audio_sink_input_pin.h"
 #include "media/direct_show/video_capture_types.h"
-#include "media/direct_show/capability_list_win.h"
+#include "media/direct_show/video_sink_filter.h"
+#include "media/direct_show/video_sink_input_pin.h"
 
 using media::directshow::DirectShowVideoCaptureFormat;
 
@@ -94,7 +94,7 @@ class MEDIA_EXPORT DirectShow:
   };
 
   friend class DirectShowDeviceFactory;
-  DirectShow(std::string device_id);
+  DirectShow(const std::string device_id, const std::string friendly_name);
 
   static VideoPixelFormat TranslateMediaSubtypeToPixelFormat(const GUID& sub_type);
   static void GetVideoPinCapabilityList(
@@ -126,6 +126,7 @@ class MEDIA_EXPORT DirectShow:
   void DestroyGraph();
   void StartMedia();
   void StopMedia();
+  void ReconnectGraphAndMedia();
   void ShouldGraphBeRunning();
   void ShouldGraphBeStopping();
 
@@ -154,6 +155,9 @@ class MEDIA_EXPORT DirectShow:
                            const std::string& type);
   void DoOpenPropertyPage(IBaseFilter* filter,
                           const std::string& type);
+
+  // convenient for logging device name and hr
+  void LogFailedHrWithDeviceName(const std::string& message, HRESULT hr);
 
   // Capturing is driven by this thread (which has no message loop).
   // All OnData() callbacks will be called from this thread.

@@ -76,16 +76,19 @@ VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
     : device_descriptor_(device_descriptor),
       state_(kIdle),
       direct_show_(NULL) {
+  // LOG(INFO) << device_descriptor_.display_name << " " << __func__;
   // TODO(mcasas): Check that CoInitializeEx() has been called with the
   // appropriate Apartment model, i.e., Single Threaded.
 }
 
 VideoCaptureDeviceDirectShowAV::~VideoCaptureDeviceDirectShowAV() {
   DCHECK(thread_checker_.CalledOnValidThread());
+  // LOG(INFO) << device_descriptor_.display_name << " " << __func__;
 }
 
 bool VideoCaptureDeviceDirectShowAV::Init() {
   DCHECK(thread_checker_.CalledOnValidThread());
+  // LOG(INFO) << device_descriptor_.display_name << " " << __func__;
 
   if (direct_show_ == NULL) {
     direct_show_ = DirectShowDeviceFactory::
@@ -99,6 +102,7 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
     const VideoCaptureParams& params,
     std::unique_ptr<VideoCaptureDevice::Client> client) {
   DCHECK(thread_checker_.CalledOnValidThread());
+  // LOG(INFO) << device_descriptor_.display_name << " " << __func__;
   if (state_ != kIdle)
     return;
 
@@ -113,6 +117,7 @@ void VideoCaptureDeviceDirectShowAV::AllocateAndStart(
 
 void VideoCaptureDeviceDirectShowAV::StopAndDeAllocate() {
   DCHECK(thread_checker_.CalledOnValidThread());
+  // LOG(INFO) << device_descriptor_.display_name << " " << __func__;
   if (state_ != kCapturing)
     return;
 

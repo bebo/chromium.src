@@ -21,13 +21,15 @@ namespace media {
     Video 
   };
 
-
   class MEDIA_EXPORT DirectShowDeviceDescriptor {
     public:
+      DirectShowDeviceDescriptor();
       DirectShowDeviceDescriptor(
         const std::string& display_name,
         const std::string& device_id,
         const std::string& model_id);
+      DirectShowDeviceDescriptor(
+          const DirectShowDeviceDescriptor& descriptor);
       ~DirectShowDeviceDescriptor();
 
       std::string display_name;  // Name that is intended for display in the UI
@@ -43,11 +45,12 @@ namespace media {
   class MEDIA_EXPORT DirectShowDeviceFactory {
     public:
       static DirectShowDeviceFactory* GetInstance();
-      void GetDeviceDescriptors(DirectShowType type, DirectShowDeviceDescriptors* device_descriptors);
-      bool IsDirectShowDevice(std::string device_id);
-      DirectShow* GetController(std::string device_id);
-      void RemoveController(std::string device_id);
 
+      void GetDeviceDescriptors(DirectShowType type,
+          DirectShowDeviceDescriptors* device_descriptors);
+      bool IsDirectShowDevice(const std::string& device_id);
+      DirectShow* GetController(const std::string& device_id);
+      void RemoveController(const std::string& device_id);
       void OpenPropertyPage(const std::string& device_id,
                             const std::string& type);
     private:
@@ -55,14 +58,19 @@ namespace media {
       virtual ~DirectShowDeviceFactory();
       friend struct base::StaticMemorySingletonTraits<DirectShowDeviceFactory>;
 
+      bool GetCachedDeviceDescriptor(
+          const std::string& device_id,
+          DirectShowDeviceDescriptor* device);
+
       void GetDeviceDescriptors(DirectShowType type, 
           GUID category, 
           DirectShowDeviceDescriptors* device_descriptors,
           bool skip_same_device);
 
-
       DirectShowDeviceDescriptors device_descriptors_;
       std::map<std::string, DirectShow*> devices_;
+
+      bool skip_device_enumeration_logging_;
 
       DISALLOW_COPY_AND_ASSIGN(DirectShowDeviceFactory);
   };

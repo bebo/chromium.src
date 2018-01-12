@@ -499,8 +499,6 @@ void AudioInputController::DoCloseForReconnect() {
 
   check_muted_state_timer_.AbandonAndStop();
 
-  std::string log_string;
-
   // Allow calling unconditionally and bail if we don't have a stream to close.
   if (audio_callback_) {
     stream_->Stop();
@@ -715,8 +713,13 @@ void AudioInputController::DoDisableDebugRecording() {
 void AudioInputController::OnDeviceChange() {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
-  DoCreate(audio_manager_, params_, device_id_, agc_enabled_, true);
-  DoRecord();
+  task_runner_->PostTask(FROM_HERE, base::BindOnce(&AudioInputController::DoCreate,
+        base::Unretained(this),
+        base::Unretained(audio_manager_),
+        params_, device_id_, agc_enabled_, true));
+
+  task_runner_->PostTask(FROM_HERE, base::BindOnce(&AudioInputController::DoRecord,
+        base::Unretained(this)));
 }
 
 
