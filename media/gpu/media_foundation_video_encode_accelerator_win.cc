@@ -533,30 +533,29 @@ bool MediaFoundationVideoEncodeAccelerator::InitializeInputOutputSamples() {
   RETURN_ON_HR_FAILURE(hr, "Couldn't set interlace mode", false);
 
   /* DWORD AVEncH264VProfile = eAVEncH264VProfile_UCConstrainedHigh; */
-  DWORD AVEncH264VProfile = eAVEncH264VProfile_High;; 
+  DWORD AVEncH264VProfile = eAVEncH264VProfile_High;
+  DWORD AVCodecLevel = 0;
 
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   if (beboKey.Valid()) {
     if (beboKey.HasValue(L"AVEncH264VProfile")) {
        beboKey.ReadValueDW(L"AVEncH264VProfile", &AVEncH264VProfile);
     }
+    if (beboKey.HasValue(L"AV_MF_MT_MPEG2_LEVEL")) {
+       beboKey.ReadValueDW(L"AV_MF_MT_MPEG2_LEVEL", &AVCodecLevel);
+    }
   }
   hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_PROFILE,
                                          AVEncH264VProfile);
+  LOG(INFO) << "AVEncH264VProfile: " << AVEncH264VProfile;
   RETURN_ON_HR_FAILURE(hr, "Couldn't set codec profile", false);
 
-  LOG(INFO) << "AVEncH264VProfile: " << AVEncH264VProfile;
-
-  /* hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_PROFILE, */
-  /*                                        AVEncH264VProfile); */
-  /* RETURN_ON_HR_FAILURE(hr, "Couldn't set codec profile", false); */
-
-  /* LOG(INFO) << "AVEncH264VProfile: " << AVEncH264VProfile; */
-
-  hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_LEVEL,
-      (UINT32)-1);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set codec level", false);
-  LOG(INFO) << "codec level: " << (UINT32)-1;
+  if (AVCodecLevel != 0) {
+    hr = imf_output_media_type_->SetUINT32(MF_MT_MPEG2_LEVEL,
+        (UINT32)AVCodecLevel);
+    LOG(INFO) << "codec level: " << (UINT32)AVCodecLevel;
+    RETURN_ON_HR_FAILURE(hr, "Couldn't set codec level", false);
+  }
 
 
   // Initialize input parameters.
