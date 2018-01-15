@@ -54,7 +54,7 @@ static const enum WhitelistedFilterNames {
 static const char* const kWhitelistedFilterNames[] = {
   "Game Capture", // elgato
   "AVerMedia",
-  "Razer",
+  "Razer Ripsaw",
   "Magewell",
   "Hauppauge",
 };
