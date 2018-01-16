@@ -1,6 +1,8 @@
 vars = {
   'angle_revision':
     'c3bc984156967837f0b17b866aca0b12a2edf0e6',
+  'bebo_git':
+    'https://github.com/bebo',
   'boringssl_git':
     'https://boringssl.googlesource.com',
   'boringssl_revision':
@@ -246,6 +248,10 @@ deps = {
   },
   'src/third_party/ffmpeg':
     (Var("chromium_git")) + '/chromium/third_party/ffmpeg.git@62ff55193a061c21c039a2ba0b39641136912c2e',
+  'src/third_party/mfx_dispatch':
+    (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
+  'src/third_party/x264':
+    (Var("bebo_git")) + '/x264.git@b00bcafe53a166b63a179a2f41470cd13b59f927',
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
