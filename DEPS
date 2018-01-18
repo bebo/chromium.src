@@ -247,11 +247,11 @@ deps = {
       (Var("chromium_git")) + '/chromium/third_party/errorprone.git@6a55852cd7d1ef2f05a75d300495143be2a051d4'
   },
   'src/third_party/ffmpeg':
-    (Var("chromium_git")) + '/chromium/third_party/ffmpeg.git@62ff55193a061c21c039a2ba0b39641136912c2e',
+    (Var("bebo_git")) + '/ffmpeg.git@afb558a9f8b6c346ae2133ca99fd0b872eb79ec8',
   'src/third_party/mfx_dispatch':
     (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
   'src/third_party/x264':
-    (Var("bebo_git")) + '/x264.git@b00bcafe53a166b63a179a2f41470cd13b59f927',
+    (Var("bebo_git")) + '/x264.git@77046aec499792b3d5ae0f95e523cf2b9ee5b114',
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
@@ -521,7 +521,7 @@ deps = {
   'src/third_party/webgl/src':
     (Var("chromium_git")) + '/external/khronosgroup/webgl.git@34842fa3c36988840c89f5bc6a68503175acf7d9',
   'src/third_party/webrtc':
-    (Var("webrtc_git")) + '/src.git@b3fd9700eb1d5e79e7eed37db0bca2fae059fefe',
+    (Var("bebo_git")) + '/webrtc.git@5708477211a6b5e19f88cfe6d6e9b178ae0107f3',
   'src/third_party/xdg-utils': {
     'condition':
       'checkout_linux',

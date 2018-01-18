@@ -1150,3 +1150,9 @@ template("assert_valid_out_dir") {
 assert_valid_out_dir("_unused") {
   actual_sources = [ "$root_build_dir/foo" ]
 }
+
+group("ffmpeg") {
+  deps = [
+    "//third_party/ffmpeg"
+  ]
+}

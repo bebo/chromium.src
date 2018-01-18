@@ -126,6 +126,7 @@
 /mingw-w64
 /minigbm/src
 /minizip/src
+/mfx_dispatch
 /mkl
 /mocha
 /mockito/src
@@ -208,6 +209,7 @@
 /win_toolchain/.timestamps
 /win_toolchain/files
 /wix
+/x264
 /xdg-utils
 /xstream/lib/*.jar
 /xulrunner-sdk
