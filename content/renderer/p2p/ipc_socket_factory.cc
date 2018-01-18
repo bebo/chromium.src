@@ -84,11 +84,14 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   // send. The information tracked here will be used to match with the
   // P2PSendPacketMetrics from the underneath system socket.
   struct InFlightPacketRecord {
-    InFlightPacketRecord(uint64_t packet_id, size_t packet_size)
-        : packet_id(packet_id), packet_size(packet_size) {}
+    InFlightPacketRecord(uint64_t packet_id, int32_t rtc_packet_id,
+        base::TimeTicks send_time, size_t packet_size)
+        : packet_id(packet_id), rtc_packet_id(rtc_packet_id), send_time(send_time), packet_size(packet_size) {}
 
     uint64_t packet_id;
+    int32_t rtc_packet_id;
     size_t packet_size;
+    base::TimeTicks send_time;
   };
 
   typedef std::list<InFlightPacketRecord> InFlightPacketList;
@@ -458,8 +461,10 @@ int IpcPacketSocket::SendTo(const void *data, size_t data_size,
   // P2PSocketClientImpl::Send().
   DCHECK_NE(packet_id, 0uL);
 
+  /* LOG(INFO) << "bebo - sent webrtc_packet_id: " << options.packet_id; */
+
   in_flight_packet_records_.push_back(
-      InFlightPacketRecord(packet_id, data_size));
+      InFlightPacketRecord(packet_id, options.packet_id, base::TimeTicks::Now(), data_size));
   TraceSendThrottlingState();
 
   // Fake successful send. The caller ignores result anyway.
@@ -525,7 +530,7 @@ int IpcPacketSocket::SetOption(rtc::Socket::Option option, int value) {
   // on turn make the send buffer bigger so we don't drop packets when there is
   // packet loss and back pressure
   if (IsTcpClientSocket(type_) && p2p_socket_option == P2P_SOCKET_OPT_SNDBUF) {
-      
+
       // Quoting Microsoft Here:
       //
       // When a Windows Sockets implementation supports the SO_RCVBUF and
@@ -540,7 +545,7 @@ int IpcPacketSocket::SetOption(rtc::Socket::Option option, int value) {
 
       // In an ideal world it it would be 2 * rtt * bitrate, seems to work
       // better with 2 * that for whatever reason, static for right now
-      value = 512 * 1024;
+      value = 256000 ; // roughly 2 * 60ms * 15 Mbit
       if (max_send_bytes_available_ != value) {
          send_bytes_available_ += value - max_send_bytes_available_;
          max_send_bytes_available_ = value;
@@ -649,14 +654,16 @@ void IpcPacketSocket::OnSendComplete(const P2PSendPacketMetrics& send_metrics) {
 
   DCHECK_LE(send_bytes_available_, max_send_bytes_available_);
 
-  in_flight_packet_records_.pop_front();
   TraceSendThrottlingState();
 
   int64_t send_time_ms = -1;
   if (send_metrics.rtc_packet_id >= 0) {
-    send_time_ms = (send_metrics.send_time - base::TimeTicks::UnixEpoch())
+    /* send_time_ms = (send_metrics.send_time - base::TimeTicks::UnixEpoch()) */
+    send_time_ms = (record.send_time - base::TimeTicks::UnixEpoch())
                        .InMilliseconds();
   }
+  in_flight_packet_records_.pop_front();
+  /* LOG(INFO) << "bebo - IpcPacketSocket::OnSendComplete rtc_packet_id: " << send_metrics.rtc_packet_id << " ms: " << send_time_ms ; */
   SignalSentPacket(this, rtc::SentPacket(send_metrics.rtc_packet_id,
                                          send_time_ms));
 
