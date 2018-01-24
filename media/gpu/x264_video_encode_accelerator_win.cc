@@ -33,9 +33,9 @@
 #include "base/memory/weak_ptr.h"
 #include "base/single_thread_task_runner.h"
 #include "base/threading/thread.h"
+#include "base/time/time.h"
 #include "base/win/scoped_comptr.h"
 #include "media/video/video_encode_accelerator.h"
-#include "base/time/time.h"
 
 extern "C" {
 #include "libavcodec/avcodec.h"
@@ -51,7 +51,7 @@ namespace media {
 X264VideoEncodeAccelerator::X264VideoEncodeAccelerator()
     : implementation_name_("X264") {
   fmt_dict_opts = NULL;
-  LOG(INFO) << "X264 Constructor.";
+  LOG(INFO) << "X264 Constructor. " << __func__;
 }
 
 X264VideoEncodeAccelerator::~X264VideoEncodeAccelerator() {}
@@ -62,7 +62,7 @@ X264VideoEncodeAccelerator::GetSupportedProfiles() {
   VideoEncodeAccelerator::SupportedProfiles profiles;
   VideoEncodeAccelerator::SupportedProfile profile;
 
-  profile.profile = media::H264PROFILE_MAIN;
+  profile.profile = H264PROFILE_BASELINE;
   profile.max_framerate_numerator = 60;
   profile.max_framerate_denominator = 1;
   profile.max_resolution.SetSize(1920, 1088);
@@ -76,10 +76,23 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
                                             VideoCodecProfile output_profile,
                                             uint32_t initial_bitrate,
                                             Client* client) {
-  LOG(INFO) << "Initializing X264 encoder";
+  LOG(INFO) << "Initializing X264 encoder " << __func__;
   client_ = client;
+
+  avcodec_register_all();
+  
+  LOG(INFO) << "X264 Enumerating Codecs.";
+  AVCodec* current_codec = NULL;
+  current_codec = av_codec_next(current_codec);
+  while (current_codec != NULL) {
+    LOG(INFO) << "Found Encoder: " << current_codec->name;
+    current_codec = av_codec_next(current_codec);
+  }
+
+  // FIXME: Can't find the encoders.
   codec_ = avcodec_find_encoder_by_name("libx264");
-  if (!codec_) {
+  // codec_ = avcodec_find_encoder(AV_CODEC_ID_MPEG1VIDEO);
+  if (codec_ == NULL) {
     LOG(ERROR) << "Failed to find x264 encoder during initialization.";
     return false;
   }
@@ -103,7 +116,7 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
     LOG(ERROR) << "Could not open codec";
     return false;
   };
-    LOG(INFO) << "Initializing X264 encoder2";
+  LOG(INFO) << "Initializing X264 encoder2";
 
   return true;
 }
@@ -115,6 +128,7 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
 void X264VideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
                                         bool force_keyframe) {
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
+  LOG(INFO) << "X264 Encoder " << __func__;
   AVFrame* av_frame = av_frame_alloc();
 
   // const VideoFrameMetadata* metadata = frame.get()->metadata();
@@ -158,8 +172,9 @@ void X264VideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
   // FIXME: Figure out how to actually call this.  How are we supposed to know
   // whether arbitrary output data sent to us contains a keyframe? Fix the
   // timestamp.
-  client_->BitstreamBufferReady(output_buffer_.id(), receive_packet->size,
-                               force_keyframe, base::TimeDelta::FromMilliseconds(receive_packet->pts));
+  client_->BitstreamBufferReady(
+      output_buffer_.id(), receive_packet->size, force_keyframe,
+      base::TimeDelta::FromMilliseconds(receive_packet->pts));
   av_packet_unref(receive_packet);
 }
 
@@ -191,6 +206,7 @@ void X264VideoEncodeAccelerator::RequestEncodingParametersChange(
     uint32_t framerate) {
   // FIXME: I couldn't quickly find a clear answer an how to dynamically change
   // the bitrate, especially after the somewhat recent libavcodec changes.
+  LOG(INFO) << "X264 Encoder " << __func__;
   avc_context_->bit_rate = bitrate;
   avc_context_->framerate.num = framerate;
 }
@@ -202,7 +218,9 @@ void X264VideoEncodeAccelerator::RequestEncodingParametersChange(
 // |this| unconditionally, so make sure to drop all pointers to it!
 void X264VideoEncodeAccelerator::Destroy() {
   // FIXME: Clean up all of the stuff. Basically nothing is freed right now.
-  avcodec_free_context(&avc_context_);
-  av_free(codec_);
+  LOG(INFO) << "X264 Encoder " << __func__;
+
+  // avcodec_free_context(&avc_context_);
+  // av_free(codec_);
 }
 }  // namespace media
