@@ -90,15 +90,11 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
     } else {
       LOG(INFO) << "Not an encoder: " << current_codec->name;
     }
-    if (std::string("h264").compare(current_codec->name) == 0) {
-      codec_ = current_codec;
-    }
     current_codec = av_codec_next(current_codec);
   }
 
   // FIXME: Can't find the encoders.
-  // codec_ = avcodec_find_encoder_by_name("h264");
-  // codec_ = avcodec_find_encoder(AV_CODEC_ID_MPEG1VIDEO);
+  codec_ = avcodec_find_encoder_by_name("libx264");
   if (codec_ == NULL) {
     LOG(ERROR) << "Failed to find x264 encoder during initialization.";
     return false;
