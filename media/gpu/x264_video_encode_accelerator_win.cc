@@ -51,12 +51,14 @@ namespace media {
 X264VideoEncodeAccelerator::X264VideoEncodeAccelerator()
     : implementation_name_("X264") {
   fmt_dict_opts = NULL;
+  LOG(INFO) << "X264 Constructor.";
 }
 
 X264VideoEncodeAccelerator::~X264VideoEncodeAccelerator() {}
 
 VideoEncodeAccelerator::SupportedProfiles
 X264VideoEncodeAccelerator::GetSupportedProfiles() {
+  LOG(INFO) << "X264 Getting supported profiles.";
   VideoEncodeAccelerator::SupportedProfiles profiles;
   VideoEncodeAccelerator::SupportedProfile profile;
 
@@ -65,7 +67,7 @@ X264VideoEncodeAccelerator::GetSupportedProfiles() {
   profile.max_framerate_denominator = 1;
   profile.max_resolution.SetSize(1920, 1088);
   profiles.push_back(profile);
-
+  LOG(INFO) << "Returning supported profiles.";
   return profiles;
 }
 
@@ -74,6 +76,7 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
                                             VideoCodecProfile output_profile,
                                             uint32_t initial_bitrate,
                                             Client* client) {
+  LOG(INFO) << "Initializing X264 encoder";
   client_ = client;
   codec_ = avcodec_find_encoder_by_name("libx264");
   if (!codec_) {
@@ -100,6 +103,8 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
     LOG(ERROR) << "Could not open codec";
     return false;
   };
+    LOG(INFO) << "Initializing X264 encoder2";
+
   return true;
 }
 
