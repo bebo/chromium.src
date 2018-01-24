@@ -4,7 +4,7 @@ vars = {
   'nwjs_revision':
     'origin/bebo27',
   'ffmpeg_revision':
-    '62ff55193a061c21c039a2ba0b39641136912c2e', # Jakes changes to BUILD.gn break patching.
+    'origin/bebo27',
   'angle_revision':
     'c3bc984156967837f0b17b866aca0b12a2edf0e6',
   'bebo_git':
