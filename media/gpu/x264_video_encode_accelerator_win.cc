@@ -35,6 +35,7 @@
 #include "base/threading/thread.h"
 #include "base/win/scoped_comptr.h"
 #include "media/video/video_encode_accelerator.h"
+#include "base/time/time.h"
 
 extern "C" {
 #include "libavcodec/avcodec.h"
@@ -73,6 +74,7 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
                                             VideoCodecProfile output_profile,
                                             uint32_t initial_bitrate,
                                             Client* client) {
+  client_ = client;
   codec_ = avcodec_find_encoder_by_name("libx264");
   if (!codec_) {
     LOG(ERROR) << "Failed to find x264 encoder during initialization.";
@@ -148,6 +150,11 @@ void X264VideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
   base::SharedMemoryHandle buffer_handle = output_buffer_.handle();
   HANDLE handle = buffer_handle.GetHandle();
   memcpy(handle, (void*)receive_packet->data, receive_packet->size);
+  // FIXME: Figure out how to actually call this.  How are we supposed to know
+  // whether arbitrary output data sent to us contains a keyframe? Fix the
+  // timestamp.
+  client_->BitstreamBufferReady(output_buffer_.id(), receive_packet->size,
+                               force_keyframe, base::TimeDelta::FromMilliseconds(receive_packet->pts));
   av_packet_unref(receive_packet);
 }
 

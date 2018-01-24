@@ -122,6 +122,7 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   AVCodecContext *avc_context_;
   AVDictionary *fmt_dict_opts;
   BitstreamBuffer output_buffer_;
+  Client* client_;
 
   AVPacket* X264VideoEncodeAccelerator::VideoFrameToAVPacket(
     const scoped_refptr<VideoFrame>& frame);
