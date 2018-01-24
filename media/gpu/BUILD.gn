@@ -348,6 +348,10 @@ component("gpu") {
       "dxva_video_decode_accelerator_win.h",
       "media_foundation_video_encode_accelerator_win.cc",
       "media_foundation_video_encode_accelerator_win.h",
+      "x264_video_encode_accelerator_win.cc",
+      "x264_video_encode_accelerator_win.h",
+      "qsv_video_encode_accelerator_win.cc",
+      "qsv_video_encode_accelerator_win.h",
     ]
     configs += [
       # TODO(crbug.com/167187): Fix size_t to int truncations.
@@ -359,6 +363,7 @@ component("gpu") {
       "//third_party/angle:includes",
       "//third_party/libyuv",
       "//ui/display",
+      "//third_party/ffmpeg",
     ]
     libs += [
       "d3d9.lib",
@@ -367,7 +372,8 @@ component("gpu") {
       "strmiids.lib",
       "mf.lib",
       "mfplat.lib",
-      "mfuuid.lib",
+      "mfuuid.lib", 
+      "//third_party/ffmpeg/build.x64.win/Chrome/libavcodec/avcodec.lib", # Is this how we import libs?
     ]
     ldflags += [
       "/DELAYLOAD:d3d9.dll",

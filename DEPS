@@ -1,8 +1,14 @@
 vars = {
+  'node-nw_revision':
+    'origin/bebo27',
+  'nwjs_revision':
+    'origin/bebo27',
+  'ffmpeg_revision':
+    '62ff55193a061c21c039a2ba0b39641136912c2e', # Jakes changes to BUILD.gn break patching.
   'angle_revision':
     'c3bc984156967837f0b17b866aca0b12a2edf0e6',
   'bebo_git':
-    'https://github.com/bebo',
+    'git@github.com:bebo',
   'boringssl_git':
     'https://boringssl.googlesource.com',
   'boringssl_revision':
@@ -59,7 +65,7 @@ vars = {
   'swiftshader_revision':
     'ec5da193b1c29dc8bee19dcc8fe297901ff74911',
   'v8_revision':
-    '094a7c93dcdcd921de3883ba4674b7e1a0feffbe',
+    'origin/bebo27',
   'webrtc_git':
     'https://webrtc.googlesource.com'
 }
@@ -247,7 +253,7 @@ deps = {
       (Var("chromium_git")) + '/chromium/third_party/errorprone.git@6a55852cd7d1ef2f05a75d300495143be2a051d4'
   },
   'src/third_party/ffmpeg':
-    (Var("bebo_git")) + '/ffmpeg.git@afb558a9f8b6c346ae2133ca99fd0b872eb79ec8',
+    (Var("bebo_git")) + '/ffmpeg.git@' + (Var("ffmpeg_revision")),
   'src/third_party/mfx_dispatch':
     (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
   'src/third_party/x264':
@@ -536,11 +542,13 @@ deps = {
     (Var("chromium_git")) + '/chromium/deps/acid3.git@6be0a66a1ebd7ebc5abc1b2f405a945f6d871521',
   'src/tools/swarming_client':
     (Var("chromium_git")) + '/infra/luci/client-py.git@5e8001d9a710121ce7a68efd0804430a34b4f9e4',
-  #'src/v8':
+  'src/third_party/node-nw':
+    (Var("bebo_git")) + '/node-nw.git@' + (Var("node-nw_revision")),
+  'src/v8':
   #  (Var("chromium_git")) + '/v8/v8.git@310263b31fd87280b80e4bdd4ecfba5128b4cda7'
-  #  (Var("nwjs_git")) + '/v8.git@origin/nw16',
-  #'src/content/nw':
-  #  (Var("nwjs_git")) + '/nw.js.git@origin/nw16',
+    (Var("bebo_git")) + '/v8.git@' + (Var("v8_revision")),
+  'src/content/nw':
+    (Var("bebo_git")) + '/nwjs.git@' + (Var("nwjs_revision")),
   #'src/third_party/node':
   #  (Var("nwjs_git")) + '/node.git@origin/nw16',
 }
