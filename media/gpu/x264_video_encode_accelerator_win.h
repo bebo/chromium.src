@@ -104,10 +104,10 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   // One application of this is offloading the GPU main thread. This helps
   // reduce latency and jitter by avoiding the wait.
 
-  // FIXME: Do we need to do this?
-  // virtual bool TryToSetupEncodeOnSeparateThread(
-  //    const base::WeakPtr<Client>& encode_client,
-  //    const scoped_refptr<base::SingleThreadTaskRunner>& encode_task_runner);
+  bool TryToSetupEncodeOnSeparateThread(
+      const base::WeakPtr<Client>& encode_client,
+      const scoped_refptr<base::SingleThreadTaskRunner>& encode_task_runner)
+      override;
 
  protected:
   // Do not delete directly; use Destroy() or own it with a scoped_ptr, which
@@ -115,18 +115,89 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   ~X264VideoEncodeAccelerator() override;
 
  private:
+  // Holds output buffers coming from the client ready to be filled.
+  struct BitstreamBufferRef;
+
+  // Holds output buffers coming from the encoder.
+  class EncodeOutput;
+
+  // Encoding tasks to be run on |encoder_thread_|.
+  void EncodeTask(scoped_refptr<VideoFrame> frame, bool force_keyframe);
+
+  // Helper function to notify the client of an error on
+  // |main_client_task_runner_|.
+  void NotifyError(VideoEncodeAccelerator::Error error);
+
+  // Inserts the output buffers for reuse on |encoder_thread_|.
+  void UseOutputBitstreamBufferTask(
+      std::unique_ptr<BitstreamBufferRef> buffer_ref);
+
+  // Copies EncodeOutput into a BitstreamBuffer and returns it to the
+  // |encode_client_|.
+  void ReturnBitstreamBuffer(
+      std::unique_ptr<EncodeOutput> encode_output,
+      std::unique_ptr<X264VideoEncodeAccelerator::BitstreamBufferRef>
+          buffer_ref);
+
+  // Changes encode parameters on |encoder_thread_|.
+  void RequestEncodingParametersChangeTask(uint32_t bitrate,
+                                           uint32_t framerate);
+
+  // Destroys encode session on |encoder_thread_|.
+  void DestroyTask();
+
+  // Releases resources encoder holds.
+  void ReleaseEncoderResources();
+
+  // Bitstream buffers ready to be used to return encoded output as a FIFO.
+  base::circular_deque<std::unique_ptr<BitstreamBufferRef>>
+      bitstream_buffer_queue_;
+
+  // EncodeOutput needs to be copied into a BitstreamBufferRef as a FIFO.
+  base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
+
+  void drain_encoder();
+
+  gfx::Size input_visible_size_;
+  size_t bitstream_buffer_size_;
+  uint32_t frame_rate_;
+  uint32_t target_bitrate_;
   int width_;
   int height_;
   std::string implementation_name_;
   AVCodec *codec_;
   AVCodecContext *avc_context_;
-  AVDictionary *fmt_dict_opts;
-  BitstreamBuffer output_buffer_;
-  Client* client_;
+  /* AVDictionary *fmt_dict_opts; */
+  /* BitstreamBuffer output_buffer_; */
+  /* Client* client_; */
+
+  // To expose client callbacks from VideoEncodeAccelerator.
+  // NOTE: all calls to this object *MUST* be executed on
+  // |main_client_task_runner_|.
+  base::WeakPtr<Client> main_client_;
+  std::unique_ptr<base::WeakPtrFactory<Client>> main_client_weak_factory_;
+  scoped_refptr<base::SingleThreadTaskRunner> main_client_task_runner_;
+
+  // Used to run client callback BitstreamBufferReady() on
+  // |encode_client_task_runner_| if given by
+  // TryToSetupEncodeOnSeparateThread().
+  base::WeakPtr<Client> encode_client_;
+  scoped_refptr<base::SingleThreadTaskRunner> encode_client_task_runner_;
+
+  // This thread services tasks posted from the VEA API entry points by the
+  // GPU child thread and CompressionCallback() posted from device thread.
+  base::Thread encoder_thread_;
+  scoped_refptr<base::SingleThreadTaskRunner> encoder_thread_task_runner_;
+
+  // Declared last to ensure that all weak pointers are invalidated before
+  // other destructors run.
+  base::WeakPtrFactory<X264VideoEncodeAccelerator>
+      encoder_task_weak_factory_;
 
   AVPacket* X264VideoEncodeAccelerator::VideoFrameToAVPacket(
     const scoped_refptr<VideoFrame>& frame);
   inline int X264VideoEncodeAccelerator::GoogleVideoFrameFormatToAVFormat(int frame_format);
+  DISALLOW_COPY_AND_ASSIGN(X264VideoEncodeAccelerator);
 };
 
 }  // namespace media
