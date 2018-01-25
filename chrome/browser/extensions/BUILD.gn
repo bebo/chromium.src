@@ -68,6 +68,8 @@ static_library("extensions") {
     "api/automation_internal/automation_internal_api.h",
     "api/autotest_private/autotest_private_api.cc",
     "api/autotest_private/autotest_private_api.h",
+    "api/bebo_device/bebo_device_api.cc",
+    "api/bebo_device/bebo_device_api.h",
     "api/bookmark_manager_private/bookmark_manager_private_api.cc",
     "api/bookmark_manager_private/bookmark_manager_private_api.h",
     "api/bookmarks/bookmark_api_constants.cc",

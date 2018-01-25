@@ -1,0 +1,32 @@
+// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// Observer class of Sinkfilter. The implementor of this class receive video
+// frames from the SinkFilter DirectShow filter.
+
+#ifndef MEDIA_DIRECT_SHOW_SINK_FILTER_OBSERVER_H_
+#define MEDIA_DIRECT_SHOW_SINK_FILTER_OBSERVER_H_
+
+#include <stdint.h>
+#include <mmreg.h>
+
+namespace media {
+
+class AudioSinkFilterObserver {
+ public:
+  // SinkFilter will call this function with all frames delivered to it.
+  // buffer in only valid during this function call.
+  virtual void AudioFrameReceived(const uint8_t* buffer,
+                             int length,
+                             base::TimeDelta timestamp) = 0;
+
+  virtual void FormatChanged(WAVEFORMATEXTENSIBLE* format) {};
+
+ protected:
+  virtual ~AudioSinkFilterObserver();
+};
+
+}  // namespace media
+
+#endif  // MEDIA_DIRECT_SHOW_SINK_FILTER_OBSERVER_H_

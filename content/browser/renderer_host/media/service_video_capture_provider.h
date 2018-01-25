@@ -40,6 +40,8 @@ class CONTENT_EXPORT ServiceVideoCaptureProvider : public VideoCaptureProvider {
 
   // VideoCaptureProvider implementation.
   void GetDeviceInfosAsync(GetDeviceInfosCallback result_callback) override;
+  void OpenPropertyPage(const std::string& device_id,
+                        const std::string& type) override;
   std::unique_ptr<VideoCaptureDeviceLauncher> CreateDeviceLauncher() override;
 
  private:

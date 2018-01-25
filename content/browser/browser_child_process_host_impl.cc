@@ -356,6 +356,7 @@ void BrowserChildProcessHostImpl::OnChannelConnected(int32_t peer_pid) {
 }
 
 void BrowserChildProcessHostImpl::OnChannelError() {
+  LOG(INFO) << "BrowserChildProcessHostImpl::OnChannelError";
   delegate_->OnChannelError();
 }
 

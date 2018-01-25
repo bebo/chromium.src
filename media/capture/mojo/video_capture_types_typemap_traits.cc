@@ -110,6 +110,8 @@ EnumTraits<media::mojom::VideoCaptureApi, media::VideoCaptureApi>::ToMojom(
       return media::mojom::VideoCaptureApi::WIN_MEDIA_FOUNDATION;
     case media::VideoCaptureApi::WIN_DIRECT_SHOW:
       return media::mojom::VideoCaptureApi::WIN_DIRECT_SHOW;
+    case media::VideoCaptureApi::WIN_DIRECT_SHOW_AV:
+      return media::mojom::VideoCaptureApi::WIN_DIRECT_SHOW_AV;
     case media::VideoCaptureApi::MACOSX_AVFOUNDATION:
       return media::mojom::VideoCaptureApi::MACOSX_AVFOUNDATION;
     case media::VideoCaptureApi::MACOSX_DECKLINK:
@@ -144,6 +146,9 @@ bool EnumTraits<media::mojom::VideoCaptureApi, media::VideoCaptureApi>::
       return true;
     case media::mojom::VideoCaptureApi::WIN_DIRECT_SHOW:
       *output = media::VideoCaptureApi::WIN_DIRECT_SHOW;
+      return true;
+    case media::mojom::VideoCaptureApi::WIN_DIRECT_SHOW_AV:
+      *output = media::VideoCaptureApi::WIN_DIRECT_SHOW_AV;
       return true;
     case media::mojom::VideoCaptureApi::MACOSX_AVFOUNDATION:
       *output = media::VideoCaptureApi::MACOSX_AVFOUNDATION;

@@ -53,6 +53,10 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactory {
   virtual void GetDeviceDescriptors(
       VideoCaptureDeviceDescriptors* device_descriptors) = 0;
 
+  virtual void OpenPropertyPage(
+      const std::string& device_id,
+      const std::string& type) {};
+
  protected:
   base::ThreadChecker thread_checker_;
 

@@ -177,7 +177,10 @@ AudioInputController::AudioInputController(
     SyncWriter* sync_writer,
     UserInputMonitor* user_input_monitor,
     const AudioParameters& params,
-    StreamType type)
+    StreamType type,
+    AudioManager* audio_manager,
+    const std::string& device_id,
+    bool enable_agc)
     : creator_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       task_runner_(std::move(task_runner)),
       handler_(handler),
@@ -185,7 +188,11 @@ AudioInputController::AudioInputController(
       sync_writer_(sync_writer),
       type_(type),
       user_input_monitor_(user_input_monitor),
-      weak_ptr_factory_(this) {
+      weak_ptr_factory_(this),
+      audio_manager_(audio_manager),
+      params_(params),
+      device_id_(device_id),
+      agc_enabled_(enable_agc) {
   DCHECK(creator_task_runner_.get());
   DCHECK(handler_);
   DCHECK(sync_writer_);
@@ -223,14 +230,15 @@ scoped_refptr<AudioInputController> AudioInputController::Create(
   // the audio-manager thread.
   scoped_refptr<AudioInputController> controller(new AudioInputController(
       audio_manager->GetTaskRunner(), event_handler, sync_writer,
-      user_input_monitor, params, ParamsToStreamType(params)));
+      user_input_monitor, params, ParamsToStreamType(params),
+      audio_manager, device_id, enable_agc));
 
   // Create and open a new audio input stream from the existing
   // audio-device thread. Use the provided audio-input device.
   if (!controller->task_runner_->PostTask(
           FROM_HERE, base::BindOnce(&AudioInputController::DoCreate, controller,
                                     base::Unretained(audio_manager), params,
-                                    device_id, enable_agc))) {
+                                    device_id, enable_agc, false))) {
     controller = nullptr;
   }
 
@@ -256,11 +264,10 @@ scoped_refptr<AudioInputController> AudioInputController::CreateForStream(
   }
 
   // Create the AudioInputController object and ensure that it runs on the
-  // audio-manager thread. Note that the AudioParameters are irrelevant for this
-  // use case.
+  // audio-manager thread.
   scoped_refptr<AudioInputController> controller(new AudioInputController(
       task_runner, event_handler, sync_writer, user_input_monitor,
-      AudioParameters::UnavailableDeviceParams(), VIRTUAL));
+      params, VIRTUAL, nullptr, "", false));
 
   if (!controller->task_runner_->PostTask(
           FROM_HERE,
@@ -297,9 +304,16 @@ void AudioInputController::SetVolume(double volume) {
 void AudioInputController::DoCreate(AudioManager* audio_manager,
                                     const AudioParameters& params,
                                     const std::string& device_id,
-                                    bool enable_agc) {
+                                    bool enable_agc,
+                                    bool reconnect) {
   DCHECK(task_runner_->BelongsToCurrentThread());
-  DCHECK(!stream_);
+
+  if (reconnect && stream_) {
+      DoCloseForReconnect();
+  } else {
+    DCHECK(!stream_);
+  }
+
   SCOPED_UMA_HISTOGRAM_TIMER("Media.AudioInputController.CreateTime");
   handler_->OnLog("AIC::DoCreate");
 
@@ -311,12 +325,17 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
   last_audio_level_log_time_ = base::TimeTicks::Now();
 #endif
 
+
   // MakeAudioInputStream might fail and return nullptr. If so,
   // DoCreateForStream will handle and report it.
   auto* stream = audio_manager->MakeAudioInputStream(
       params, device_id,
       base::BindRepeating(&AudioInputController::LogMessage, this));
   DoCreateForStream(stream, enable_agc);
+
+  if (device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
+    audio_manager_->AddOutputDeviceChangeListener(this);
+  }
 }
 
 void AudioInputController::DoCreateForStream(
@@ -391,6 +410,10 @@ void AudioInputController::DoClose() {
   if (!stream_)
     return;
 
+  if (device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
+    audio_manager_->RemoveOutputDeviceChangeListener(this);
+  }
+
   check_muted_state_timer_.AbandonAndStop();
 
   std::string log_string;
@@ -453,6 +476,60 @@ void AudioInputController::DoClose() {
   max_volume_ = 0.0;
   weak_ptr_factory_.InvalidateWeakPtrs();
 }
+
+void AudioInputController::DoCloseForReconnect() {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+
+  if (!stream_)
+    return;
+
+  if (device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
+    audio_manager_->RemoveOutputDeviceChangeListener(this);
+  }
+
+  check_muted_state_timer_.AbandonAndStop();
+
+  // Allow calling unconditionally and bail if we don't have a stream to close.
+  if (audio_callback_) {
+    stream_->Stop();
+
+    // Sometimes a stream (and accompanying audio track) is created and
+    // immediately closed or discarded. In this case they are registered as
+    // 'stopped early' rather than 'never got data'.
+    const base::TimeDelta duration =
+        base::TimeTicks::Now() - stream_create_time_;
+    CaptureStartupResult capture_startup_result =
+        audio_callback_->received_callback()
+            ? CAPTURE_STARTUP_OK
+            : (duration.InMilliseconds() < 500
+                   ? CAPTURE_STARTUP_STOPPED_EARLY
+                   : CAPTURE_STARTUP_NEVER_GOT_DATA);
+    LogCaptureStartupResult(capture_startup_result);
+    LogCallbackError();
+
+    audio_callback_.reset();
+  }
+
+  stream_->Close();
+  stream_ = nullptr;
+
+  if (user_input_monitor_)
+    user_input_monitor_->DisableKeyPressMonitoring();
+
+#if defined(AUDIO_POWER_MONITORING)
+  // Send UMA stats if enabled.
+  if (power_measurement_is_enabled_)
+    LogSilenceState(silence_state_);
+#endif
+
+#if BUILDFLAG(ENABLE_WEBRTC)
+  debug_recording_helper_.DisableDebugRecording();
+#endif
+
+  max_volume_ = 0.0;
+  weak_ptr_factory_.InvalidateWeakPtrs();
+}
+
 
 void AudioInputController::DoReportError() {
   DCHECK(task_runner_->BelongsToCurrentThread());
@@ -588,6 +665,19 @@ void AudioInputController::LogCallbackError() {
     default:
       break;
   }
+}
+
+// we only register device change listener if device_id is loopback
+void AudioInputController::OnDeviceChange() {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+
+  task_runner_->PostTask(FROM_HERE, base::BindOnce(&AudioInputController::DoCreate,
+        base::Unretained(this),
+        base::Unretained(audio_manager_),
+        params_, device_id_, agc_enabled_, true));
+
+  task_runner_->PostTask(FROM_HERE, base::BindOnce(&AudioInputController::DoRecord,
+        base::Unretained(this)));
 }
 
 void AudioInputController::LogMessage(const std::string& message) {

@@ -99,6 +99,7 @@ class MEDIA_EXPORT CoreAudioUtil {
   static std::string GetFriendlyName(const std::string& device_id,
                                      EDataFlow data_flow,
                                      ERole role);
+  static std::string GetFriendlyName(IMMDevice* device);
 
   // Query if the audio device is a rendering device or a capture device.
   static EDataFlow GetDataFlow(IMMDevice* device);

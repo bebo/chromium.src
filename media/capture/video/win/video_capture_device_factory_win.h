@@ -12,6 +12,8 @@
 
 namespace media {
 
+bool IsDeviceWhiteListed(const std::string& name);
+
 // Extension of VideoCaptureDeviceFactory to create and manipulate Windows
 // devices, via either DirectShow or MediaFoundation APIs.
 class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
@@ -29,6 +31,9 @@ class CAPTURE_EXPORT VideoCaptureDeviceFactoryWin
   void GetSupportedFormats(
       const VideoCaptureDeviceDescriptor& device_descriptor,
       VideoCaptureFormats* supported_formats) override;
+  void OpenPropertyPage(
+      const std::string& device_id,
+      const std::string& type) override;
 
  private:
   // Media Foundation is available in Win7 and later, use it if explicitly
