@@ -38,12 +38,14 @@
 #include "media/video/video_encode_accelerator.h"
 
 extern "C" {
+
 #include "libavcodec/avcodec.h"
+#include "libavutil/opt.h"
+#include "libavutil/rational.h"
+
 }
 
 using base::win::RegKey;
-using base::win::ScopedComPtr;
-using media::mf::MediaBufferScopedPointer;
 
 #define BVLOG VLOG
 
@@ -81,17 +83,17 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
 
   avcodec_register_all();
 
-  LOG(INFO) << "X264 Enumerating Codecs.";
-  AVCodec* current_codec = NULL;
-  current_codec = av_codec_next(current_codec);
-  while (current_codec != NULL) {
-    if (av_codec_is_encoder(current_codec)) {
-      LOG(INFO) << "Found Encoder: " << current_codec->name;
-    } else {
-      LOG(INFO) << "Not an encoder: " << current_codec->name;
-    }
-    current_codec = av_codec_next(current_codec);
-  }
+  /* LOG(INFO) << "X264 Enumerating Codecs."; */
+  /* AVCodec* current_codec = NULL; */
+  /* current_codec = av_codec_next(current_codec); */
+  /* while (current_codec != NULL) { */
+  /*   if (av_codec_is_encoder(current_codec)) { */
+  /*     LOG(INFO) << "Found Encoder: " << current_codec->name; */
+  /*   } else { */
+  /*     //LOG(INFO) << "Not an encoder: " << current_codec->name; */
+  /*   } */
+  /*   current_codec = av_codec_next(current_codec); */
+  /* } */
 
   // FIXME: Can't find the encoders.
   codec_ = avcodec_find_encoder_by_name("libx264");
@@ -103,23 +105,43 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
   avc_context_ = avcodec_alloc_context3(codec_);
   width_ = input_visible_size.width();
   height_ = input_visible_size.height();
-  avc_context_->width = width_;
-  avc_context_->height = height_;
-  avc_context_->bit_rate = initial_bitrate;
+  /* avc_context_->width = width_; */
+  /* avc_context_->height = height_; */
+  avc_context_->width = 1280;
+  avc_context_->height = 720;
+  /* avc_context_->bit_rate = initial_bitrate; */
+  avc_context_->bit_rate = 600000;
   // FIXME: Use actual format.
   avc_context_->pix_fmt = AV_PIX_FMT_YUV420P;
-  avc_context_->max_b_frames = 3;
+  /* avc_context_->max_b_frames = 3; */
   // FIXME: Figure out how to set initial framerate.
   avc_context_->framerate.num = 60;
+  avc_context_->framerate.den = 1;
+  avc_context_->time_base.num = 1;
+  avc_context_->time_base.den = 60;
+  /* avc_context_->time_base = (AVRational){1, 60}; */
+  /* avc_context_->framerate = (AVRational){60, 1}; */
 
+  avc_context_->keyint_min = 600;
+  avc_context_->gop_size = 10;
+  avc_context_->max_b_frames = 1;
+
+  /* av_opt_set(avc_context_->priv_data, "preset", "slow", 0); */
+  if (codec_->id == AV_CODEC_ID_H264) {
+    av_opt_set(avc_context_->priv_data, "preset", "slow", 0);
+  }
   // Reference for AvFormatContext options :
   // https://ffmpeg.org/doxygen/2.8/movenc_8c_source.html
   // The options seem like they are almost entirely for dumping to a video file.
-  if (avcodec_open2(avc_context_, codec_, &fmt_dict_opts) < 0) {
-    LOG(ERROR) << "Could not open codec";
+  /* DebugBreak(); */
+  /* if (avcodec_open2(avc_context_, codec_, &fmt_dict_opts) < 0) { */
+  int ret = avcodec_open2(avc_context_, codec_, NULL);
+  if (ret < 0) {
+    LOG(ERROR) << "Could not open codec: " << ret;
+    /* LOG(ERROR) << "Could not open codec: " << av_err2str(ret); */
     return false;
   };
-  LOG(INFO) << "Initializing X264 encoder2";
+  LOG(INFO) << "Initialized x264 encoder with codec " << "libx264";
 
   return true;
 }
