@@ -416,10 +416,10 @@ ServiceManagerContext::ServiceManagerContext() {
         base::ASCIIToUTF16("Network Service");
   }
 
-  if (base::FeatureList::IsEnabled(video_capture::kMojoVideoCapture)) {
-    out_of_process_services[video_capture::mojom::kServiceName] =
-        base::ASCIIToUTF16("Video Capture Service");
-  }
+  /* if (base::FeatureList::IsEnabled(video_capture::kMojoVideoCapture)) { */
+  /*   out_of_process_services[video_capture::mojom::kServiceName] = */
+  /*       base::ASCIIToUTF16("Video Capture Service"); */
+  /* } */
 
 #if BUILDFLAG(ENABLE_MOJO_MEDIA_IN_UTILITY_PROCESS)
   out_of_process_services[media::mojom::kMediaServiceName] =

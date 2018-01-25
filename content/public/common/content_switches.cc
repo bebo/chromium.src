@@ -601,6 +601,9 @@ const char kIgnoreCertificateErrorsSPKIList[] =
 // Run the GPU process as a thread in the browser process.
 const char kInProcessGPU[]                  = "in-process-gpu";
 
+// Run the Video Capture Service as a mojo service in the browser process.
+const char kInProcessVideoCapture[]                  = "in-process-video-capture";
+
 // Overrides the timeout, in seconds, that a child process waits for a
 // connection from the browser before killing itself.
 const char kIPCConnectionTimeout[]          = "ipc-connection-timeout";

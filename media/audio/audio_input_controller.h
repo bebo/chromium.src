@@ -79,7 +79,8 @@ namespace media {
 class UserInputMonitor;
 
 class MEDIA_EXPORT AudioInputController
-    : public base::RefCountedThreadSafe<AudioInputController> {
+    : public base::RefCountedThreadSafe<AudioInputController>,
+      public AudioManager::AudioDeviceListener  {
  public:
   // Error codes to make native logging more clear. These error codes are added
   // to generic error strings to provide a higher degree of details.
@@ -220,6 +221,12 @@ class MEDIA_EXPORT AudioInputController
   // Disable debug recording of audio input.
   virtual void DisableDebugRecording();
 
+  // AudioDeviceListener implementation.  When called AudioOutputController will
+  // shutdown the existing |stream_|, transition to the kRecreating state,
+  // create a new stream, and then transition back to an equivalent state prior
+  // to being called.
+  void OnDeviceChange() override;
+
  protected:
   friend class base::RefCountedThreadSafe<AudioInputController>;
 
@@ -268,7 +275,10 @@ class MEDIA_EXPORT AudioInputController
                        SyncWriter* sync_writer,
                        UserInputMonitor* user_input_monitor,
                        const AudioParameters& params,
-                       StreamType type);
+                       StreamType type,
+                       AudioManager* audio_manager,
+                       const std::string& device_id,
+                       bool enable_agc);
   virtual ~AudioInputController();
 
   const scoped_refptr<base::SingleThreadTaskRunner>& GetTaskRunnerForTesting()
@@ -283,10 +293,12 @@ class MEDIA_EXPORT AudioInputController
   void DoCreate(AudioManager* audio_manager,
                 const AudioParameters& params,
                 const std::string& device_id,
-                bool enable_agc);
+                bool enable_agc,
+                bool reconnect);
   void DoCreateForStream(AudioInputStream* stream_to_control, bool enable_agc);
   void DoRecord();
   void DoClose();
+  void DoCloseForReconnect();
   void DoReportError();
   void DoSetVolume(double volume);
   void DoLogAudioLevels(float level_dbfs, int microphone_volume_percent);
@@ -348,6 +360,11 @@ class MEDIA_EXPORT AudioInputController
   // Pointer to the audio input stream object.
   // Only used on the audio thread.
   AudioInputStream* stream_ = nullptr;
+
+  AudioManager* const audio_manager_;
+  const AudioParameters params_;
+  std::string device_id_;
+  bool agc_enabled_;
 
   // SyncWriter is used only in low-latency mode for synchronous writing.
   SyncWriter* const sync_writer_;

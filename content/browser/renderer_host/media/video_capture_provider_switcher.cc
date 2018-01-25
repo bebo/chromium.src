@@ -75,6 +75,14 @@ void VideoCaptureProviderSwitcher::GetDeviceInfosAsync(
       std::move(result_callback));
 }
 
+void VideoCaptureProviderSwitcher::OpenPropertyPage(
+    const std::string& device_id,
+    const std::string& type) {
+  media_device_capture_provider_->OpenPropertyPage(
+      device_id, type);
+}
+
+
 std::unique_ptr<VideoCaptureDeviceLauncher>
 VideoCaptureProviderSwitcher::CreateDeviceLauncher() {
   return base::MakeUnique<VideoCaptureDeviceLauncherSwitcher>(

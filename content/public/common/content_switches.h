@@ -178,6 +178,7 @@ CONTENT_EXPORT extern const char kHistoryEntryRequiresUserGesture[];
 CONTENT_EXPORT extern const char kHostResolverRules[];
 CONTENT_EXPORT extern const char kIgnoreCertificateErrorsSPKIList[];
 CONTENT_EXPORT extern const char kInProcessGPU[];
+CONTENT_EXPORT extern const char kInProcessVideoCapture[];
 CONTENT_EXPORT extern const char kIPCConnectionTimeout[];
 CONTENT_EXPORT extern const char kIsolateOrigins[];
 CONTENT_EXPORT extern const char kIsRunningInMash[];

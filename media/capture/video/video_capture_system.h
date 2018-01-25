@@ -25,6 +25,9 @@ class CAPTURE_EXPORT VideoCaptureSystem {
   // that calls GetDeviceInfosAsync()
   virtual void GetDeviceInfosAsync(DeviceInfoCallback result_callback) = 0;
 
+  virtual void OpenPropertyPage(const std::string& device_id,
+      const std::string& type) {};
+
   // Creates a VideoCaptureDevice object. Returns nullptr if something goes
   // wrong.
   virtual std::unique_ptr<VideoCaptureDevice> CreateDevice(

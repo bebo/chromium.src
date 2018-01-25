@@ -188,6 +188,10 @@ class CONTENT_EXPORT MediaStreamManager
                                    const std::string& source_id,
                                    std::string* device_id) const;
 
+  void TranslateSourceIdToDeviceId(const std::string& label,
+                                   const std::string& source_id,
+                                   std::string* device_id);
+
   // Find |device_id| in the list of |requests_|, and returns its session id,
   // or MediaStreamDevice::kNoId if not found.
   int VideoDeviceIdToSessionId(const std::string& device_id) const;

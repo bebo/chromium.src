@@ -78,6 +78,7 @@ config("subcomponent_config") {
   if (is_mac) {
     visibility += [ "//media/base/mac" ]
   }
+  visibility += [ "//media/direct_show" ]
   defines = [ "MEDIA_IMPLEMENTATION" ]
   configs = [ ":media_config" ]
 }

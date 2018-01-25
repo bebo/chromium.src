@@ -98,6 +98,13 @@ void DeviceFactoryMediaToMojoAdapter::GetDeviceInfos(
   has_called_get_device_infos_ = true;
 }
 
+void DeviceFactoryMediaToMojoAdapter::OpenPropertyPage(
+    const std::string& device_id,
+    const std::string& type) {
+  capture_system_->OpenPropertyPage(
+      device_id, type);
+}
+
 void DeviceFactoryMediaToMojoAdapter::CreateDevice(
     const std::string& device_id,
     mojom::DeviceRequest device_request,

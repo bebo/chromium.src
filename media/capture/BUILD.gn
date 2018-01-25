@@ -144,6 +144,8 @@ component("capture_lib") {
     "video/win/video_capture_device_mf_win.h",
     "video/win/video_capture_device_win.cc",
     "video/win/video_capture_device_win.h",
+    "video/win/video_capture_device_ds_av_win.cc",
+    "video/win/video_capture_device_ds_av_win.h",
     "video_capturer_source.cc",
     "video_capturer_source.h",
   ]
@@ -190,7 +192,10 @@ component("capture_lib") {
   }
 
   if (is_win) {
-    deps += [ "//media/base/win" ]
+    deps += [
+      "//media/base/win",
+      # "//media/direct_show",
+    ]
     libs = [
       "mf.lib",
       "mfplat.lib",

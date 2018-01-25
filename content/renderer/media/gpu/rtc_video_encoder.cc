@@ -167,6 +167,7 @@ class RTCVideoEncoder::Impl
                             bool key_frame,
                             base::TimeDelta timestamp) override;
   void NotifyError(media::VideoEncodeAccelerator::Error error) override;
+  void SetImplementationName(const std::string& implementation_name) override;
 
  private:
   friend class base::RefCountedThreadSafe<Impl>;
@@ -274,6 +275,8 @@ class RTCVideoEncoder::Impl
   // The video codec type, as reported to WebRTC.
   const webrtc::VideoCodecType video_codec_type_;
 
+  const char * implementation_name_ ;
+
   // Protect |status_|. |status_| is read or written on |gpu_task_runner_| in
   // Impl. It can be read in RTCVideoEncoder on other threads.
   mutable base::Lock status_lock_;
@@ -299,6 +302,7 @@ RTCVideoEncoder::Impl::Impl(media::GpuVideoAcceleratorFactories* gpu_factories,
       last_capture_time_ms_(-1),
       encoded_image_callback_(nullptr),
       video_codec_type_(video_codec_type),
+      implementation_name_(nullptr),
       status_(WEBRTC_VIDEO_CODEC_UNINITIALIZED) {
   thread_checker_.DetachFromThread();
   // Picture ID should start on a random number.
@@ -373,6 +377,7 @@ void RTCVideoEncoder::Impl::Enqueue(const webrtc::VideoFrame* input_frame,
   // Besides, webrtc will drop a frame if Encode() blocks too long.
   if (input_buffers_free_.empty() && output_buffers_free_count_ == 0) {
     DVLOG(2) << "Run out of input and output buffers. Drop the frame.";
+    LOG(ERROR) << "Run out of input and output buffers. Drop the frame.";
     SignalAsyncWaiter(WEBRTC_VIDEO_CODEC_ERROR);
     return;
   }
@@ -561,6 +566,7 @@ void RTCVideoEncoder::Impl::NotifyError(
     media::VideoEncodeAccelerator::Error error) {
   DCHECK(thread_checker_.CalledOnValidThread());
   int32_t retval = WEBRTC_VIDEO_CODEC_ERROR;
+  LOG(ERROR) << "RTCVideoEncoder::Impl::NotifyError" << error;
   switch (error) {
     case media::VideoEncodeAccelerator::kInvalidArgumentError:
       retval = WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
@@ -583,7 +589,18 @@ void RTCVideoEncoder::Impl::NotifyError(
     SignalAsyncWaiter(retval);
 }
 
-RTCVideoEncoder::Impl::~Impl() { DCHECK(!video_encoder_); }
+void RTCVideoEncoder::Impl::SetImplementationName(const std::string& implementation_name) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  if (implementation_name_ != nullptr) {
+    delete[] implementation_name_;
+  }
+  implementation_name_ = strdup(implementation_name.c_str());
+}
+
+RTCVideoEncoder::Impl::~Impl() {
+  DCHECK(!video_encoder_);
+  delete[] implementation_name_;
+}
 
 void RTCVideoEncoder::Impl::LogAndNotifyError(
     const base::Location& location,
@@ -595,6 +612,7 @@ void RTCVideoEncoder::Impl::LogAndNotifyError(
       arraysize(kErrorNames) == media::VideoEncodeAccelerator::kErrorMax + 1,
       "Different number of errors and textual descriptions");
   DLOG(ERROR) << location.ToString() << kErrorNames[error] << " - " << str;
+  LOG(ERROR) << location.ToString() << kErrorNames[error] << " - " << str;
   NotifyError(error);
 }
 
@@ -614,7 +632,8 @@ void RTCVideoEncoder::Impl::EncodeOneFrame() {
   input_next_frame_keyframe_ = false;
 
   if (!video_encoder_) {
-    SignalAsyncWaiter(WEBRTC_VIDEO_CODEC_ERROR);
+    LOG(ERROR) << "help video_encoder_ does not exist";
+    SignalAsyncWaiter(WEBRTC_VIDEO_CODEC_ERROR); // FIXME - is this even the right code?
     return;
   }
 
@@ -708,7 +727,11 @@ void RTCVideoEncoder::Impl::RegisterAsyncWaiter(base::WaitableEvent* waiter,
 void RTCVideoEncoder::Impl::SignalAsyncWaiter(int32_t retval) {
   DCHECK(thread_checker_.CalledOnValidThread());
   *async_retval_ = retval;
-  async_waiter_->Signal();
+  if (async_waiter_ != nullptr) {
+    async_waiter_->Signal();
+  } else {
+    LOG(ERROR) << "No Async Waiter Registerd";
+  }
   async_retval_ = NULL;
   async_waiter_ = NULL;
 }
@@ -765,7 +788,7 @@ void RTCVideoEncoder::Impl::ReturnEncodedImage(
     case webrtc::kVideoCodecH264:
       if (!GetRTPFragmentationHeaderH264(&header, image._buffer,
                                          image._length)) {
-        DLOG(ERROR) << "Failed to get RTP fragmentation header for H264";
+        LOG(ERROR) << "Failed to get RTP fragmentation header for H264";
         NotifyError(
             (media::VideoEncodeAccelerator::Error)WEBRTC_VIDEO_CODEC_ERROR);
         return;
@@ -783,6 +806,11 @@ void RTCVideoEncoder::Impl::ReturnEncodedImage(
     info.codecSpecific.VP8.pictureId = picture_id;
     info.codecSpecific.VP8.tl0PicIdx = -1;
     info.codecSpecific.VP8.keyIdx = -1;
+  }
+  if (implementation_name_ != nullptr) {
+    info.codec_name = implementation_name_;
+  } else {
+    info.codec_name = "unknown exernal";
   }
 
   const auto result =

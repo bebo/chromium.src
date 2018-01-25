@@ -51,6 +51,8 @@ bool GpuVideoEncodeAcceleratorHost::OnMessageReceived(
                         OnBitstreamBufferReady)
     IPC_MESSAGE_HANDLER(AcceleratedVideoEncoderHostMsg_NotifyError,
                         OnNotifyError)
+    IPC_MESSAGE_HANDLER(AcceleratedVideoEncoderHostMsg_SetImplementationName,
+                        OnSetImplementationName)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
   DCHECK(handled);
@@ -61,6 +63,7 @@ bool GpuVideoEncodeAcceleratorHost::OnMessageReceived(
 
 void GpuVideoEncodeAcceleratorHost::OnChannelError() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  LOG(ERROR) << "OnChannelError";
   if (channel_) {
     if (encoder_route_id_ != MSG_ROUTING_NONE)
       channel_->RemoveRoute(encoder_route_id_);
@@ -179,6 +182,7 @@ void GpuVideoEncodeAcceleratorHost::Destroy() {
 }
 
 void GpuVideoEncodeAcceleratorHost::OnWillDeleteImpl() {
+  LOG(ERROR) << "OnWillDeleteImpl";
   base::AutoLock lock(impl_lock_);
   impl_ = nullptr;
 
@@ -223,8 +227,8 @@ void GpuVideoEncodeAcceleratorHost::PostNotifyError(
     Error error,
     const std::string& message) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DLOG(ERROR) << "Error from " << location.ToString() << ", " << message
-              << " (error = " << error << ")";
+  LOG(ERROR) << "Error from " << location.ToString() << ", " << message
+             << " (error = " << error << ")";
   // Post the error notification back to this thread, to avoid re-entrancy.
   media_task_runner_->PostTask(
       FROM_HERE, base::Bind(&GpuVideoEncodeAcceleratorHost::OnNotifyError,
@@ -265,6 +269,7 @@ void GpuVideoEncodeAcceleratorHost::OnNotifyInputDone(int32_t frame_id) {
   scoped_refptr<VideoFrame> frame = frame_map_[frame_id];
   if (!frame_map_.erase(frame_id)) {
     DLOG(ERROR) << __func__ << " invalid frame_id=" << frame_id;
+    LOG(ERROR) << __func__ << " invalid frame_id=" << frame_id;
     // See OnNotifyError for why this needs to be the last thing in this
     // function.
     OnNotifyError(kPlatformFailureError);
@@ -288,9 +293,18 @@ void GpuVideoEncodeAcceleratorHost::OnBitstreamBufferReady(
                                 timestamp);
 }
 
+void GpuVideoEncodeAcceleratorHost::OnSetImplementationName(const std::string& implementation_name) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DVLOG(3) << __func__ << " implementation_name=" << implementation_name;
+  if (!client_)
+    return;
+  client_->SetImplementationName(implementation_name);
+}
+
 void GpuVideoEncodeAcceleratorHost::OnNotifyError(Error error) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DLOG(ERROR) << __func__ << " error=" << error;
+  LOG(ERROR) << __func__ << " error=" << error;
   if (!client_)
     return;
   weak_this_factory_.InvalidateWeakPtrs();

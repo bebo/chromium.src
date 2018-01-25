@@ -4,6 +4,7 @@
 
 #include "media/capture/video/win/video_capture_device_win.h"
 
+
 #include <ks.h>
 #include <ksmedia.h>
 #include <objbase.h>
@@ -18,10 +19,23 @@
 #include "base/win/scoped_variant.h"
 #include "media/base/timestamp_constants.h"
 #include "media/capture/video/blob_utils.h"
+#include "media/capture/video/win/video_capture_device_factory_win.h"
 
 using base::win::ScopedCoMem;
 using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
+
+GUID kBeboGameCaptureCLSID = {0x1f1383ef,
+                          0x8019,
+                          0x4f96,
+                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x63}};
+enum FILTER {
+  FILTER_BEBO_GAME_CAPTUIRE = 0,
+  FILTER_MAX = FILTER_BEBO_GAME_CAPTUIRE,
+};
+const int kFilterSize = FILTER_MAX + 1;
+const GUID kFilterArray[kFilterSize] = {kBeboGameCaptureCLSID};
+const std::string kFilterArrayName[kFilterSize] = {"bebo-game-capture"};
 
 namespace media {
 
@@ -224,6 +238,25 @@ HRESULT VideoCaptureDeviceWin::GetDeviceFilter(const std::string& device_id,
                                                IBaseFilter** filter) {
   DCHECK(filter);
 
+  // go through our whitelisted filters first (bebo-game-capture, capture cards)
+  // so that we won't fail on the shortcircuit for when no camera exist in the OS
+  ScopedComPtr<IBaseFilter> capture_filter;
+  for (int i = 0; i < kFilterSize; i++) {
+    GUID guid = kFilterArray[i];
+    std::string name = kFilterArrayName[i];
+
+    if (name.compare(device_id) == 0) {
+
+      HRESULT hr = ::CoCreateInstance(guid, NULL, CLSCTX_INPROC_SERVER,
+          IID_PPV_ARGS(&capture_filter));
+
+      if (SUCCEEDED(hr)) {
+        *filter = capture_filter.Detach();
+        return hr;
+      }
+    }
+  }
+
   ScopedComPtr<ICreateDevEnum> dev_enum;
   HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
                                   IID_PPV_ARGS(&dev_enum));
@@ -235,10 +268,15 @@ HRESULT VideoCaptureDeviceWin::GetDeviceFilter(const std::string& device_id,
                                        enum_moniker.GetAddressOf(), 0);
   // CreateClassEnumerator returns S_FALSE on some Windows OS
   // when no camera exist. Therefore the FAILED macro can't be used.
-  if (hr != S_OK)
-    return hr;
+  if (hr != S_OK) {
+    // whitelisted devices are usually filters, and not video input source,
+    // and they are usually valid device? we're not going through moniker again,
+    // do we even need this check?
+    if (!IsDeviceWhiteListed(device_id)) {
+      return hr;
+    }
+  }
 
-  ScopedComPtr<IBaseFilter> capture_filter;
   for (ScopedComPtr<IMoniker> moniker;
        enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
        moniker.Reset()) {
