@@ -1,4 +1,14 @@
 vars = {
+  'node-nw_revision':
+    'origin/bebo28',
+  'nwjs_revision':
+    'origin/bebo28',
+  'ffmpeg_revision':
+    'origin/bebo28',
+  'webrtc_revision':
+    'origin/bebo28',
+  'bebo_git':
+    'git@github.com:bebo',
   'angle_revision':
     '54a29ffd82e7782c764b5257365e7f148f48ca4a',
   'aomedia_git':
@@ -265,7 +275,11 @@ deps = {
       (Var("chromium_git")) + '/chromium/third_party/errorprone.git@635c410fc42614b48518ae6818105bc83af88497'
   },
   'src/third_party/ffmpeg':
-    (Var("chromium_git")) + '/chromium/third_party/ffmpeg.git@be759fe02ca12a28c6da19e891f2057cb3004aab',
+    (Var("bebo_git")) + '/ffmpeg.git@' + (Var("ffmpeg_revision")),
+  'src/third_party/mfx_dispatch':
+    (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
+  'src/third_party/x264':
+    (Var("bebo_git")) + '/x264.git@77046aec499792b3d5ae0f95e523cf2b9ee5b114',
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
@@ -541,7 +555,7 @@ deps = {
   'src/third_party/webgl/src':
     (Var("chromium_git")) + '/external/khronosgroup/webgl.git@e4919fa03c74bd561dcabf3e61668fa3c7e54353',
   'src/third_party/webrtc':
-    (Var("webrtc_git")) + '/src.git@88f5d9180eae78a6162cccd78850ff416eb82483',
+    (Var("bebo_git")) + '/webrtc.git@' + (Var("webrtc_revision")),
   'src/third_party/xdg-utils': {
     'condition':
       'checkout_linux',
@@ -556,13 +570,12 @@ deps = {
     (Var("chromium_git")) + '/chromium/deps/acid3.git@6be0a66a1ebd7ebc5abc1b2f405a945f6d871521',
   'src/tools/swarming_client':
     (Var("chromium_git")) + '/infra/luci/client-py.git@6fd3c7b6eb7c60f89e83f8ab1f93c133488f984e',
-  #'src/v8':
-  #  (Var("chromium_git")) + '/v8/v8.git@d481edab155cf4034df53a0f73d422b78241fc88'
-  #  (Var("nwjs_git")) + '/v8.git@origin/nw16',
-  #'src/content/nw':
-  #  (Var("nwjs_git")) + '/nw.js.git@origin/nw16',
-  #'src/third_party/node':
-  #  (Var("nwjs_git")) + '/node.git@origin/nw16',
+  'src/third_party/node-nw':
+    (Var("bebo_git")) + '/node-nw.git@' + (Var("node-nw_revision")),
+  'src/v8':
+    (Var("bebo_git")) + '/v8.git@' + (Var("v8_revision")),
+  'src/content/nw':
+    (Var("bebo_git")) + '/nwjs.git@' + (Var("nwjs_revision")),
 }
 
 gclient_gn_args = [
