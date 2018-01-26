@@ -195,7 +195,13 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   avc_context_ = avcodec_alloc_context3(codec_);
   avc_context_->width = input_visible_size.width();
   avc_context_->height = input_visible_size.height();
-  avc_context_->bit_rate = initial_bitrate;
+  /* avc_context_->bit_rate = initial_bitrate; */
+  avc_context_->rc_max_rate = initial_bitrate * 1000;
+  avc_context_->rc_min_rate = initial_bitrate * 1000 / 2 ;
+  avc_context_->rc_buffer_size = 2 * 1024 * 1024;
+  av_opt_set_int(avc_context_->priv_data, "cbr", true, 0);
+
+
   /* avc_context_->width = 1280; */
   /* avc_context_->height = 720; */
   /* avc_context_->bit_rate = 600000; */
@@ -208,15 +214,18 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   avc_context_->time_base.num = kMaxFrameRateDenominator;
   avc_context_->time_base.den = kMaxFrameRateNumerator;
 
-  avc_context_->keyint_min = 600;
+  avc_context_->framerate.num = 24;
+  avc_context_->time_base.den = 24;
+
+  /* avc_context_->keyint_min = 60; */
 
   // TODO:
-  avc_context_->gop_size = 10;
-  avc_context_->max_b_frames = 1;
+  avc_context_->gop_size = 240;
+  avc_context_->max_b_frames = 0;
 
   /* av_opt_set(avc_context_->priv_data, "preset", "slow", 0); */
   if (codec_->id == AV_CODEC_ID_H264) {
-    av_opt_set(avc_context_->priv_data, "preset", "slow", 0);
+    av_opt_set(avc_context_->priv_data, "preset", "faster", 0);
     LOG(INFO) << "SETTING AV_CODEC_ID_H264 preset:" << "slow";
   }
   // Reference for AvFormatContext options :
@@ -260,12 +269,13 @@ void X264VideoEncodeAccelerator::drain_encoder() {
 
   while(!bitstream_buffer_queue_.empty()) {
 
-    AVPacket* receive_packet = NULL;
+    AVPacket receive_packet = {0};
+    av_init_packet(&receive_packet);
 
     // FIXME: Repeat this call until it returns AVERROR(EAGAIN) which means there
     // is no more data available, the chrome output buffer is full, or we get an
     // error.
-    int err = avcodec_receive_packet(avc_context_, receive_packet);
+    int err = avcodec_receive_packet(avc_context_, &receive_packet);
     if (err == AVERROR(EAGAIN)) {
       break;
     } else if (err < 0) {
@@ -274,18 +284,23 @@ void X264VideoEncodeAccelerator::drain_encoder() {
       return;
     }
 
-    bool is_keyframe = receive_packet->flags & AV_PKT_FLAG_KEY;
+    bool is_keyframe = receive_packet.flags & AV_PKT_FLAG_KEY;
 
     std::unique_ptr<X264VideoEncodeAccelerator::BitstreamBufferRef>
         buffer_ref = std::move(bitstream_buffer_queue_.front());
     bitstream_buffer_queue_.pop_front();
-    memcpy(buffer_ref->shm->memory(), (void*) receive_packet->data, receive_packet->size);
+    memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
 
+
+    LOG(INFO) << "avcodec_receive_packet size: " << receive_packet.size
+      << " keyframe: " << is_keyframe
+      << " pts: " << receive_packet.pts;
     // FIXME: Figure out how to actually call this.  Fix the timestamp?
     encode_client_task_runner_->PostTask(
         FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
-                              buffer_ref->id, receive_packet->size, is_keyframe, base::TimeDelta::FromMilliseconds(receive_packet->pts)));
-    av_packet_unref(receive_packet);
+                              buffer_ref->id, receive_packet.size, is_keyframe,
+                              base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+    av_packet_unref(&receive_packet);
   }
 }
 
@@ -407,13 +422,12 @@ void X264VideoEncodeAccelerator::EncodeTask(
   LOG(INFO) << "X264 Encoder " << __func__;
   AVFrame* av_frame = av_frame_alloc();
 
-  DebugBreak();
-
   // const VideoFrameMetadata* metadata = frame.get()->metadata();
   av_frame->key_frame = (int)force_keyframe;
   av_frame->width = input_visible_size_.width();
   av_frame->height = input_visible_size_.height();
-  av_frame->reordered_opaque = frame->timestamp().InMilliseconds();
+  /* av_frame->reordered_opaque = frame->timestamp().InMilliseconds(); */
+  av_frame->pts = frame->timestamp().InMilliseconds();
 
   av_frame->format = AV_PIX_FMT_YUV420P;
 
@@ -425,10 +439,10 @@ void X264VideoEncodeAccelerator::EncodeTask(
 
   libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane),
                    frame->stride(VideoFrame::kYPlane),
-                   frame->visible_data(VideoFrame::kVPlane),
-                   frame->stride(VideoFrame::kVPlane),
                    frame->visible_data(VideoFrame::kUPlane),
                    frame->stride(VideoFrame::kUPlane), 
+                   frame->visible_data(VideoFrame::kVPlane),
+                   frame->stride(VideoFrame::kVPlane),
                    av_frame->data[0], y_stride_,
                    av_frame->data[1], u_stride_,
                    av_frame->data[2], v_stride_,
