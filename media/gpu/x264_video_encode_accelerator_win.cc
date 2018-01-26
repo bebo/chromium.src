@@ -95,7 +95,9 @@ struct X264VideoEncodeAccelerator::BitstreamBufferRef {
 X264VideoEncodeAccelerator::X264VideoEncodeAccelerator()
     : main_client_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       encoder_thread_("FFMPEGx264EncoderThread"),
-      encoder_task_weak_factory_(this) {
+      encoder_task_weak_factory_(this),
+      target_bitrate_(0),
+      frame_rate_(0) {
   /* fmt_dict_opts = NULL; */
   LOG(INFO) << "X264 Constructor. " << __func__;
 }
@@ -115,6 +117,94 @@ X264VideoEncodeAccelerator::GetSupportedProfiles() {
   profiles.push_back(profile);
   LOG(INFO) << "Returning supported profiles.";
   return profiles;
+}
+
+void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
+  RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
+
+  std::string preset = "veryfast";
+  std::string x264_params = "";
+  DWORD max_b_frames = 0;
+  DWORD rc_buffer_size = 2 * 10000000;
+  DWORD crf = 0;
+  DWORD global_quality = 0;
+  DWORD twopass = 0;
+
+  if (beboKey.Valid()) {
+
+    if (beboKey.HasValue(L"preset")) {
+      std::wstring value;
+      beboKey.ReadValue(L"preset", &value);
+      preset = base::WideToUTF8(value);
+    }
+
+    if (beboKey.HasValue(L"max_b_frames")) {
+       beboKey.ReadValueDW(L"max_b_frames", &max_b_frames);
+    }
+
+    if (beboKey.HasValue(L"rc_buffer_size")) {
+       beboKey.ReadValueDW(L"rc_buffer_size", &rc_buffer_size);
+    }
+
+    if (beboKey.HasValue(L"crf")) {
+       beboKey.ReadValueDW(L"crf", &crf);
+    }
+
+    if (beboKey.HasValue(L"x264-params")) {
+      std::wstring value;
+      beboKey.ReadValue(L"x264-params", &value);
+      x264_params = base::WideToUTF8(value);
+    }
+
+    if (beboKey.HasValue(L"global_quality")) {
+       beboKey.ReadValueDW(L"global_quality", &global_quality);
+    }
+
+    if (beboKey.HasValue(L"twopass")) {
+       beboKey.ReadValueDW(L"twopass", &twopass);
+    }
+
+  }
+
+  if (codec_->id == AV_CODEC_ID_H264) {
+    av_opt_set(avc_context_->priv_data, "preset", preset.c_str(), 0);
+    LOG(INFO) << "preset: " << preset.c_str();
+  }
+
+  avc_context_->max_b_frames = max_b_frames;
+  LOG(INFO) << "max_b_frames: " << avc_context_->max_b_frames;
+
+  if (crf > 0) {
+    av_opt_set_int(avc_context_->priv_data, "crf", crf, 0);
+    LOG(INFO) << "crf: " << crf;
+  } else {
+    av_opt_set_int(avc_context_->priv_data, "cbr", true, 0);
+    LOG(INFO) << "cbr: true";
+  }
+
+  if (rc_buffer_size > 0) {
+    avc_context_->rc_buffer_size = rc_buffer_size;
+    LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
+  }
+
+  if (x264_params.length() > 3)  {
+    av_opt_set(avc_context_->priv_data,
+               "x264-params", x264_params.c_str(), 0);
+    LOG(INFO) << "x264-params: " << x264_params.c_str();
+  }
+
+  if (global_quality > 0)  {
+    avc_context_->global_quality = global_quality;
+    LOG(INFO) << "global_quality: " << global_quality;
+  }
+
+  if (twopass > 0) {
+    av_opt_set_int(avc_context_->priv_data, "2pass", twopass, 0);
+    LOG(INFO) << "2pass: " << twopass;
+  }
+
+  // crf_max
+  // cqp
 }
 
 bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
@@ -169,39 +259,23 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
     encode_client_ = main_client_;
   }
 
-  /* client_ = client; */
-
   avcodec_register_all();
 
-  /* LOG(INFO) << "X264 Enumerating Codecs."; */
-  /* AVCodec* current_codec = NULL; */
-  /* current_codec = av_codec_next(current_codec); */
-  /* while (current_codec != NULL) { */
-  /*   if (av_codec_is_encoder(current_codec)) { */
-  /*     LOG(INFO) << "Found Encoder: " << current_codec->name; */
-  /*   } else { */
-  /*     //LOG(INFO) << "Not an encoder: " << current_codec->name; */
-  /*   } */
-  /*   current_codec = av_codec_next(current_codec); */
-  /* } */
-
-  // FIXME: Can't find the encoders.
   codec_ = avcodec_find_encoder_by_name("libx264");
   if (codec_ == NULL) {
     LOG(ERROR) << "Failed to find x264 encoder during initialization.";
     return false;
   }
-  // https://ffmpeg.org/doxygen/3.2/structAVCodecContext.html
+
   avc_context_ = avcodec_alloc_context3(codec_);
+
+  ConfigureFromRegistry();
+
+  // https://ffmpeg.org/doxygen/3.2/structAVCodecContext.html
   avc_context_->width = input_visible_size.width();
   avc_context_->height = input_visible_size.height();
-  /* avc_context_->bit_rate = initial_bitrate; */
-  avc_context_->rc_buffer_size = 2 * 1024 * 1024;
-  av_opt_set_int(avc_context_->priv_data, "cbr", true, 0);
 
   avc_context_->pix_fmt = AV_PIX_FMT_YUV420P;
-  /* avc_context_->max_b_frames = 3; */
-  // FIXME: Figure out how to set initial framerate.
   avc_context_->framerate.num = kMaxFrameRateNumerator;
   avc_context_->framerate.den = kMaxFrameRateDenominator;
   avc_context_->time_base.num = kMaxFrameRateDenominator;
@@ -210,18 +284,9 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   SetBitRate(initial_bitrate);
   SetFrameRate(kMaxFrameRateNumerator / kMaxFrameRateDenominator);
 
-  avc_context_->max_b_frames = 0;
-
-  /* av_opt_set(avc_context_->priv_data, "preset", "slow", 0); */
-  if (codec_->id == AV_CODEC_ID_H264) {
-    av_opt_set(avc_context_->priv_data, "preset", "faster", 0);
-    LOG(INFO) << "SETTING AV_CODEC_ID_H264 preset:" << "slow";
-  }
   // Reference for AvFormatContext options :
   // https://ffmpeg.org/doxygen/2.8/movenc_8c_source.html
   // The options seem like they are almost entirely for dumping to a video file.
-  /* DebugBreak(); */
-  /* if (avcodec_open2(avc_context_, codec_, &fmt_dict_opts) < 0) { */
   int ret = avcodec_open2(avc_context_, codec_, NULL);
   if (ret < 0) {
     LOG(ERROR) << "Could not open codec: " << ret;
@@ -264,8 +329,8 @@ void X264VideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
     return;
   }
 
-  avc_context_->rc_max_rate = bitrate * 1000;
-  avc_context_->rc_min_rate = bitrate * 1000 / 2 ;
+  avc_context_->rc_max_rate = bitrate;
+  avc_context_->bit_rate = bitrate;
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
   target_bitrate_ = bitrate;
@@ -290,14 +355,10 @@ void X264VideoEncodeAccelerator::drain_encoder() {
     AVPacket receive_packet = {0};
     av_init_packet(&receive_packet);
 
-    // FIXME: Repeat this call until it returns AVERROR(EAGAIN) which means there
-    // is no more data available, the chrome output buffer is full, or we get an
-    // error.
     int err = avcodec_receive_packet(avc_context_, &receive_packet);
     if (err == AVERROR(EAGAIN)) {
       break;
     } else if (err < 0) {
-      // FIXME: Do we need to cleanup the allocated packet if the method fails.
       LOG(ERROR) << "avcodec_receive_packet failed with status: " << err;
       return;
     }
@@ -310,22 +371,16 @@ void X264VideoEncodeAccelerator::drain_encoder() {
     memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
 
 
-    LOG(INFO) << "avcodec_receive_packet size: " << receive_packet.size
+    BVLOG(2) << "avcodec_receive_packet size: " << receive_packet.size
       << " keyframe: " << is_keyframe
       << " pts: " << receive_packet.pts;
-    // FIXME: Figure out how to actually call this.  Fix the timestamp?
+
     encode_client_task_runner_->PostTask(
         FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
                               buffer_ref->id, receive_packet.size, is_keyframe,
                               base::TimeDelta::FromMilliseconds(receive_packet.pts)));
     av_packet_unref(&receive_packet);
   }
-}
-
-int X264VideoEncodeAccelerator::GoogleVideoFrameFormatToAVFormat(
-    int frame_format) {
-  // FIXME: todo.
-  return AV_PIX_FMT_YUV420P;
 }
 
 // Send a bitstream buffer to the encoder to be used for storing future
@@ -370,11 +425,7 @@ void X264VideoEncodeAccelerator::UseOutputBitstreamBuffer(
 void X264VideoEncodeAccelerator::RequestEncodingParametersChange(
     uint32_t bitrate,
     uint32_t framerate) {
-  /* // FIXME: I couldn't quickly find a clear answer an how to dynamically change */
-  /* // the bitrate, especially after the somewhat recent libavcodec changes. */
-  /* LOG(INFO) << "X264 Encoder " << __func__; */
-  /* avc_context_->bit_rate = bitrate; */
-  /* avc_context_->framerate.num = framerate; */
+
   DVLOG(3) << __func__ << ": bitrate=" << bitrate
            << ": framerate=" << framerate;
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
@@ -463,25 +514,14 @@ void X264VideoEncodeAccelerator::EncodeTask(
                    av_frame->data[0], y_stride_,
                    av_frame->data[1], u_stride_,
                    av_frame->data[2], v_stride_,
-                   /* av_frame->data[0] + v_plane_offset_, v_stride_, */
-                   /* av_frame->data[0] + v_plane_offset_, v_stride_, */
                    input_visible_size_.width(),
                    input_visible_size_.height());
-  /* // FIXME: I'm not sure that this is the right way to copy the planes over. */
-  /* for (uint8_t i = 0; i < VideoFrame::kMaxPlanes; i++) { */
-  /*   av_frame->linesize[i] = frame.get()->row_bytes(i); */
-  /*   av_frame->data[i] = */
-  /*       (uint8_t*)frame.get()->shared_memory_handle().GetHandle(); */
-  /* } */
 
   int err = avcodec_send_frame(avc_context_, av_frame);
   if (err < 0) {
     LOG(ERROR) << "avcodec_send_frame failed with status: " << err;
     return;
   }
-  /* if (output_buffer_.size() == 0) { */
-  /*   return; */
-  /* } */
   drain_encoder();
 }
 

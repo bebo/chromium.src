@@ -157,6 +157,7 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
 
   void drain_encoder();
+  void ConfigureFromRegistry();
   void SetFrameRate(uint32_t framerate);
   void SetBitRate(uint32_t bitrate);
 
@@ -201,7 +202,6 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
 
   AVPacket* X264VideoEncodeAccelerator::VideoFrameToAVPacket(
     const scoped_refptr<VideoFrame>& frame);
-  inline int X264VideoEncodeAccelerator::GoogleVideoFrameFormatToAVFormat(int frame_format);
   DISALLOW_COPY_AND_ASSIGN(X264VideoEncodeAccelerator);
 };
 
