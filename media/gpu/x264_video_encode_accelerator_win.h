@@ -157,6 +157,8 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
 
   void drain_encoder();
+  void SetFrameRate(uint32_t framerate);
+  void SetBitRate(uint32_t bitrate);
 
   gfx::Size input_visible_size_;
   size_t bitstream_buffer_size_;

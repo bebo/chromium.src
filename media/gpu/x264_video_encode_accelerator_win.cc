@@ -57,6 +57,7 @@ const int32_t kDefaultTargetBitrate = 6000000;
 const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 3;
+const size_t kMaxKeyFrameInterval = 15; // seconds
 
 }  // namespace
 
@@ -123,8 +124,9 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
                                             Client* client) {
   LOG(INFO) << "Initializing X264 encoder " << __func__;
 
-  // FIXME
-  initial_bitrate = kDefaultTargetBitrate;
+  if (initial_bitrate == 300000) {
+    initial_bitrate = kDefaultTargetBitrate;
+  }
 
   if (PIXEL_FORMAT_I420 != format) {
     LOG(ERROR) << "Input format not supported= "
@@ -144,8 +146,6 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
 
   input_visible_size_ = input_visible_size;
 
-  frame_rate_ = kMaxFrameRateNumerator / kMaxFrameRateDenominator;
-  target_bitrate_ = initial_bitrate;
   bitstream_buffer_size_ = input_visible_size.GetArea();
 
   u_plane_offset_ =
@@ -196,15 +196,8 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   avc_context_->width = input_visible_size.width();
   avc_context_->height = input_visible_size.height();
   /* avc_context_->bit_rate = initial_bitrate; */
-  avc_context_->rc_max_rate = initial_bitrate * 1000;
-  avc_context_->rc_min_rate = initial_bitrate * 1000 / 2 ;
   avc_context_->rc_buffer_size = 2 * 1024 * 1024;
   av_opt_set_int(avc_context_->priv_data, "cbr", true, 0);
-
-
-  /* avc_context_->width = 1280; */
-  /* avc_context_->height = 720; */
-  /* avc_context_->bit_rate = 600000; */
 
   avc_context_->pix_fmt = AV_PIX_FMT_YUV420P;
   /* avc_context_->max_b_frames = 3; */
@@ -214,13 +207,9 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   avc_context_->time_base.num = kMaxFrameRateDenominator;
   avc_context_->time_base.den = kMaxFrameRateNumerator;
 
-  avc_context_->framerate.num = 24;
-  avc_context_->time_base.den = 24;
+  SetBitRate(initial_bitrate);
+  SetFrameRate(kMaxFrameRateNumerator / kMaxFrameRateDenominator);
 
-  /* avc_context_->keyint_min = 60; */
-
-  // TODO:
-  avc_context_->gop_size = 240;
   avc_context_->max_b_frames = 0;
 
   /* av_opt_set(avc_context_->priv_data, "preset", "slow", 0); */
@@ -251,6 +240,35 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
                             kNumInputBuffers, input_visible_size_,
                             bitstream_buffer_size_));
   return true;
+}
+
+void X264VideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
+  uint32_t old_frame_rate = frame_rate_;
+  frame_rate_ =
+      framerate
+          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
+          : 1;
+
+  if (old_frame_rate == frame_rate_) {
+    return;
+  }
+  avc_context_->framerate.num = frame_rate_;
+  avc_context_->keyint_min = frame_rate_;
+  avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
+  LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_;
+}
+
+void X264VideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
+
+  if (target_bitrate_ == bitrate) {
+    return;
+  }
+
+  avc_context_->rc_max_rate = bitrate * 1000;
+  avc_context_->rc_min_rate = bitrate * 1000 / 2 ;
+
+  LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
+  target_bitrate_ = bitrate;
 }
 
 void X264VideoEncodeAccelerator::Encode(
@@ -419,7 +437,6 @@ void X264VideoEncodeAccelerator::EncodeTask(
     bool force_keyframe) {
 
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
-  LOG(INFO) << "X264 Encoder " << __func__;
   AVFrame* av_frame = av_frame_alloc();
 
   // const VideoFrameMetadata* metadata = frame.get()->metadata();
@@ -513,21 +530,8 @@ void X264VideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     LOG(INFO) << "ignoring initial wrong bitrate - CODECAPI_AVEncCommonMeanBitRate: " << bitrate;
     return;
   }
-
-  // NVIDIA MFT sends half the expected bitrate if MF_MT_FRAME_RATE is set to 60 and actual is 30
-  uint32_t old_frame_rate = frame_rate_;
-  frame_rate_ =
-      framerate
-          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
-          : 1;
-
-  if (old_frame_rate != frame_rate_) {
-    LOG(ERROR) << "TODO CHANGE FRAMERATE";
-  }
-
-  if (target_bitrate_ != bitrate) {
-    LOG(ERROR) << "TODO CHANGE BITRATE";
-  }
+  SetFrameRate(framerate);
+  SetBitRate(bitrate);
 }
 
 void X264VideoEncodeAccelerator::DestroyTask() {
