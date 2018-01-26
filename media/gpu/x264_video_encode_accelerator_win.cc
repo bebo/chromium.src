@@ -148,6 +148,20 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   target_bitrate_ = initial_bitrate;
   bitstream_buffer_size_ = input_visible_size.GetArea();
 
+  u_plane_offset_ =
+      VideoFrame::PlaneSize(PIXEL_FORMAT_I420, VideoFrame::kYPlane,
+                            input_visible_size_).GetArea();
+  v_plane_offset_ = u_plane_offset_ +
+    VideoFrame::PlaneSize(PIXEL_FORMAT_I420,
+                          VideoFrame::kUPlane,
+                          input_visible_size_).GetArea();
+  y_stride_ = VideoFrame::RowBytes(VideoFrame::kYPlane, PIXEL_FORMAT_I420,
+                                   input_visible_size_.width());
+  u_stride_ = VideoFrame::RowBytes(VideoFrame::kUPlane, PIXEL_FORMAT_I420,
+                                   input_visible_size_.width());
+  v_stride_ = VideoFrame::RowBytes(VideoFrame::kVPlane, PIXEL_FORMAT_I420,
+                                   input_visible_size_.width());
+
   // Pin all client callbacks to the main task runner initially. It can be
   // reassigned by TryToSetupEncodeOnSeparateThread().
   if (!encode_client_task_runner_) {
@@ -179,10 +193,8 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   }
   // https://ffmpeg.org/doxygen/3.2/structAVCodecContext.html
   avc_context_ = avcodec_alloc_context3(codec_);
-  width_ = input_visible_size.width();
-  height_ = input_visible_size.height();
-  avc_context_->width = width_;
-  avc_context_->height = height_;
+  avc_context_->width = input_visible_size.width();
+  avc_context_->height = input_visible_size.height();
   avc_context_->bit_rate = initial_bitrate;
   /* avc_context_->width = 1280; */
   /* avc_context_->height = 720; */
@@ -395,20 +407,41 @@ void X264VideoEncodeAccelerator::EncodeTask(
   LOG(INFO) << "X264 Encoder " << __func__;
   AVFrame* av_frame = av_frame_alloc();
 
+  DebugBreak();
+
   // const VideoFrameMetadata* metadata = frame.get()->metadata();
   av_frame->key_frame = (int)force_keyframe;
-  av_frame->width = width_;
-  av_frame->height = height_;
+  av_frame->width = input_visible_size_.width();
+  av_frame->height = input_visible_size_.height();
   av_frame->reordered_opaque = frame->timestamp().InMilliseconds();
 
-  // FIXME: format incorrect.
-  av_frame->format = GoogleVideoFrameFormatToAVFormat(frame.get()->format());
-  // FIXME: I'm not sure that this is the right way to copy the planes over.
-  for (uint8_t i = 0; i < VideoFrame::kMaxPlanes; i++) {
-    av_frame->linesize[i] = frame.get()->row_bytes(i);
-    av_frame->data[i] =
-        (uint8_t*)frame.get()->shared_memory_handle().GetHandle();
+  av_frame->format = AV_PIX_FMT_YUV420P;
+
+  // TODO: better use an input buffer pool
+  if (av_frame_get_buffer(av_frame, 32) < 0) {
+    LOG(ERROR) << "FAILED TO ALLOCATE BUFFER";
+    return;
   }
+
+  libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane),
+                   frame->stride(VideoFrame::kYPlane),
+                   frame->visible_data(VideoFrame::kVPlane),
+                   frame->stride(VideoFrame::kVPlane),
+                   frame->visible_data(VideoFrame::kUPlane),
+                   frame->stride(VideoFrame::kUPlane), 
+                   av_frame->data[0], y_stride_,
+                   av_frame->data[1], u_stride_,
+                   av_frame->data[2], v_stride_,
+                   /* av_frame->data[0] + v_plane_offset_, v_stride_, */
+                   /* av_frame->data[0] + v_plane_offset_, v_stride_, */
+                   input_visible_size_.width(),
+                   input_visible_size_.height());
+  /* // FIXME: I'm not sure that this is the right way to copy the planes over. */
+  /* for (uint8_t i = 0; i < VideoFrame::kMaxPlanes; i++) { */
+  /*   av_frame->linesize[i] = frame.get()->row_bytes(i); */
+  /*   av_frame->data[i] = */
+  /*       (uint8_t*)frame.get()->shared_memory_handle().GetHandle(); */
+  /* } */
 
   int err = avcodec_send_frame(avc_context_, av_frame);
   if (err < 0) {

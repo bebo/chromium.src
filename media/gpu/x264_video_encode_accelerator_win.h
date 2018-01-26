@@ -162,8 +162,11 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   size_t bitstream_buffer_size_;
   uint32_t frame_rate_;
   uint32_t target_bitrate_;
-  int width_;
-  int height_;
+  size_t u_plane_offset_;
+  size_t v_plane_offset_;
+  size_t y_stride_;
+  size_t u_stride_;
+  size_t v_stride_;
   std::string implementation_name_;
   AVCodec *codec_;
   AVCodecContext *avc_context_;
