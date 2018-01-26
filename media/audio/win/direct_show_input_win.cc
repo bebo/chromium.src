@@ -205,7 +205,6 @@ void DirectSoundAudioInputStream::AudioFrameReceived(const uint8_t* buffer,
   UINT32 num_frames_to_read = length / capture_format_->Format.nBlockAlign; // (length / nBlockAlign)
 
   static base::TimeDelta last_called;
-  static uint64_t frame_count = 0;
 
   base::TimeTicks capture_time = first_ref_time_ + timestamp;
 

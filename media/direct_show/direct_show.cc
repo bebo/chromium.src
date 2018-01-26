@@ -30,7 +30,6 @@
 #include "media/base/timestamp_constants.h"
 
 using base::win::ScopedCoMem;
-using base::win::ScopedComPtr;
 using base::win::ScopedCOMInitializer;
 using base::win::ScopedVariant;
 using media::directshow::DirectShowVideoCaptureFormat;
@@ -39,10 +38,11 @@ using media::directshow::kMediaSubTypeHDYC;
 using media::directshow::kMediaSubTypeZ16;
 using media::directshow::kMediaSubTypeINVZ;
 using media::directshow::kMediaSubTypeY16;
+using Microsoft::WRL::ComPtr;
 
 static const REFERENCE_TIME kSecondsToReferenceTime = 10000000;
 
-static const enum WhitelistedFilterNames {
+enum WhitelistedFilterNames {
   GAME_CAPTURE = 0,
   AVERMEDIA,
   RAZER,
@@ -88,7 +88,7 @@ namespace {
 bool PinMatchesCategory(IPin* pin, REFGUID category) {
   DCHECK(pin);
   bool found = false;
-  ScopedComPtr<IKsPropertySet> ks_property;
+  ComPtr<IKsPropertySet> ks_property;
   HRESULT hr = pin->QueryInterface(IID_PPV_ARGS(&ks_property));
   if (SUCCEEDED(hr)) {
     GUID pin_category;
@@ -107,7 +107,7 @@ bool PinMatchesCategory(IPin* pin, REFGUID category) {
 bool PinMatchesMajorType(IPin* pin, REFGUID major_type) {
   DCHECK(pin);
   media::DirectShow::ScopedMediaType media_type;
-  ScopedComPtr<IEnumMediaTypes> media_type_enum;
+  ComPtr<IEnumMediaTypes> media_type_enum;
 
   HRESULT hr = pin->EnumMediaTypes(&media_type_enum);
   if (media_type_enum.Get() == NULL) {
@@ -126,7 +126,7 @@ bool PinMatchesMajorType(IPin* pin, REFGUID major_type) {
 }
 
 bool GetPinMedium(IPin* pin, REGPINMEDIUM& medium) {
-  ScopedComPtr<IKsPin> iks_pin;
+  ComPtr<IKsPin> iks_pin;
   HRESULT hr = pin->QueryInterface(IID_IKsPin, &iks_pin);
   if (FAILED(hr)) {
     return false;
@@ -158,8 +158,8 @@ bool GetPinMedium(IPin* pin, REGPINMEDIUM& medium) {
 }
 
 bool FilterMatchesMedium(IBaseFilter* filter, REGPINMEDIUM medium) {
-  ScopedComPtr<IPin> pin;
-  ScopedComPtr<IEnumPins> pin_enum;
+  ComPtr<IPin> pin;
+  ComPtr<IEnumPins> pin_enum;
   HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
   if (pin_enum.Get() == NULL) {
     return false;
@@ -188,7 +188,7 @@ void PrintPinInfo(const std::string& message, IPin* pin) {
   std::stringstream stream;
   stream << message << " ";
 
-  AM_MEDIA_TYPE media_type = {0};
+  AM_MEDIA_TYPE media_type = {};
   HRESULT hr = pin->ConnectionMediaType(&media_type);
   if (SUCCEEDED(hr)) {
     WCHAR major_type[128] = {0};
@@ -228,14 +228,14 @@ void PrintPinInfo(const std::string& message, IPin* pin) {
 namespace media {
 
 DirectShow::DirectShow(const std::string device_id,
-    const std::string friendly_name) :
-  device_id_(device_id),
-  friendly_name_(friendly_name),
-  state_(kIdle),
-  has_audio_(true),
-  has_video_(true),
-  audio_observer_(NULL),
-  video_observer_(NULL) {
+    const std::string friendly_name) 
+  : friendly_name_(friendly_name),
+    device_id_(device_id),
+    state_(kIdle),
+    has_audio_(true),
+    has_video_(true),
+    audio_observer_(NULL),
+    video_observer_(NULL) {
   LOG(INFO) << friendly_name_ << " " << __func__;
   CreateGraph();
 }
@@ -316,7 +316,7 @@ void DirectShow::GetDeviceVideoCapabilityList(
     bool query_detailed_frame_rates,
     DirectShowVideoCapabilityList* out_capability_list) {
 
-  base::win::ScopedComPtr<IBaseFilter> capture_filter;
+  ComPtr<IBaseFilter> capture_filter;
   DirectShow::GetDeviceFilter(
       AM_KSCATEGORY_CAPTURE,
       device_id, capture_filter.GetAddressOf());
@@ -324,7 +324,7 @@ void DirectShow::GetDeviceVideoCapabilityList(
     return;
   }
 
-  base::win::ScopedComPtr<IPin> output_capture_pin(
+  ComPtr<IPin> output_capture_pin(
       DirectShow::GetPin(capture_filter.Get(), PINDIR_OUTPUT,
         PIN_CATEGORY_CAPTURE, GUID_NULL));
   if (!output_capture_pin.Get()) {
@@ -340,7 +340,7 @@ void DirectShow::GetDeviceAudioCapabilityList(
     const std::string& device_id,
     DirectShowAudioCapabilityList* out_capability_list) {
 
-  base::win::ScopedComPtr<IBaseFilter> capture_filter;
+  ComPtr<IBaseFilter> capture_filter;
   HRESULT hr = DirectShow::GetDeviceFilter(
       AM_KSCATEGORY_CAPTURE,
       device_id, capture_filter.GetAddressOf());
@@ -354,7 +354,7 @@ void DirectShow::GetDeviceAudioCapabilityList(
     }
   }
 
-  base::win::ScopedComPtr<IPin> output_capture_pin(
+  ComPtr<IPin> output_capture_pin(
       DirectShow::GetPin(capture_filter.Get(), PINDIR_OUTPUT,
         PIN_CATEGORY_CAPTURE, MEDIATYPE_Audio));
   if (!output_capture_pin.Get()) {
@@ -367,11 +367,11 @@ void DirectShow::GetDeviceAudioCapabilityList(
 
 // static
 void DirectShow::GetVideoPinCapabilityList(
-    base::win::ScopedComPtr<IBaseFilter> capture_filter,
-    base::win::ScopedComPtr<IPin> output_capture_pin,
+    ComPtr<IBaseFilter> capture_filter,
+    ComPtr<IPin> output_capture_pin,
     bool query_detailed_frame_rates,
     DirectShowVideoCapabilityList* out_capability_list) {
-  ScopedComPtr<IAMStreamConfig> stream_config;
+  ComPtr<IAMStreamConfig> stream_config;
   HRESULT hr = output_capture_pin.CopyTo(stream_config.GetAddressOf());
   if (FAILED(hr)) {
     DLOG(ERROR) << "Failed to get IAMStreamConfig interface from "
@@ -381,7 +381,7 @@ void DirectShow::GetVideoPinCapabilityList(
   }
 
   // Get interface used for getting the frame rate.
-  ScopedComPtr<IAMVideoControl> video_control;
+  ComPtr<IAMVideoControl> video_control;
   hr = capture_filter.CopyTo(video_control.GetAddressOf());
 
   int count = 0, size = 0;
@@ -458,10 +458,10 @@ void DirectShow::GetVideoPinCapabilityList(
 
 // static
 void DirectShow::GetAudioPinCapabilityList(
-    base::win::ScopedComPtr<IBaseFilter> capture_filter,
-    base::win::ScopedComPtr<IPin> output_capture_pin,
+    ComPtr<IBaseFilter> capture_filter,
+    ComPtr<IPin> output_capture_pin,
     DirectShowAudioCapabilityList* out_capability_list) {
-  ScopedComPtr<IAMStreamConfig> stream_config;
+  ComPtr<IAMStreamConfig> stream_config;
   HRESULT hr = output_capture_pin.CopyTo(stream_config.GetAddressOf());
   if (FAILED(hr)) {
     DLOG(ERROR) << "Failed to get IAMStreamConfig interface from "
@@ -505,12 +505,12 @@ void DirectShow::GetAudioPinCapabilityList(
 // Finds an IPin on an IBaseFilter given the direction, Category and/or Major
 // Type. If either |category| or |major_type| are GUID_NULL, they are ignored.
 // static
-ScopedComPtr<IPin> DirectShow::GetPin(IBaseFilter* filter,
+ComPtr<IPin> DirectShow::GetPin(IBaseFilter* filter,
     PIN_DIRECTION pin_dir,
     REFGUID category,
     REFGUID major_type) {
-  ScopedComPtr<IPin> pin;
-  ScopedComPtr<IEnumPins> pin_enum;
+  ComPtr<IPin> pin;
+  ComPtr<IEnumPins> pin_enum;
   HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
   if (pin_enum.Get() == NULL)
     return pin;
@@ -566,11 +566,11 @@ VideoPixelFormat DirectShow::TranslateMediaSubtypeToPixelFormat(
 }
 
 //static
-ScopedComPtr<IPin> DirectShow::GetPinByName(IBaseFilter* filter,
+ComPtr<IPin> DirectShow::GetPinByName(IBaseFilter* filter,
     PIN_DIRECTION pin_dir,
     const std::string& pin_name) {
-  ScopedComPtr<IPin> pin;
-  ScopedComPtr<IEnumPins> pin_enum;
+  ComPtr<IPin> pin;
+  ComPtr<IEnumPins> pin_enum;
   HRESULT hr = filter->EnumPins(pin_enum.GetAddressOf());
   if (pin_enum.Get() == NULL)
     return pin;
@@ -708,25 +708,25 @@ HRESULT DirectShow::GetDeviceFilter(GUID category,
     IBaseFilter** filter) {
   DCHECK(filter);
 
-  ScopedComPtr<ICreateDevEnum> dev_enum;
+  ComPtr<ICreateDevEnum> dev_enum;
   HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
       IID_PPV_ARGS(&dev_enum));
   if (FAILED(hr)) {
     return hr;
   }
 
-  ScopedComPtr<IBaseFilter> capture_filter;
-  ScopedComPtr<IEnumMoniker> enum_moniker;
+  ComPtr<IBaseFilter> capture_filter;
+  ComPtr<IEnumMoniker> enum_moniker;
   hr = dev_enum->CreateClassEnumerator(category,
       enum_moniker.GetAddressOf(), 0);
   if (hr != S_OK) {
     return hr;
   }
 
-  for (ScopedComPtr<IMoniker> moniker;
+  for (ComPtr<IMoniker> moniker;
       enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
       moniker.Reset()) {
-    ScopedComPtr<IPropertyBag> prop_bag;
+    ComPtr<IPropertyBag> prop_bag;
     hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
     if (FAILED(hr))
       continue;
@@ -768,7 +768,7 @@ HRESULT DirectShow::GetDeviceFilter(GUID category,
 HRESULT DirectShow::GetCrossbarFilter(ICaptureGraphBuilder2* graph_builder,
     IBaseFilter* capture_filter,
     IBaseFilter** filter) {
-  ScopedComPtr<IAMCrossbar> crossbar;
+  ComPtr<IAMCrossbar> crossbar;
 
   HRESULT hr = graph_builder->FindInterface(&LOOK_UPSTREAM_ONLY, NULL,
       capture_filter, IID_PPV_ARGS(&crossbar));
@@ -776,10 +776,10 @@ HRESULT DirectShow::GetCrossbarFilter(ICaptureGraphBuilder2* graph_builder,
     return hr;
   }
 
-  ScopedComPtr<IBaseFilter> crossbar_filter;
+  ComPtr<IBaseFilter> crossbar_filter;
   crossbar.CopyTo(crossbar_filter.GetAddressOf());
 
-  ScopedComPtr<IPin> pin;
+  ComPtr<IPin> pin;
   pin = GetPin(crossbar_filter.Get(), PINDIR_OUTPUT, GUID_NULL, GUID_NULL);
   if (pin.Get() == NULL) { // no pin?
     LOG(ERROR) << "Failed to get any crossbar output pin", hr;
@@ -794,25 +794,25 @@ HRESULT DirectShow::GetCrossbarFilter(ICaptureGraphBuilder2* graph_builder,
     return E_NOTIMPL;
   }
 
-  ScopedComPtr<ICreateDevEnum> dev_enum;
+  ComPtr<ICreateDevEnum> dev_enum;
   hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
       IID_PPV_ARGS(&dev_enum));
   if (FAILED(hr)) {
     return hr;
   }
 
-  ScopedComPtr<IEnumMoniker> enum_moniker;
+  ComPtr<IEnumMoniker> enum_moniker;
   hr = dev_enum->CreateClassEnumerator(AM_KSCATEGORY_CROSSBAR,
       enum_moniker.GetAddressOf(), 0);
   if (hr != S_OK) {
     return hr;
   }
 
-  ScopedComPtr<IBaseFilter> cur_capture_filter;
-  for (ScopedComPtr<IMoniker> moniker;
+  ComPtr<IBaseFilter> cur_capture_filter;
+  for (ComPtr<IMoniker> moniker;
       enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
       moniker.Reset()) {
-    ScopedComPtr<IPropertyBag> prop_bag;
+    ComPtr<IPropertyBag> prop_bag;
     hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
     if (FAILED(hr))
       continue;
@@ -1111,7 +1111,7 @@ HRESULT DirectShow::SetupVideoCaptureFormat() {
       std::min(requested_video_format_.frame_rate,
                found_capability.supported_format.frame_rate);
 
-  ScopedComPtr<IAMStreamConfig> stream_config;
+  ComPtr<IAMStreamConfig> stream_config;
   HRESULT hr = output_video_capture_pin_.CopyTo(stream_config.GetAddressOf());
   LogFailedHrWithDeviceName("Can't get the Capture format settings", hr);
   if (FAILED(hr)) {
@@ -1223,7 +1223,7 @@ HRESULT DirectShow::SetupAudioCaptureFormat() {
   const DirectShowAudioCapability found_capability =
     GetBestMatchedCapability(requested_audio_format_.Format, audio_capabilities_);
 
-  ScopedComPtr<IAMStreamConfig> stream_config;
+  ComPtr<IAMStreamConfig> stream_config;
   HRESULT hr = output_audio_capture_pin_.CopyTo(stream_config.GetAddressOf());
   LogFailedHrWithDeviceName("Can't get the capture format settings for audio", hr);
   if (FAILED(hr)) {

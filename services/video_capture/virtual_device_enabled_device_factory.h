@@ -34,6 +34,8 @@ class VirtualDeviceEnabledDeviceFactory : public mojom::DeviceFactory {
   void AddVirtualDevice(const media::VideoCaptureDeviceInfo& device_info,
                         mojom::ProducerPtr producer,
                         mojom::VirtualDeviceRequest virtual_device) override;
+  void OpenPropertyPage(const std::string& device_id,
+                        const std::string& type) override;
 
  private:
   struct VirtualDeviceEntry {

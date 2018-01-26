@@ -30,6 +30,7 @@
 
 using media::mf::MediaBufferScopedPointer;
 using base::win::RegKey;
+using Microsoft::WRL::ComPtr;
 
 #define BVLOG VLOG
 
@@ -113,9 +114,15 @@ struct MediaFoundationVideoEncodeAccelerator::BitstreamBufferRef {
 MediaFoundationVideoEncodeAccelerator::MediaFoundationVideoEncodeAccelerator(
     bool compatible_with_win7)
     : compatible_with_win7_(compatible_with_win7),
+      dropped_input_cnt_(0),
+      dropped_bitstream_queue_cnt_(0),
+      alive_(true),
+      input_events_(0),
+      output_events_(0),
+      drained_(NULL),
+      implementation_name_("Unknown MFT"),
       main_client_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       encoder_thread_("MFEncoderThread"),
-      implementation_name_("unknown MFT"),
       encoder_task_weak_factory_(this) {
 
   drained_ = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -395,15 +402,15 @@ bool MediaFoundationVideoEncodeAccelerator::PreSandboxInitialization() {
 }
 
 std::string GuidToString(GUID *guid) {
-    char guid_string[37]; // 32 hex chars + 4 hyphens + null terminator
-    snprintf(
-          guid_string, sizeof(guid_string) / sizeof(guid_string[0]),
-          "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-          guid->Data1, guid->Data2, guid->Data3,
-          guid->Data4[0], guid->Data4[1], guid->Data4[2],
-          guid->Data4[3], guid->Data4[4], guid->Data4[5],
-          guid->Data4[6], guid->Data4[7]);
-    return guid_string;
+  char guid_string[37]; // 32 hex chars + 4 hyphens + null terminator
+  snprintf(
+      guid_string, sizeof(guid_string) / sizeof(guid_string[0]),
+      "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      (unsigned int) guid->Data1, guid->Data2, guid->Data3,
+      guid->Data4[0], guid->Data4[1], guid->Data4[2],
+      guid->Data4[3], guid->Data4[4], guid->Data4[5],
+      guid->Data4[6], guid->Data4[7]);
+  return guid_string;
 }
 
 bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
@@ -463,9 +470,9 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
 
   std::wstring encoder_name;
 
-  PROPVARIANT pvalue = {0};
-  for (uint32_t j = 0; j < count; j++) {
+  PROPVARIANT pvalue = {};
 
+  for (uint32_t j = 0; j < count; j++) {
     hr = activate[j]->GetItem(MFT_FRIENDLY_NAME_Attribute, &pvalue);
     if (hr != S_OK) {
       LOG(ERROR) << "Could not get friendly name";
@@ -477,13 +484,14 @@ bool MediaFoundationVideoEncodeAccelerator::CreateHardwareEncoderMFT() {
 
     GUID cls_id;
     hr = activate[j]->GetGUID(MFT_TRANSFORM_CLSID_Attribute, &cls_id);
-    
     if (hr != S_OK) {
-      LOG(ERROR) << "can't get MFT_TRANSFORM_CLSID: 0x" << std::hex << hr << std::dec;
+      LOG(ERROR) << "can't get MFT_TRANSFORM_CLSID: 0x" 
+        << std::hex << hr << std::dec;
       continue;
     }
 
-    LOG(INFO) << "comparing " << GuidToString(&av_mft_transform_id) << " to " << GuidToString(&cls_id);
+    LOG(INFO) << "comparing " << GuidToString(&av_mft_transform_id)
+      << " to " << GuidToString(&cls_id);
     if (IsEqualCLSID(av_mft_transform_id, cls_id)) {
         encoder_name = pvalue.pwszVal;
         index = j;
@@ -883,7 +891,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInputOutput() {
   ProcessInput();
 }
 
-bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEvent> event) {
+bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ComPtr<IMFMediaEvent> event) {
   if (event.Get() == nullptr) {
     LOG(ERROR) << "invalid event (null)";
     return false;
@@ -916,11 +924,11 @@ bool MediaFoundationVideoEncodeAccelerator::ProcessEvent(ScopedComPtr<IMFMediaEv
   return true;
 }
 
-base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInputSample() {
+ComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInputSample() {
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
-  int i = 0;
-  for (const base::win::ScopedComPtr<IMFSample>& sample: input_sample_pool_) {
+  uint64_t i = 0;
+  for (const ComPtr<IMFSample>& sample: input_sample_pool_) {
     // If the buffer is in use, the ref count will be 2 or higher.
     // If the ref count is 1 then the list we are looping over holds the only reference
     // and it's safe to reuse.
@@ -930,13 +938,14 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInp
     if (c == 1) {
       return sample;
     }
+
     if (i > kNumInputBuffers) {
       return nullptr;
     }
   }
 
   // Allocate new buffer.
-  base::win::ScopedComPtr<IMFSample> sample ;
+  ComPtr<IMFSample> sample;
 
   MFT_INPUT_STREAM_INFO input_stream_info;
   HRESULT hr = encoder_->GetInputStreamInfo(input_stream_id_, &input_stream_info);
@@ -952,13 +961,14 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInp
       input_stream_info.cbAlignment);
 
   input_sample_pool_.push_back(sample);
+
   return sample;
 }
 
-base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOutputSample() {
+ComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOutputSample() {
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
-  for (const base::win::ScopedComPtr<IMFSample>& sample: output_sample_pool_) {
+  for (const ComPtr<IMFSample>& sample: output_sample_pool_) {
     // If the buffer is in use, the ref count will be 2 or higher.
     // If the ref count is 1 then the list we are looping over holds the only reference
     // and it's safe to reuse.
@@ -985,7 +995,7 @@ base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOut
   LOG(INFO) << "new output sample with buffer length: " << buffer_length
             << " aligned: " << output_stream_info.cbAlignment;
 
-  base::win::ScopedComPtr<IMFSample> sample ;
+  ComPtr<IMFSample> sample ;
   sample = mf::CreateEmptySampleWithBuffer(
         buffer_length,
         output_stream_info.cbAlignment);
@@ -1025,8 +1035,8 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
     }
   }
 
-  base::win::ScopedComPtr<IMFMediaBuffer> input_buffer;
-  base::win::ScopedComPtr<IMFSample> input_sample = std::move(GetInputSample());
+  ComPtr<IMFMediaBuffer> input_buffer;
+  ComPtr<IMFSample> input_sample = GetInputSample();
   if (input_sample == nullptr) {
     dropped_input_cnt_++;
     BVLOG(3) << "Dropping Input Buffer - Queue full";
@@ -1084,7 +1094,7 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
   BVLOG(3) << __func__ << " events: " << input_events_ << " queue empty: " << input_sample_queue_.empty() ;
 
   while(! input_sample_queue_.empty() && input_events_ > 0) {
-    ScopedComPtr<IMFSample> sample = std::move(input_sample_queue_.front());
+    ComPtr<IMFSample> sample = std::move(input_sample_queue_.front());
     input_sample_queue_.pop_front();
     input_events_--;
 
@@ -1170,14 +1180,14 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     }
     BVLOG(3) << "Got encoded data " << hr;
     
-    // base::win::ScopedComPtr<IMFSample> sample;
+    // ComPtr<IMFSample> sample;
     // sample = output_data_buffer.pSample;
 
     DWORD buffer_cnt = 0;
     output_data_buffer.pSample->GetBufferCount(&buffer_cnt);
     BVLOG(3) << "Sample Has Buffers: " << buffer_cnt;
 
-    base::win::ScopedComPtr<IMFMediaBuffer> output_buffer;
+    ComPtr<IMFMediaBuffer> output_buffer;
     if (buffer_cnt == 1) {
       hr = output_data_buffer.pSample->GetBufferByIndex(0, output_buffer.GetAddressOf());
       RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer by index", );
@@ -1428,37 +1438,31 @@ void MediaFoundationVideoEncodeAccelerator::ReleaseEncoderResources() {
 }
 
 /* #pragma warning (disable: 4723) */
-STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyncResult) {
-
+STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(
+    IMFAsyncResult *async_result) {
   DVLOG(3) << __func__;
 
   HRESULT hr = S_OK;
-  base::win::ScopedComPtr<IMFMediaEvent> event;
+  ComPtr<IMFMediaEvent> event;
 
   // Get the event from the event queue.
   // Assume that m_pEventGenerator is a valid pointer to the
   // event generator's IMFMediaEventGenerator interface.
-  hr = imf_media_event_generator_->EndGetEvent(pAsyncResult, event.GetAddressOf());
-
-  /* kill_cnt_++; */
-  /* if (kill_cnt_ > (30 * 30)) { */
-  /*   kill_cnt_ = kill_cnt_ / 0; // die */
-  /* } */
+  hr = imf_media_event_generator_->EndGetEvent(async_result, event.GetAddressOf());
 
   // Get the event type.
-  if (SUCCEEDED(hr))
-  {
+  if (SUCCEEDED(hr)) {
     if (ProcessEvent(event)) {
       encoder_thread_task_runner_->PostTask(
-          FROM_HERE, base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
+          FROM_HERE,
+          base::Bind(&MediaFoundationVideoEncodeAccelerator::ProcessInputOutput,
             this));
     }
   } else {
     LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
   }
 
-  if (alive_)
-  {
+  if (alive_) {
     hr = imf_media_event_generator_->BeginGetEvent(this, NULL);
     if (hr != S_OK) {
       LOG(ERROR) << "Error from Event Generator 0x" << std::hex << hr << std::dec;
@@ -1470,7 +1474,7 @@ STDMETHODIMP MediaFoundationVideoEncodeAccelerator::Invoke(IMFAsyncResult *pAsyn
 
 
 STDMETHODIMP MediaFoundationVideoEncodeAccelerator::GetParameters(DWORD *pdwFlags, DWORD *pdwQueue) {
-	return E_NOTIMPL;
+  return E_NOTIMPL;
 }
 
 ULONG STDMETHODCALLTYPE MediaFoundationVideoEncodeAccelerator::AddRef() {

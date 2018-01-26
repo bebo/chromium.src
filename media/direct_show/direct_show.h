@@ -3,6 +3,7 @@
 #define MEDIA_DIRECT_SHOW_DIRECT_SHOW_H_
 
 #include <memory>
+#include <wrl/client.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -18,7 +19,6 @@
 #include "base/threading/simple_thread.h"
 #include "base/win/scoped_co_mem.h"
 #include "base/win/scoped_com_initializer.h"
-#include "base/win/scoped_comptr.h"
 #include "base/win/scoped_variant.h"
 #include "base/win/scoped_handle.h"
 
@@ -41,8 +41,8 @@ namespace media {
 
 struct VideoCaptureFormat;
 
-class MEDIA_EXPORT DirectShow:
-      public base::DelegateSimpleThread::Delegate,
+class MEDIA_EXPORT DirectShow
+    : public base::DelegateSimpleThread::Delegate,
       public AudioSinkFilterObserver,
       public VideoSinkFilterObserver {
   public:
@@ -66,7 +66,7 @@ class MEDIA_EXPORT DirectShow:
     AM_MEDIA_TYPE* media_type_;
   };
 
-  ~DirectShow();
+  ~DirectShow() override;
   static bool IsDeviceWhiteListed(const std::string& name);
   static void GetDeviceVideoCapabilityList(
       const std::string& device_id,
@@ -98,13 +98,13 @@ class MEDIA_EXPORT DirectShow:
 
   static VideoPixelFormat TranslateMediaSubtypeToPixelFormat(const GUID& sub_type);
   static void GetVideoPinCapabilityList(
-      base::win::ScopedComPtr<IBaseFilter> capture_filter,
-      base::win::ScopedComPtr<IPin> output_capture_pin,
+      Microsoft::WRL::ComPtr<IBaseFilter> capture_filter,
+      Microsoft::WRL::ComPtr<IPin> output_capture_pin,
       bool query_detailed_frame_rates,
       DirectShowVideoCapabilityList* out_capablility_list);
   static void GetAudioPinCapabilityList(
-      base::win::ScopedComPtr<IBaseFilter> capture_filter,
-      base::win::ScopedComPtr<IPin> output_capture_pin,
+      Microsoft::WRL::ComPtr<IBaseFilter> capture_filter,
+      Microsoft::WRL::ComPtr<IPin> output_capture_pin,
       DirectShowAudioCapabilityList* out_capablility_list);
   static HRESULT GetDeviceFilter(GUID category,
                                  const std::string& device_id,
@@ -112,11 +112,11 @@ class MEDIA_EXPORT DirectShow:
   static HRESULT GetCrossbarFilter(ICaptureGraphBuilder2* graph_builder,
                                    IBaseFilter* capture_filter,
                                    IBaseFilter** filter);
-  static base::win::ScopedComPtr<IPin> GetPin(IBaseFilter* filter,
+  static Microsoft::WRL::ComPtr<IPin> GetPin(IBaseFilter* filter,
                                               PIN_DIRECTION pin_dir,
                                               REFGUID category,
                                               REFGUID major_type);
-  static base::win::ScopedComPtr<IPin> GetPinByName(IBaseFilter* filter,
+  static Microsoft::WRL::ComPtr<IPin> GetPinByName(IBaseFilter* filter,
                                                     PIN_DIRECTION pin_dir,
                                                     const std::string& pin_name);
   static void PrintPinCapabilities(const std::string& name,
@@ -167,40 +167,40 @@ class MEDIA_EXPORT DirectShow:
   base::Lock audio_lock_;
   base::Lock video_lock_;
 
-  AudioSinkFilterObserver* audio_observer_;
-  VideoSinkFilterObserver* video_observer_;
-
   DirectShowVideoCapabilityList video_capabilities_;
   DirectShowAudioCapabilityList audio_capabilities_;
+
+  std::string friendly_name_;
+  std::string device_id_;
 
   // video and audio are separate, when an observer
   // is registered, running count would increase by 1
   base::AtomicRefCount running_count_;
   InternalState state_;
+  bool has_audio_;
+  bool has_video_;
 
   WAVEFORMATEXTENSIBLE requested_audio_format_;
   DirectShowVideoCaptureFormat requested_video_format_;
 
-  bool has_audio_;
-  bool has_video_;
+  AudioSinkFilterObserver* audio_observer_;
+  VideoSinkFilterObserver* video_observer_;
 
-  base::win::ScopedComPtr<IBaseFilter> capture_filter_;
-  base::win::ScopedComPtr<IBaseFilter> crossbar_filter_;
+  Microsoft::WRL::ComPtr<IBaseFilter> capture_filter_;
+  Microsoft::WRL::ComPtr<IBaseFilter> crossbar_filter_;
 
-  base::win::ScopedComPtr<IGraphBuilder> graph_builder_;
-  base::win::ScopedComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
+  Microsoft::WRL::ComPtr<IGraphBuilder> graph_builder_;
+  Microsoft::WRL::ComPtr<ICaptureGraphBuilder2> capture_graph_builder_;
 
-  base::win::ScopedComPtr<IMediaControl> media_control_;
-  base::win::ScopedComPtr<IPin> input_audio_sink_pin_;
-  base::win::ScopedComPtr<IPin> input_video_sink_pin_;
-  base::win::ScopedComPtr<IPin> output_video_capture_pin_;
-  base::win::ScopedComPtr<IPin> output_audio_capture_pin_;
+  Microsoft::WRL::ComPtr<IMediaControl> media_control_;
+  Microsoft::WRL::ComPtr<IPin> input_audio_sink_pin_;
+  Microsoft::WRL::ComPtr<IPin> input_video_sink_pin_;
+  Microsoft::WRL::ComPtr<IPin> output_video_capture_pin_;
+  Microsoft::WRL::ComPtr<IPin> output_audio_capture_pin_;
 
   scoped_refptr<AudioSinkFilter> audio_sink_filter_;
   scoped_refptr<VideoSinkFilter> video_sink_filter_;
 
-  std::string friendly_name_;
-  std::string device_id_;
 };
 
 }  // namespace media

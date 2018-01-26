@@ -184,15 +184,15 @@ AudioInputController::AudioInputController(
     : creator_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       task_runner_(std::move(task_runner)),
       handler_(handler),
-      stream_(nullptr),
+      stream_(nullptr), 
       sync_writer_(sync_writer),
       type_(type),
       user_input_monitor_(user_input_monitor),
-      weak_ptr_factory_(this),
       audio_manager_(audio_manager),
       params_(params),
       device_id_(device_id),
-      agc_enabled_(enable_agc) {
+      agc_enabled_(enable_agc),
+      weak_ptr_factory_(this) {
   DCHECK(creator_task_runner_.get());
   DCHECK(handler_);
   DCHECK(sync_writer_);
@@ -267,7 +267,7 @@ scoped_refptr<AudioInputController> AudioInputController::CreateForStream(
   // audio-manager thread.
   scoped_refptr<AudioInputController> controller(new AudioInputController(
       task_runner, event_handler, sync_writer, user_input_monitor,
-      params, VIRTUAL, nullptr, "", false));
+      AudioParameters::UnavailableDeviceParams(), VIRTUAL, nullptr, "", false));
 
   if (!controller->task_runner_->PostTask(
           FROM_HERE,
@@ -520,10 +520,6 @@ void AudioInputController::DoCloseForReconnect() {
   // Send UMA stats if enabled.
   if (power_measurement_is_enabled_)
     LogSilenceState(silence_state_);
-#endif
-
-#if BUILDFLAG(ENABLE_WEBRTC)
-  debug_recording_helper_.DisableDebugRecording();
 #endif
 
   max_volume_ = 0.0;

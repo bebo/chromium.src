@@ -279,7 +279,7 @@ AudioInputStream* AudioManagerWin::MakeLowLatencyInputStream(
   if (DirectShowDeviceFactory::GetInstance()->IsDirectShowDevice(device_id)) {
     return new DirectSoundAudioInputStream(this, params, device_id);
   }
-  return new WASAPIAudioInputStream(this, params, device_id);
+  return new WASAPIAudioInputStream(this, params, device_id, log_callback);
 }
 
 std::string AudioManagerWin::GetDefaultOutputDeviceID() {

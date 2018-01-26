@@ -15,6 +15,7 @@
 #include "base/optional.h"
 #include "base/strings/string_piece.h"
 #include "base/timer/timer.h"
+#include "media/audio/audio_manager.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/media_export.h"
 
@@ -72,7 +73,6 @@ class SingleThreadTaskRunner;
 namespace media {
 
 class AudioInputStream;
-class AudioManager;
 class AudioBus;
 
 // Only do power monitoring for non-mobile platforms to save resources.
@@ -346,11 +346,6 @@ class MEDIA_EXPORT AudioInputController
   // Only used on the audio thread.
   AudioInputStream* stream_ = nullptr;
 
-  AudioManager* const audio_manager_;
-  const AudioParameters params_;
-  std::string device_id_;
-  bool agc_enabled_;
-
   // SyncWriter is used only in low-latency mode for synchronous writing.
   SyncWriter* const sync_writer_;
 
@@ -381,6 +376,11 @@ class MEDIA_EXPORT AudioInputController
 
   bool is_muted_ = false;
   base::RepeatingTimer check_muted_state_timer_;
+
+  AudioManager* const audio_manager_;
+  const AudioParameters params_;
+  std::string device_id_;
+  bool agc_enabled_;
 
   class AudioCallback;
   // Holds a pointer to the callback object that receives audio data from

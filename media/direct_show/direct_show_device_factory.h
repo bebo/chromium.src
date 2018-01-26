@@ -16,9 +16,9 @@ namespace base {
 
 namespace media {
 
-  enum class MEDIA_EXPORT DirectShowType {
-    Audio,
-    Video 
+  enum class DirectShowType {
+    Audio = 0,
+    Video
   };
 
   class MEDIA_EXPORT DirectShowDeviceDescriptor {

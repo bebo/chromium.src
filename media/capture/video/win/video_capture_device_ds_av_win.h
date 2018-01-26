@@ -20,7 +20,6 @@
 #include "base/containers/queue.h"
 #include "base/macros.h"
 #include "base/threading/thread_checker.h"
-#include "base/win/scoped_comptr.h"
 #include "media/capture/video/video_capture_device.h"
 #include "media/capture/video/win/capability_list_win.h"
 

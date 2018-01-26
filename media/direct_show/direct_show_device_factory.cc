@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <list>
 #include <utility>
+#include <wrl/client.h>
 
 #include "base/bind.h"
 #include "base/command_line.h"
@@ -23,13 +24,12 @@
 #include "base/strings/string_util.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/win/scoped_co_mem.h"
-#include "base/win/scoped_comptr.h"
 #include "base/win/scoped_variant.h"
 #include "media/base/media_switches.h"
 
 using base::win::ScopedCoMem;
-using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
+using Microsoft::WRL::ComPtr;
 
 namespace media {
 namespace {
@@ -143,13 +143,13 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
     bool skip_same_device) {
   DCHECK(device_descriptors);
 
-  ScopedComPtr<ICreateDevEnum> dev_enum;
+  ComPtr<ICreateDevEnum> dev_enum;
   HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
                                   IID_PPV_ARGS(&dev_enum));
   if (FAILED(hr))
     return;
 
-  ScopedComPtr<IEnumMoniker> enum_moniker;
+  ComPtr<IEnumMoniker> enum_moniker;
   hr = dev_enum->CreateClassEnumerator(category,
                                        enum_moniker.GetAddressOf(), 0);
   // CreateClassEnumerator returns S_FALSE on some Windows OS
@@ -157,10 +157,10 @@ void DirectShowDeviceFactory::GetDeviceDescriptors(DirectShowType type, GUID cat
 
   if (hr == S_OK) {
     // Enumerate all video capture devices.
-    for (ScopedComPtr<IMoniker> moniker;
+    for (ComPtr<IMoniker> moniker;
         enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
         moniker.Reset()) {
-      ScopedComPtr<IPropertyBag> prop_bag;
+      ComPtr<IPropertyBag> prop_bag;
       hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
       if (FAILED(hr))
         continue;

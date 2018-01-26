@@ -27,7 +27,6 @@
 #include "media/direct_show/capability_list_win.h"
 
 using base::win::ScopedCoMem;
-using base::win::ScopedComPtr;
 using base::win::ScopedVariant;
 using media::directshow::DirectShowVideoCaptureFormat;
 
@@ -73,9 +72,9 @@ void VideoCaptureDeviceDirectShowAV::GetDeviceCapabilityList(
 
 VideoCaptureDeviceDirectShowAV::VideoCaptureDeviceDirectShowAV(
     const VideoCaptureDeviceDescriptor& device_descriptor)
-    : device_descriptor_(device_descriptor),
-      state_(kIdle),
-      direct_show_(NULL) {
+    : direct_show_(NULL),
+      device_descriptor_(device_descriptor),
+      state_(kIdle) {
   // LOG(INFO) << device_descriptor_.display_name << " " << __func__;
   // TODO(mcasas): Check that CoInitializeEx() has been called with the
   // appropriate Apartment model, i.e., Single Threaded.

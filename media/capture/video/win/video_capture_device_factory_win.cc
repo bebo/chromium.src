@@ -204,10 +204,10 @@ static void GetDeviceDescriptorsDirectShow(Descriptors* device_descriptors) {
 
   if (hr == S_OK) {
     // Enumerate all video capture devices.
-    for (ScopedComPtr<IMoniker> moniker;
+    for (ComPtr<IMoniker> moniker;
         enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
         moniker.Reset()) {
-      ScopedComPtr<IPropertyBag> prop_bag;
+      ComPtr<IPropertyBag> prop_bag;
       hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
       if (FAILED(hr))
         continue;

@@ -110,6 +110,11 @@ void VirtualDeviceEnabledDeviceFactory::OnGetDeviceInfos(
   std::move(callback).Run(all_device_infos);
 }
 
+void VirtualDeviceEnabledDeviceFactory::OpenPropertyPage(
+    const std::string& device_id,
+    const std::string& type) {
+}
+
 void VirtualDeviceEnabledDeviceFactory::
     OnVirtualDeviceProducerConnectionErrorOrClose(
         const std::string& device_id) {

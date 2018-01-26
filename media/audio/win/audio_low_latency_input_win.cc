@@ -61,18 +61,21 @@ WASAPIAudioInputStream::WASAPIAudioInputStream(
     const AudioParameters& params,
     const std::string& device_id,
     const AudioManager::LogCallback& log_callback)
-    : manager_(manager), device_id_(device_id), params_(params), 
-      log_callback_(log_callback) {
+    : manager_(manager), device_id_(device_id),
+      log_callback_(log_callback), params_(params)  {
   DCHECK(manager_);
   DCHECK(!device_id_.empty());
   DCHECK(!log_callback_.is_null());
 
-  is_loopback_device_ = device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0;
-  friendly_name_ = CoreAudioUtil::GetFriendlyName(device_id_);
-
   // Load the Avrt DLL if not already loaded. Required to support MMCSS.
   bool avrt_init = avrt::Initialize();
   DCHECK(avrt_init) << "Failed to load the Avrt.dll";
+
+  is_loopback_device_ = device_id.compare(
+      AudioDeviceDescription::kLoopbackInputDeviceId) == 0;
+  friendly_name_ = CoreAudioUtil::GetFriendlyName(device_id_,
+      is_loopback_device_ ? eRender : eCapture,
+      eConsole);
 
   // Set up the desired capture format specified by the client.
   WAVEFORMATEX* format = &format_.Format;
@@ -433,7 +436,7 @@ void WASAPIAudioInputStream::Run() {
       case WAIT_OBJECT_0 + 1: {
         // |audio_samples_ready_event_| has been set.
         TRACE_EVENT1("audio", "WASAPIAudioInputStream::Run_0", "sample rate",
-                     format_.nSamplesPerSec);
+                     format_.Format.nSamplesPerSec);
 
         // Quote from Microsofts WindowsAudioSession Sample:
         //
@@ -695,36 +698,24 @@ HRESULT WASAPIAudioInputStream::GetAudioEngineStreamFormat() {
 }
 
 bool WASAPIAudioInputStream::DesiredFormatIsSupported(HRESULT* hr) {
+  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::DesiredFormatIsSupported()";
+
   // An application that uses WASAPI to manage shared-mode streams can rely
   // on the audio engine to perform only limited format conversions. The audio
   // engine can convert between a standard PCM sample size used by the
   // application and the floating-point samples that the engine uses for its
   // internal processing. However, the format for an application stream
   // typically must have the same number of channels and the same sample
-<<<<<<< HEAD
-  // rate as the stream format used by the device.
-  // Many audio devices support both PCM and non-PCM stream formats. However,
-  // the audio engine can mix only PCM streams.
-  base::win::ScopedCoMem<WAVEFORMATEX> closest_match;
-  HRESULT hresult = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
-                                                     &format_, &closest_match);
-  DLOG_IF(ERROR, hresult == S_FALSE)
-      << "Format is not supported but a closest match exists.";
 
-  if (hresult == S_FALSE &&
-      IsSupportedFormatForConversion(*closest_match.get())) {
-=======
+
+  base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> closest_match;
+  HRESULT hresult;
+
   // rate as the stream format used by CHANNEL_LAYOUT_UNSUPPORTED the device.
   // Many audio devices support both PCM and non-PCM stream formats. However,
   // the audio engine can mix only PCM streams.
-
-  LOG(INFO) << friendly_name_ << " WASAPIAudioInputStream::DesiredFormatIsSupported()";
-
-  base::win::ScopedCoMem<WAVEFORMATEXTENSIBLE> closest_match;
-  HRESULT hr;
-
   if (is_loopback_device_) {
-    hr = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
+    hresult = audio_client_->GetMixFormat(reinterpret_cast<WAVEFORMATEX**>(&closest_match));
 
     // Force PCM
     closest_match->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
@@ -741,20 +732,18 @@ bool WASAPIAudioInputStream::DesiredFormatIsSupported(HRESULT* hr) {
     format_.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
     format_.Samples.wValidBitsPerSample = closest_match->Format.wBitsPerSample;
     format_.dwChannelMask = closest_match->dwChannelMask;
-
   } else {
     WAVEFORMATEX* format = &format_.Format;
 
-    hr = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
+    hresult = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED,
         format,
         reinterpret_cast<WAVEFORMATEX**>(&closest_match));
 
-    DLOG_IF(ERROR, hr == S_FALSE) 
+    DLOG_IF(ERROR, hresult == S_FALSE) 
       << "Format is not supported but a closest match exists."; 
   }
 
-  if ((is_loopback_device_ || hr == S_FALSE) && IsSupportedFormatForConversion(*reinterpret_cast<WAVEFORMATEX*>(closest_match.get()))) {
->>>>>>> 79ad2c5b4fdd... Squashed commit of the following:
+  if ((is_loopback_device_ || hresult == S_FALSE) && IsSupportedFormatForConversion(*reinterpret_cast<WAVEFORMATEX*>(closest_match.get()))) {
     DVLOG(1) << "Audio capture data conversion needed.";
     LOG(INFO) << "Audio capture data conversion needed.";
     // Ideally, we want a 1:1 ratio between the buffers we get and the buffers

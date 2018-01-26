@@ -121,8 +121,9 @@ class TypeEnumerator final : public IEnumMediaTypes,
   int index_;
 };
 
-DirectShowPinBase::DirectShowPinBase(IBaseFilter* owner, DirectShowPinType type) : owner_(owner),
-  type_(type) {
+DirectShowPinBase::DirectShowPinBase(IBaseFilter* owner, DirectShowPinType type) 
+  : type_(type),
+   owner_(owner) {
   memset(&current_media_type_, 0, sizeof(current_media_type_));
 }
 

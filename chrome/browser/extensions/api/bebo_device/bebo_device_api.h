@@ -12,12 +12,9 @@
 #include "base/compiler_specific.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/extensions/api/bebo_device.h"
-#include "content/browser/renderer_host/media/media_stream_requester.h"
+#include "content/browser/renderer_host/media/media_stream_manager.h"
+#include "content/browser/renderer_host/media/media_stream_ui_proxy.h"
 #include "extensions/browser/extension_function.h"
-
-namespace content {
-class MediaStreamUIProxy;
-}
 
 namespace extensions {
 

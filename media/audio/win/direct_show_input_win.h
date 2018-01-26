@@ -122,14 +122,10 @@ class MEDIA_EXPORT DirectSoundAudioInputStream
   // Size in bytes of each audio packet.
   size_t packet_size_bytes_ = 0;
 
-  // Length of the audio endpoint buffer.
-  uint32_t endpoint_buffer_size_frames_ = 0;
-
   // Contains the unique name of the selected endpoint device.
   // Note that AudioDeviceDescription::kDefaultDeviceId represents the default
   // device role and is not a valid ID as such.
   std::string device_id_;
-  bool is_loopback_device_;
 
   std::string friendly_name_;
 

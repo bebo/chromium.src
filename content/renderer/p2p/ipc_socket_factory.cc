@@ -86,7 +86,8 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   struct InFlightPacketRecord {
     InFlightPacketRecord(uint64_t packet_id, int32_t rtc_packet_id,
         base::TimeTicks send_time, size_t packet_size)
-        : packet_id(packet_id), rtc_packet_id(rtc_packet_id), send_time(send_time), packet_size(packet_size) {}
+        : packet_id(packet_id), rtc_packet_id(rtc_packet_id),
+          packet_size(packet_size), send_time(send_time) {}
 
     uint64_t packet_id;
     int32_t rtc_packet_id;
@@ -546,7 +547,7 @@ int IpcPacketSocket::SetOption(rtc::Socket::Option option, int value) {
       // In an ideal world it it would be 2 * rtt * bitrate, seems to work
       // better with 2 * that for whatever reason, static for right now
       value = 256000 ; // roughly 2 * 60ms * 15 Mbit
-      if (max_send_bytes_available_ != value) {
+      if (max_send_bytes_available_ != (uint64_t) value) {
          send_bytes_available_ += value - max_send_bytes_available_;
          max_send_bytes_available_ = value;
       }

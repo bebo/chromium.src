@@ -20,8 +20,6 @@
 #include "base/strings/string_util.h"
 #include "base/threading/thread.h"
 #include "content/browser/browser_main_loop.h"
-#include "content/browser/renderer_host/media/media_stream_manager.h"
-#include "content/browser/renderer_host/media/media_stream_ui_proxy.h"
 #include "content/browser/renderer_host/media/video_capture_manager.h"
 #include "content/common/media/media_stream_controls.h"
 #include "content/public/browser/browser_thread.h"
@@ -106,7 +104,7 @@ void BeboDeviceOpenPropertyPageFunction::DoWork() {
       render_frame_host()->GetRoutingID(),
       123,
       content::StreamControls(true, true),
-      url::Origin(GURL(origin)),
+      url::Origin::Create(GURL(origin)),
       base::BindOnce(
         &BeboDeviceOpenPropertyPageFunction::MediaRequestPermissionCallback,
         this,

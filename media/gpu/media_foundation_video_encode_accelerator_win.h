@@ -105,7 +105,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   void QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe);
   bool DrainEvents();
   void ProcessInput();
-  bool ProcessEvent(base::win::ScopedComPtr<IMFMediaEvent> event);
+  bool ProcessEvent(Microsoft::WRL::ComPtr<IMFMediaEvent> event);
 
   // Checks for and copies encoded output on |encoder_thread_|.
   void ProcessOutput();
@@ -142,7 +142,7 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
 
   // Input samples waiting to be processed by the encoder
-  std::deque<base::win::ScopedComPtr<IMFSample>> input_sample_queue_;
+  std::deque<Microsoft::WRL::ComPtr<IMFSample>> input_sample_queue_;
 
   gfx::Size input_visible_size_;
   size_t bitstream_buffer_size_;
@@ -156,32 +156,33 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   size_t v_stride_;
 
   // debug counters
-  uint64_t dropped_input_cnt_ = 0;
-  uint64_t dropped_bitstream_queue_cnt_ = 0;
+  uint64_t dropped_input_cnt_;
+  uint64_t dropped_bitstream_queue_cnt_;
 
+  std::atomic<bool> alive_;
+  std::atomic<uint32_t> input_events_;
+  std::atomic<uint32_t> output_events_;
+  HANDLE drained_;
 
-  /* std::atomic<uint32_t> kill_cnt_ = 0; */
-  std::atomic<uint32_t> input_events_ = 0;
-  std::atomic<uint32_t> output_events_ = 0;
+  Microsoft::WRL::ComPtr<IMFMediaEventGenerator> imf_media_event_generator_;
+  Microsoft::WRL::ComPtr<IMFTransform> encoder_;
+  Microsoft::WRL::ComPtr<ICodecAPI> codec_api_;
 
-  base::win::ScopedComPtr<IMFMediaEventGenerator> imf_media_event_generator_;
-  base::win::ScopedComPtr<IMFTransform> encoder_;
-  base::win::ScopedComPtr<ICodecAPI> codec_api_;
-  HANDLE drained_ = NULL;
-
-  std::atomic<bool> alive_ = true;
+  std::string implementation_name_;
 
   DWORD input_stream_id_;
   DWORD output_stream_id_;
 
+  base::AtomicRefCount ref_count_;
+
   Microsoft::WRL::ComPtr<IMFMediaType> imf_input_media_type_;
   Microsoft::WRL::ComPtr<IMFMediaType> imf_output_media_type_;
 
-  base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetInputSample();
-  base::win::ScopedComPtr<IMFSample> MediaFoundationVideoEncodeAccelerator::GetOutputSample();
+  Microsoft::WRL::ComPtr<IMFSample> GetInputSample();
+  Microsoft::WRL::ComPtr<IMFSample> GetOutputSample();
 
-  std::list<base::win::ScopedComPtr<IMFSample>> input_sample_pool_;
-  std::list<base::win::ScopedComPtr<IMFSample>> output_sample_pool_;
+  std::list<Microsoft::WRL::ComPtr<IMFSample>> input_sample_pool_;
+  std::list<Microsoft::WRL::ComPtr<IMFSample>> output_sample_pool_;
 
   bool encoder_provides_samples_;
 
@@ -208,9 +209,6 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   base::WeakPtrFactory<MediaFoundationVideoEncodeAccelerator>
       encoder_task_weak_factory_;
 
-  std::string implementation_name_;
-
-  base::AtomicRefCount ref_count_;
   DISALLOW_COPY_AND_ASSIGN(MediaFoundationVideoEncodeAccelerator);
 };
 
