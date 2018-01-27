@@ -156,7 +156,7 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   // EncodeOutput needs to be copied into a BitstreamBufferRef as a FIFO.
   base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
 
-  void drain_encoder();
+  void DrainEncoder();
   void ConfigureFromRegistry();
   void SetFrameRate(uint32_t framerate);
   void SetBitRate(uint32_t bitrate);
@@ -173,9 +173,9 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   std::string implementation_name_;
   AVCodec *codec_;
   AVCodecContext *avc_context_;
-  /* AVDictionary *fmt_dict_opts; */
-  /* BitstreamBuffer output_buffer_; */
-  /* Client* client_; */
+
+  AVPacket* X264VideoEncodeAccelerator::VideoFrameToAVPacket(
+    const scoped_refptr<VideoFrame>& frame);
 
   // To expose client callbacks from VideoEncodeAccelerator.
   // NOTE: all calls to this object *MUST* be executed on
@@ -200,8 +200,6 @@ class X264VideoEncodeAccelerator : public VideoEncodeAccelerator {
   base::WeakPtrFactory<X264VideoEncodeAccelerator>
       encoder_task_weak_factory_;
 
-  AVPacket* X264VideoEncodeAccelerator::VideoFrameToAVPacket(
-    const scoped_refptr<VideoFrame>& frame);
   DISALLOW_COPY_AND_ASSIGN(X264VideoEncodeAccelerator);
 };
 

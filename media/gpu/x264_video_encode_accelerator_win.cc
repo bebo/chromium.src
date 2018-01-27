@@ -98,7 +98,6 @@ X264VideoEncodeAccelerator::X264VideoEncodeAccelerator()
       encoder_task_weak_factory_(this),
       target_bitrate_(0),
       frame_rate_(0) {
-  /* fmt_dict_opts = NULL; */
   LOG(INFO) << "X264 Constructor. " << __func__;
 }
 
@@ -124,6 +123,7 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
 
   std::string preset = "veryfast";
   std::string x264_params = "";
+  std::string tune = "";
   DWORD max_b_frames = 0;
   DWORD rc_buffer_size = 12000000;
   DWORD crf = 0;
@@ -131,7 +131,6 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   DWORD twopass = 0;
 
   if (beboKey.Valid()) {
-
     if (beboKey.HasValue(L"preset")) {
       std::wstring value;
       beboKey.ReadValue(L"preset", &value);
@@ -164,11 +163,21 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
        beboKey.ReadValueDW(L"twopass", &twopass);
     }
 
+    if (beboKey.HasValue(L"tune")) {
+      std::wstring value;
+      beboKey.ReadValue(L"tune", &value);
+      tune= base::WideToUTF8(value);
+    }
   }
 
   if (codec_->id == AV_CODEC_ID_H264) {
     av_opt_set(avc_context_->priv_data, "preset", preset.c_str(), 0);
-    LOG(INFO) << "preset: " << preset.c_str();
+    LOG(INFO) << "preset: " << preset;
+  }
+
+  if (tune.length() > 0) {
+    av_opt_set(avc_context_->priv_data, "tune", tune.c_str(), 0);
+    LOG(INFO) << "tune: " << tune;
   }
 
   avc_context_->max_b_frames = max_b_frames;
@@ -348,7 +357,7 @@ void X264VideoEncodeAccelerator::Encode(
                             force_keyframe));
 }
 
-void X264VideoEncodeAccelerator::drain_encoder() {
+void X264VideoEncodeAccelerator::DrainEncoder() {
 
   while(!bitstream_buffer_queue_.empty()) {
 
@@ -565,7 +574,7 @@ void X264VideoEncodeAccelerator::EncodeTask(
     LOG(ERROR) << "avcodec_send_frame failed with status: " << err;
     return;
   }
-  drain_encoder();
+  DrainEncoder();
 }
 
 void X264VideoEncodeAccelerator::UseOutputBitstreamBufferTask(
