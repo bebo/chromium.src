@@ -8,7 +8,7 @@ vars = {
   'x264_revision':
     'origin/bebo27',
   'mfx_dispatch_revision':
-    'origin/bebo27',
+    'origin/master',
   'webrtc_revision':
     'origin/bebo27',
   'angle_revision':
