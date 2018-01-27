@@ -164,10 +164,6 @@ source_set("sender") {
     "//ui/gfx/geometry",
   ]
 
-  libs = [
-    "//third_party/ffmpeg/build.x64.win/Chrome/libavcodec/avcodec.lib",
-  ]
-
   # iOS and OS X encoders
   if (is_ios || is_mac) {
     sources += [

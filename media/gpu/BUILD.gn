@@ -364,6 +364,7 @@ component("gpu") {
       "//third_party/libyuv",
       "//ui/display",
       "//third_party/ffmpeg",
+      "//third_party/ffmpeg:ffmpeg_features",
     ]
     libs += [
       "d3d9.lib",
@@ -372,9 +373,7 @@ component("gpu") {
       "strmiids.lib",
       "mf.lib",
       "mfplat.lib",
-      "mfuuid.lib", 
-      "//third_party/ffmpeg/build.x64.win/Chrome/libavcodec/avcodec.lib", # Is this how we import libs?
-      "//third_party/ffmpeg/build.x64.win/Chrome/libavutil/avutil.lib", # Is this how we import libs?
+      "mfuuid.lib"
     ]
     ldflags += [
       "/DELAYLOAD:d3d9.dll",
