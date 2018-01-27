@@ -56,7 +56,7 @@ namespace {
 const int32_t kDefaultTargetBitrate = 6000000;
 const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
-const size_t kNumInputBuffers = 3;
+const size_t kNumInputBuffers = 6;
 const size_t kMaxKeyFrameInterval = 15; // seconds
 
 }  // namespace
@@ -125,7 +125,7 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   std::string preset = "veryfast";
   std::string x264_params = "";
   DWORD max_b_frames = 0;
-  DWORD rc_buffer_size = 2 * 10000000;
+  DWORD rc_buffer_size = 12000000;
   DWORD crf = 0;
   DWORD global_quality = 0;
   DWORD twopass = 0;
@@ -368,8 +368,51 @@ void X264VideoEncodeAccelerator::drain_encoder() {
     std::unique_ptr<X264VideoEncodeAccelerator::BitstreamBufferRef>
         buffer_ref = std::move(bitstream_buffer_queue_.front());
     bitstream_buffer_queue_.pop_front();
-    memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
 
+    if (buffer_ref->size < receive_packet.size) {
+
+      memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, buffer_ref->size);
+      LOG(INFO) << "avcodec_receive_packet size: " << buffer_ref->size
+        << " keyframe: " << is_keyframe
+        << " pts: " << receive_packet.pts;
+      encode_client_task_runner_->PostTask(
+          FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
+                                buffer_ref->id, buffer_ref->size, is_keyframe,
+                                base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+      int32_t copied = buffer_ref->size;
+
+      while (copied < receive_packet.size) {
+
+        // FIXME - need to have an extra output buffer queue for this ...
+        if (bitstream_buffer_queue_.empty()) {
+          LOG(ERROR) << "NO BUFFER FOR NEXT FRAME";
+          av_packet_unref(&receive_packet);
+          return;
+        }
+
+        buffer_ref = std::move(bitstream_buffer_queue_.front());
+        bitstream_buffer_queue_.pop_front();
+
+        uint32_t copy_size = receive_packet.size - copied;
+        if (copy_size > buffer_ref->size) {
+          copy_size = buffer_ref->size;
+        }
+
+        memcpy(buffer_ref->shm->memory(), (void*) (receive_packet.data + copied),
+            copy_size);
+        LOG(INFO) << "avcodec_receive_packet size: " << copy_size
+          << " keyframe: " << is_keyframe
+          << " pts: " << receive_packet.pts;
+        encode_client_task_runner_->PostTask(
+            FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
+                                  buffer_ref->id, copy_size, is_keyframe,
+                                  base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+        copied += copy_size;
+      }
+      av_packet_unref(&receive_packet);
+      return;
+    }
+    memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
 
     BVLOG(2) << "avcodec_receive_packet size: " << receive_packet.size
       << " keyframe: " << is_keyframe
