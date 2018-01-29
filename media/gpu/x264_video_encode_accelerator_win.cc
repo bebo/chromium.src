@@ -570,6 +570,7 @@ void X264VideoEncodeAccelerator::EncodeTask(
                    input_visible_size_.height());
 
   int err = avcodec_send_frame(avc_context_, av_frame);
+  av_frame_free(&av_frame);
   if (err < 0) {
     LOG(ERROR) << "avcodec_send_frame failed with status: " << err;
     return;
