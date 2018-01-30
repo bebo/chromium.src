@@ -21,18 +21,14 @@
 #include "base/win/scoped_comptr.h"
 #include "media/video/video_encode_accelerator.h"
 
-// ffmpeg binaries need to be built separately 
-extern "C"
-{
-MSVC_PUSH_DISABLE_WARNING(4244);
+// ffmpeg binaries need to be built separately
+extern "C" {
 #include "libavcodec/avcodec.h"
-MSVC_POP_WARNING();
 }
 namespace media {
 
 // Video encoder interface.
-class MEDIA_EXPORT QsvVideoEncodeAccelerator
-    : public VideoEncodeAccelerator {
+class QsvVideoEncodeAccelerator : public VideoEncodeAccelerator {
  public:
   QsvVideoEncodeAccelerator();
 
@@ -59,17 +55,17 @@ class MEDIA_EXPORT QsvVideoEncodeAccelerator
   //  be valid until Destroy() is called.
   // TODO(sheu): handle resolution changes.  http://crbug.com/249944
   bool Initialize(VideoPixelFormat input_format,
-                          const gfx::Size& input_visible_size,
-                          VideoCodecProfile output_profile,
-                          uint32_t initial_bitrate,
-                          Client* client) override;
+                  const gfx::Size& input_visible_size,
+                  VideoCodecProfile output_profile,
+                  uint32_t initial_bitrate,
+                  Client* client) override;
 
   // Encodes the given frame.
   // Parameters:
   //  |frame| is the VideoFrame that is to be encoded.
   //  |force_keyframe| forces the encoding of a keyframe for this frame.
   void Encode(const scoped_refptr<VideoFrame>& frame,
-                      bool force_keyframe) override;
+              bool force_keyframe) override;
 
   // Send a bitstream buffer to the encoder to be used for storing future
   // encoded output.  Each call here with a given |buffer| will cause the buffer
@@ -84,7 +80,7 @@ class MEDIA_EXPORT QsvVideoEncodeAccelerator
   //  |bitrate| is the requested new bitrate, in bits per second.
   //  |framerate| is the requested new framerate, in frames per second.
   void RequestEncodingParametersChange(uint32_t bitrate,
-                                               uint32_t framerate) override;
+                                       uint32_t framerate) override;
 
   // Destroys the encoder: all pending inputs and outputs are dropped
   // immediately and the component is freed.  This call may asynchronously free
@@ -108,17 +104,105 @@ class MEDIA_EXPORT QsvVideoEncodeAccelerator
   // One application of this is offloading the GPU main thread. This helps
   // reduce latency and jitter by avoiding the wait.
 
-  // FIXME: Do we need to do this?
-  // virtual bool TryToSetupEncodeOnSeparateThread(
-  //    const base::WeakPtr<Client>& encode_client,
-  //    const scoped_refptr<base::SingleThreadTaskRunner>& encode_task_runner);
+  bool TryToSetupEncodeOnSeparateThread(
+      const base::WeakPtr<Client>& encode_client,
+      const scoped_refptr<base::SingleThreadTaskRunner>& encode_task_runner)
+      override;
 
  protected:
   // Do not delete directly; use Destroy() or own it with a scoped_ptr, which
   // will Destroy() it properly by default.
   ~QsvVideoEncodeAccelerator() override;
+
+ private:
+  // Holds output buffers coming from the client ready to be filled.
+  struct BitstreamBufferRef;
+
+  // Holds output buffers coming from the encoder.
+  class EncodeOutput;
+
+  // Encoding tasks to be run on |encoder_thread_|.
+  void EncodeTask(scoped_refptr<VideoFrame> frame, bool force_keyframe);
+
+  // Helper function to notify the client of an error on
+  // |main_client_task_runner_|.
+  void NotifyError(VideoEncodeAccelerator::Error error);
+
+  // Inserts the output buffers for reuse on |encoder_thread_|.
+  void UseOutputBitstreamBufferTask(
+      std::unique_ptr<BitstreamBufferRef> buffer_ref);
+
+  // Copies EncodeOutput into a BitstreamBuffer and returns it to the
+  // |encode_client_|.
+  void ReturnBitstreamBuffer(
+      std::unique_ptr<EncodeOutput> encode_output,
+      std::unique_ptr<QsvVideoEncodeAccelerator::BitstreamBufferRef>
+          buffer_ref);
+
+  // Changes encode parameters on |encoder_thread_|.
+  void RequestEncodingParametersChangeTask(uint32_t bitrate,
+                                           uint32_t framerate);
+
+  // Destroys encode session on |encoder_thread_|.
+  void DestroyTask();
+
+  // Releases resources encoder holds.
+  void ReleaseEncoderResources();
+
+  // Bitstream buffers ready to be used to return encoded output as a FIFO.
+  base::circular_deque<std::unique_ptr<BitstreamBufferRef>>
+      bitstream_buffer_queue_;
+
+  // EncodeOutput needs to be copied into a BitstreamBufferRef as a FIFO.
+  base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
+
+  void DrainEncoder();
+  void ConfigureFromRegistry();
+  void SetFrameRate(uint32_t framerate);
+  void SetBitRate(uint32_t bitrate);
+
+  gfx::Size input_visible_size_;
+  size_t bitstream_buffer_size_;
+  uint32_t frame_rate_;
+  uint32_t target_bitrate_;
+  size_t u_plane_offset_;
+  size_t v_plane_offset_;
+  size_t y_stride_;
+  size_t u_stride_;
+  size_t v_stride_;
+  std::string implementation_name_;
+  AVCodec *codec_;
+  AVCodecContext *avc_context_;
+
+  AVPacket* QsvVideoEncodeAccelerator::VideoFrameToAVPacket(
+    const scoped_refptr<VideoFrame>& frame);
+
+  // To expose client callbacks from VideoEncodeAccelerator.
+  // NOTE: all calls to this object *MUST* be executed on
+  // |main_client_task_runner_|.
+  base::WeakPtr<Client> main_client_;
+  std::unique_ptr<base::WeakPtrFactory<Client>> main_client_weak_factory_;
+  scoped_refptr<base::SingleThreadTaskRunner> main_client_task_runner_;
+
+  // Used to run client callback BitstreamBufferReady() on
+  // |encode_client_task_runner_| if given by
+  // TryToSetupEncodeOnSeparateThread().
+  base::WeakPtr<Client> encode_client_;
+  scoped_refptr<base::SingleThreadTaskRunner> encode_client_task_runner_;
+
+  // This thread services tasks posted from the VEA API entry points by the
+  // GPU child thread and CompressionCallback() posted from device thread.
+  base::Thread encoder_thread_;
+  scoped_refptr<base::SingleThreadTaskRunner> encoder_thread_task_runner_;
+
+  // Declared last to ensure that all weak pointers are invalidated before
+  // other destructors run.
+  base::WeakPtrFactory<QsvVideoEncodeAccelerator>
+      encoder_task_weak_factory_;
+
+  DISALLOW_COPY_AND_ASSIGN(QsvVideoEncodeAccelerator);
 };
 
 }  // namespace media
 
-#endif  // MEDIA_GPU_MEDIA_FOUNDATION_VIDEO_ENCODE_ACCELERATOR_WIN_H_
+#endif  // Qsv_VIDEO_ENCODE_ACCELERATOR_WIN_H_

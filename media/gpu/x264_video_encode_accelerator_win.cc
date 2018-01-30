@@ -45,8 +45,11 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
+<<<<<<< HEAD
 #include "x264.h"
 
+=======
+>>>>>>> Added NVENC files.
 }
 
 using base::win::RegKey;
@@ -61,7 +64,7 @@ const int32_t kDefaultTargetBitrate = 6000000;
 const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
-const size_t kMaxKeyFrameInterval = 15; // seconds
+const size_t kMaxKeyFrameInterval = 15;  // seconds
 
 std::mutex logger_cb_mutex ;
 
@@ -148,15 +151,15 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     }
 
     if (beboKey.HasValue(L"max_b_frames")) {
-       beboKey.ReadValueDW(L"max_b_frames", &max_b_frames);
+      beboKey.ReadValueDW(L"max_b_frames", &max_b_frames);
     }
 
     if (beboKey.HasValue(L"rc_buffer_size")) {
-       beboKey.ReadValueDW(L"rc_buffer_size", &rc_buffer_size);
+      beboKey.ReadValueDW(L"rc_buffer_size", &rc_buffer_size);
     }
 
     if (beboKey.HasValue(L"crf")) {
-       beboKey.ReadValueDW(L"crf", &crf);
+      beboKey.ReadValueDW(L"crf", &crf);
     }
 
     if (beboKey.HasValue(L"cqp")) {
@@ -170,11 +173,11 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     }
 
     if (beboKey.HasValue(L"global_quality")) {
-       beboKey.ReadValueDW(L"global_quality", &global_quality);
+      beboKey.ReadValueDW(L"global_quality", &global_quality);
     }
 
     if (beboKey.HasValue(L"twopass")) {
-       beboKey.ReadValueDW(L"twopass", &twopass);
+      beboKey.ReadValueDW(L"twopass", &twopass);
     }
 
     if (beboKey.HasValue(L"tune")) {
@@ -215,7 +218,16 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
   }
 
+<<<<<<< HEAD
   if (global_quality > 0)  {
+=======
+  if (x264_params.length() > 3) {
+    av_opt_set(avc_context_->priv_data, "x264-params", x264_params.c_str(), 0);
+    LOG(INFO) << "x264-params: " << x264_params.c_str();
+  }
+
+  if (global_quality > 0) {
+>>>>>>> Added NVENC files.
     avc_context_->global_quality = global_quality;
     LOG(INFO) << "global_quality: " << global_quality;
   }
@@ -256,6 +268,19 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
                                             uint32_t initial_bitrate,
                                             Client* client) {
   LOG(INFO) << "Initializing X264 encoder " << __func__;
+  avcodec_register_all();
+  LOG(INFO) << "X264 Enumerating Codecs.";
+  AVCodec* current_codec = NULL;
+  current_codec = av_codec_next(current_codec);
+  while (current_codec != NULL) {
+    if (av_codec_is_encoder(current_codec)) {
+      LOG(INFO) << "Found Encoder: " << current_codec->name;
+    } else {
+      LOG(INFO) << "Not an encoder: " << current_codec->name;
+    }
+    current_codec = av_codec_next(current_codec);
+  }
+  LOG(INFO) << "Finished Enumerating Codecs.";
 
   if (initial_bitrate == 300000) {
     initial_bitrate = kDefaultTargetBitrate;
@@ -263,11 +288,11 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
 
   if (PIXEL_FORMAT_I420 != format) {
     LOG(ERROR) << "Input format not supported= "
-                << VideoPixelFormatToString(format);
+               << VideoPixelFormatToString(format);
     return false;
   }
 
-  encoder_thread_.init_com_with_mta(false); // TODO: this seems odd
+  encoder_thread_.init_com_with_mta(false);  // TODO: this seems odd
   if (!encoder_thread_.Start()) {
     DLOG(ERROR) << "Failed spawning encoder thread.";
     return false;
@@ -283,11 +308,12 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
 
   u_plane_offset_ =
       VideoFrame::PlaneSize(PIXEL_FORMAT_I420, VideoFrame::kYPlane,
-                            input_visible_size_).GetArea();
-  v_plane_offset_ = u_plane_offset_ +
-    VideoFrame::PlaneSize(PIXEL_FORMAT_I420,
-                          VideoFrame::kUPlane,
-                          input_visible_size_).GetArea();
+                            input_visible_size_)
+          .GetArea();
+  v_plane_offset_ = u_plane_offset_ + VideoFrame::PlaneSize(PIXEL_FORMAT_I420,
+                                                            VideoFrame::kUPlane,
+                                                            input_visible_size_)
+                                          .GetArea();
   y_stride_ = VideoFrame::RowBytes(VideoFrame::kYPlane, PIXEL_FORMAT_I420,
                                    input_visible_size_.width());
   u_stride_ = VideoFrame::RowBytes(VideoFrame::kUPlane, PIXEL_FORMAT_I420,
@@ -337,12 +363,13 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
     LOG(ERROR) << "Could not open codec: " << ret;
     return false;
   };
-  LOG(INFO) << "Initialized x264 encoder with codec " << "libx264";
+  LOG(INFO) << "Initialized x264 encoder with codec "
+            << "libx264";
 
   implementation_name_ = "ffmpeg - libx264";
   main_client_task_runner_->PostTask(
       FROM_HERE, base::Bind(&Client::SetImplementationName, main_client_,
-      implementation_name_));
+                            implementation_name_));
   VLOG(3) << "Posting SetImplementationName: " << implementation_name_;
 
   main_client_task_runner_->PostTask(
@@ -382,9 +409,8 @@ void X264VideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
   target_bitrate_ = bitrate;
 }
 
-void X264VideoEncodeAccelerator::Encode(
-    const scoped_refptr<VideoFrame>& frame,
-    bool force_keyframe) {
+void X264VideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
+                                        bool force_keyframe) {
   DVLOG(3) << __func__;
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
 
@@ -395,9 +421,7 @@ void X264VideoEncodeAccelerator::Encode(
 }
 
 void X264VideoEncodeAccelerator::DrainEncoder() {
-
-  while(!bitstream_buffer_queue_.empty()) {
-
+  while (!bitstream_buffer_queue_.empty()) {
     AVPacket receive_packet = {0};
     av_init_packet(&receive_packet);
 
@@ -411,23 +435,28 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
 
     bool is_keyframe = receive_packet.flags & AV_PKT_FLAG_KEY;
 
-    std::unique_ptr<X264VideoEncodeAccelerator::BitstreamBufferRef>
-        buffer_ref = std::move(bitstream_buffer_queue_.front());
+    std::unique_ptr<X264VideoEncodeAccelerator::BitstreamBufferRef> buffer_ref =
+        std::move(bitstream_buffer_queue_.front());
     bitstream_buffer_queue_.pop_front();
 
     if (buffer_ref->size < receive_packet.size) {
+<<<<<<< HEAD
       memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, buffer_ref->size);
+=======
+      memcpy(buffer_ref->shm->memory(), (void*)receive_packet.data,
+             buffer_ref->size);
+>>>>>>> Added NVENC files.
       LOG(INFO) << "avcodec_receive_packet size: " << buffer_ref->size
-        << " keyframe: " << is_keyframe
-        << " pts: " << receive_packet.pts;
+                << " keyframe: " << is_keyframe
+                << " pts: " << receive_packet.pts;
       encode_client_task_runner_->PostTask(
-          FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
-                                buffer_ref->id, buffer_ref->size, is_keyframe,
-                                base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+          FROM_HERE,
+          base::Bind(&Client::BitstreamBufferReady, encode_client_,
+                     buffer_ref->id, buffer_ref->size, is_keyframe,
+                     base::TimeDelta::FromMilliseconds(receive_packet.pts)));
       int32_t copied = buffer_ref->size;
 
       while (copied < receive_packet.size) {
-
         // FIXME - need to have an extra output buffer queue for this ...
         if (bitstream_buffer_queue_.empty()) {
           LOG(ERROR) << "NO BUFFER FOR NEXT FRAME";
@@ -443,31 +472,37 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
           copy_size = buffer_ref->size;
         }
 
-        memcpy(buffer_ref->shm->memory(), (void*) (receive_packet.data + copied),
-            copy_size);
+        memcpy(buffer_ref->shm->memory(), (void*)(receive_packet.data + copied),
+               copy_size);
         LOG(INFO) << "avcodec_receive_packet size: " << copy_size
-          << " keyframe: " << is_keyframe
-          << " pts: " << receive_packet.pts;
+                  << " keyframe: " << is_keyframe
+                  << " pts: " << receive_packet.pts;
         encode_client_task_runner_->PostTask(
-            FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
-                                  buffer_ref->id, copy_size, is_keyframe,
-                                  base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+            FROM_HERE,
+            base::Bind(&Client::BitstreamBufferReady, encode_client_,
+                       buffer_ref->id, copy_size, is_keyframe,
+                       base::TimeDelta::FromMilliseconds(receive_packet.pts)));
         copied += copy_size;
       }
       av_packet_unref(&receive_packet);
       return;
     }
+<<<<<<< HEAD
 
     memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
+=======
+    memcpy(buffer_ref->shm->memory(), (void*)receive_packet.data,
+           receive_packet.size);
+>>>>>>> Added NVENC files.
 
     BVLOG(2) << "avcodec_receive_packet size: " << receive_packet.size
-      << " keyframe: " << is_keyframe
-      << " pts: " << receive_packet.pts;
+             << " keyframe: " << is_keyframe << " pts: " << receive_packet.pts;
 
     encode_client_task_runner_->PostTask(
-        FROM_HERE, base::Bind(&Client::BitstreamBufferReady, encode_client_,
-                              buffer_ref->id, receive_packet.size, is_keyframe,
-                              base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+        FROM_HERE,
+        base::Bind(&Client::BitstreamBufferReady, encode_client_,
+                   buffer_ref->id, receive_packet.size, is_keyframe,
+                   base::TimeDelta::FromMilliseconds(receive_packet.pts)));
     av_packet_unref(&receive_packet);
   }
 }
@@ -484,7 +519,7 @@ void X264VideoEncodeAccelerator::UseOutputBitstreamBuffer(
 
   if (buffer.size() < bitstream_buffer_size_) {
     LOG(ERROR) << "Output BitstreamBuffer isn't big enough: " << buffer.size()
-                << " vs. " << bitstream_buffer_size_;
+               << " vs. " << bitstream_buffer_size_;
     NotifyError(kInvalidArgumentError);
     return;
   }
@@ -501,9 +536,9 @@ void X264VideoEncodeAccelerator::UseOutputBitstreamBuffer(
       new BitstreamBufferRef(buffer.id(), std::move(shm), buffer.size()));
   encoder_thread_task_runner_->PostTask(
       FROM_HERE,
-      base::Bind(
-          &X264VideoEncodeAccelerator::UseOutputBitstreamBufferTask,
-          encoder_task_weak_factory_.GetWeakPtr(), base::Passed(&buffer_ref)));
+      base::Bind(&X264VideoEncodeAccelerator::UseOutputBitstreamBufferTask,
+                 encoder_task_weak_factory_.GetWeakPtr(),
+                 base::Passed(&buffer_ref)));
 }
 
 // Request a change to the encoding parameters.  This is only a request,
@@ -514,16 +549,15 @@ void X264VideoEncodeAccelerator::UseOutputBitstreamBuffer(
 void X264VideoEncodeAccelerator::RequestEncodingParametersChange(
     uint32_t bitrate,
     uint32_t framerate) {
-
   DVLOG(3) << __func__ << ": bitrate=" << bitrate
            << ": framerate=" << framerate;
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
 
   encoder_thread_task_runner_->PostTask(
       FROM_HERE,
-      base::Bind(&X264VideoEncodeAccelerator::
-                     RequestEncodingParametersChangeTask,
-                 encoder_task_weak_factory_.GetWeakPtr(), bitrate, framerate));
+      base::Bind(
+          &X264VideoEncodeAccelerator::RequestEncodingParametersChangeTask,
+          encoder_task_weak_factory_.GetWeakPtr(), bitrate, framerate));
 }
 
 // Destroys the encoder: all pending inputs and outputs are dropped
@@ -545,9 +579,8 @@ void X264VideoEncodeAccelerator::Destroy() {
 
   if (encoder_thread_.IsRunning()) {
     encoder_thread_task_runner_->PostTask(
-        FROM_HERE,
-        base::Bind(&X264VideoEncodeAccelerator::DestroyTask,
-                   encoder_task_weak_factory_.GetWeakPtr()));
+        FROM_HERE, base::Bind(&X264VideoEncodeAccelerator::DestroyTask,
+                              encoder_task_weak_factory_.GetWeakPtr()));
     encoder_thread_.Stop();
   }
 
@@ -572,10 +605,8 @@ void X264VideoEncodeAccelerator::NotifyError(
       FROM_HERE, base::Bind(&Client::NotifyError, main_client_, error));
 }
 
-void X264VideoEncodeAccelerator::EncodeTask(
-    scoped_refptr<VideoFrame> frame,
-    bool force_keyframe) {
-
+void X264VideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
+                                            bool force_keyframe) {
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
   AVFrame* av_frame = av_frame_alloc();
 
@@ -597,13 +628,11 @@ void X264VideoEncodeAccelerator::EncodeTask(
   libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane),
                    frame->stride(VideoFrame::kYPlane),
                    frame->visible_data(VideoFrame::kUPlane),
-                   frame->stride(VideoFrame::kUPlane), 
+                   frame->stride(VideoFrame::kUPlane),
                    frame->visible_data(VideoFrame::kVPlane),
-                   frame->stride(VideoFrame::kVPlane),
-                   av_frame->data[0], y_stride_,
-                   av_frame->data[1], u_stride_,
-                   av_frame->data[2], v_stride_,
-                   input_visible_size_.width(),
+                   frame->stride(VideoFrame::kVPlane), av_frame->data[0],
+                   y_stride_, av_frame->data[1], u_stride_, av_frame->data[2],
+                   v_stride_, input_visible_size_.width(),
                    input_visible_size_.height());
 
   int err = avcodec_send_frame(avc_context_, av_frame);
@@ -622,8 +651,8 @@ void X264VideoEncodeAccelerator::UseOutputBitstreamBufferTask(
 
   // If there is already EncodeOutput waiting, copy its output first.
   if (!encoder_output_queue_.empty()) {
-    std::unique_ptr<X264VideoEncodeAccelerator::EncodeOutput>
-        encode_output = std::move(encoder_output_queue_.front());
+    std::unique_ptr<X264VideoEncodeAccelerator::EncodeOutput> encode_output =
+        std::move(encoder_output_queue_.front());
     encoder_output_queue_.pop_front();
     ReturnBitstreamBuffer(std::move(encode_output), std::move(buffer_ref));
     return;
@@ -656,7 +685,9 @@ void X264VideoEncodeAccelerator::RequestEncodingParametersChangeTask(
 
   if (bitrate == 300000) {
     // TODO figure out where this comes from
-    LOG(INFO) << "ignoring initial wrong bitrate - CODECAPI_AVEncCommonMeanBitRate: " << bitrate;
+    LOG(INFO)
+        << "ignoring initial wrong bitrate - CODECAPI_AVEncCommonMeanBitRate: "
+        << bitrate;
     return;
   }
   SetFrameRate(framerate);
@@ -674,8 +705,7 @@ void X264VideoEncodeAccelerator::DestroyTask() {
 void X264VideoEncodeAccelerator::ReleaseEncoderResources() {
   LOG(INFO) << __func__;
 
-//  encoder_.Reset();
+  //  encoder_.Reset();
 }
-
 
 }  // namespace media

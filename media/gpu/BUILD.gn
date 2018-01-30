@@ -352,6 +352,8 @@ component("gpu") {
       "x264_video_encode_accelerator_win.h",
       "qsv_video_encode_accelerator_win.cc",
       "qsv_video_encode_accelerator_win.h",
+      "nvenc_video_encode_accelerator_win.cc",
+      "nvenc_video_encode_accelerator_win.h",
     ]
     configs += [
       # TODO(crbug.com/167187): Fix size_t to int truncations.
