@@ -129,8 +129,10 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
 
   std::string preset = "veryfast";
+  std::string tune = "zerolatency";
   std::string x264_params = "";
-  std::string tune = "";
+  // std::string x264_params = "vbv-maxrate=7000:vbv-bufsize=14000:rc-lookahead=3:sync-lookahead=-1:sliced-threads=0:threads=16"; // VBV
+  // std::string x264_params = "b-frames=3:ref=1:nal-hrd=cbr:force-cfr=1";  // CBR
   DWORD max_b_frames = 0;
   DWORD rc_buffer_size = 12000000;
   DWORD crf = 0;
@@ -178,7 +180,7 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     if (beboKey.HasValue(L"tune")) {
       std::wstring value;
       beboKey.ReadValue(L"tune", &value);
-      tune= base::WideToUTF8(value);
+      tune = base::WideToUTF8(value);
     }
   }
 
@@ -213,12 +215,6 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
   }
 
-  if (x264_params.length() > 3)  {
-    av_opt_set(avc_context_->priv_data,
-               "x264-params", x264_params.c_str(), 0);
-    LOG(INFO) << "x264-params: " << x264_params.c_str();
-  }
-
   if (global_quality > 0)  {
     avc_context_->global_quality = global_quality;
     LOG(INFO) << "global_quality: " << global_quality;
@@ -229,7 +225,11 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     LOG(INFO) << "2pass: " << twopass;
   }
 
-  // crf_max
+  if (x264_params.length() > 3)  {
+    av_opt_set(avc_context_->priv_data,
+               "x264-params", x264_params.c_str(), 0);
+    LOG(INFO) << "x264-params: " << x264_params.c_str();
+  }
 }
 
 
@@ -362,6 +362,7 @@ void X264VideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
   if (old_frame_rate == frame_rate_) {
     return;
   }
+
   avc_context_->framerate.num = frame_rate_;
   avc_context_->keyint_min = frame_rate_;
   avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
@@ -369,12 +370,12 @@ void X264VideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
 }
 
 void X264VideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
-
   if (target_bitrate_ == bitrate) {
     return;
   }
 
   avc_context_->bit_rate = bitrate;
+  avc_context_->rc_min_rate = bitrate / 2;
   avc_context_->rc_max_rate = bitrate;
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
@@ -415,7 +416,6 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
     bitstream_buffer_queue_.pop_front();
 
     if (buffer_ref->size < receive_packet.size) {
-
       memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, buffer_ref->size);
       LOG(INFO) << "avcodec_receive_packet size: " << buffer_ref->size
         << " keyframe: " << is_keyframe
@@ -457,6 +457,7 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
       av_packet_unref(&receive_packet);
       return;
     }
+
     memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
 
     BVLOG(2) << "avcodec_receive_packet size: " << receive_packet.size
@@ -652,7 +653,6 @@ void X264VideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     uint32_t framerate) {
   BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
-
 
   if (bitrate == 300000) {
     // TODO figure out where this comes from
