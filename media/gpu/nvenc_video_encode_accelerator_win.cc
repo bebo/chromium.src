@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "media/gpu/Nvenc_video_encode_accelerator_win.h"
+#include "media/gpu/NvEnc_video_encode_accelerator_win.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4800)  // Disable warning for added padding.
@@ -52,7 +52,7 @@ namespace media {
 
 namespace {
 
-const int32_t kDefaultTargetBitrate = 6000000;
+const int32_t kDefaultTargetBitrate = 10000000;
 const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
@@ -60,7 +60,7 @@ const size_t kMaxKeyFrameInterval = 15;  // seconds
 
 }  // namespace
 
-class NvencVideoEncodeAccelerator::EncodeOutput {
+class NvEncVideoEncodeAccelerator::EncodeOutput {
  public:
   EncodeOutput(uint32_t size, bool key_frame, base::TimeDelta timestamp)
       : keyframe(key_frame), capture_timestamp(timestamp), data_(size) {}
@@ -78,7 +78,7 @@ class NvencVideoEncodeAccelerator::EncodeOutput {
   DISALLOW_COPY_AND_ASSIGN(EncodeOutput);
 };
 
-struct NvencVideoEncodeAccelerator::BitstreamBufferRef {
+struct NvEncVideoEncodeAccelerator::BitstreamBufferRef {
   BitstreamBufferRef(int32_t id,
                      std::unique_ptr<base::SharedMemory> shm,
                      size_t size)
@@ -91,20 +91,20 @@ struct NvencVideoEncodeAccelerator::BitstreamBufferRef {
   DISALLOW_IMPLICIT_CONSTRUCTORS(BitstreamBufferRef);
 };
 
-NvencVideoEncodeAccelerator::NvencVideoEncodeAccelerator()
+NvEncVideoEncodeAccelerator::NvEncVideoEncodeAccelerator()
     : main_client_task_runner_(base::ThreadTaskRunnerHandle::Get()),
-      encoder_thread_("FFMPEGNvencEncoderThread"),
+      encoder_thread_("FFMPEGNvEncEncoderThread"),
       encoder_task_weak_factory_(this),
       target_bitrate_(0),
       frame_rate_(0) {
-  LOG(INFO) << "Nvenc Constructor. " << __func__;
+  LOG(INFO) << "NvEnc Constructor. " << __func__;
 }
 
-NvencVideoEncodeAccelerator::~NvencVideoEncodeAccelerator() {}
+NvEncVideoEncodeAccelerator::~NvEncVideoEncodeAccelerator() {}
 
 VideoEncodeAccelerator::SupportedProfiles
-NvencVideoEncodeAccelerator::GetSupportedProfiles() {
-  LOG(INFO) << "Nvenc Getting supported profiles.";
+NvEncVideoEncodeAccelerator::GetSupportedProfiles() {
+  LOG(INFO) << "NvEnc Getting supported profiles.";
   VideoEncodeAccelerator::SupportedProfiles profiles;
   VideoEncodeAccelerator::SupportedProfile profile;
 
@@ -117,7 +117,7 @@ NvencVideoEncodeAccelerator::GetSupportedProfiles() {
   return profiles;
 }
 
-void NvencVideoEncodeAccelerator::ConfigureFromRegistry() {
+void NvEncVideoEncodeAccelerator::ConfigureFromRegistry() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
 
   std::string nvenc_preset = "slow";
@@ -150,7 +150,7 @@ void NvencVideoEncodeAccelerator::ConfigureFromRegistry() {
     av_opt_set(avc_context_->priv_data, "vprofile", nvenc_vprofile.c_str(), 0);
     LOG(INFO) << "vprofile: " << nvenc_vprofile;
   }
-  if (nvenc_rc.length() > 0) {
+  if (NvEnc_rc.length() > 0) {
     av_opt_set(avc_context_->priv_data, "rc", nvenc_rc.c_str(), 0);
     LOG(INFO) << "rc: " << nvenc_rc;
   }
@@ -159,13 +159,13 @@ void NvencVideoEncodeAccelerator::ConfigureFromRegistry() {
   // cqp
 }
 
-bool NvencVideoEncodeAccelerator::Initialize(
+bool NvEncVideoEncodeAccelerator::Initialize(
     VideoPixelFormat format,
     const gfx::Size& input_visible_size,
     VideoCodecProfile output_profile,
     uint32_t initial_bitrate,
     Client* client) {
-  LOG(INFO) << "Initializing NVENC encoder " << __func__;
+  LOG(INFO) << "Initializing NvEnc encoder " << __func__;
 
   if (initial_bitrate == 300000) {
     initial_bitrate = kDefaultTargetBitrate;
@@ -215,9 +215,9 @@ bool NvencVideoEncodeAccelerator::Initialize(
 
   avcodec_register_all();
 
-  codec_ = avcodec_find_encoder_by_name("nvenc");
+  codec_ = avcodec_find_encoder_by_name("NvEnc");
   if (codec_ == NULL) {
-    LOG(ERROR) << "Failed to find NVENC encoder during initialization.";
+    LOG(ERROR) << "Failed to find NvEnc encoder during initialization.";
     return false;
   }
 
@@ -244,10 +244,10 @@ bool NvencVideoEncodeAccelerator::Initialize(
     LOG(ERROR) << "Could not open codec: " << ret;
     return false;
   };
-  LOG(INFO) << "Initialized Nvenc encoder with codec "
-            << "libNvenc";
+  LOG(INFO) << "Initialized NvEnc encoder with codec "
+            << "libNvEnc";
 
-  implementation_name_ = "ffmpeg - libNvenc";
+  implementation_name_ = "ffmpeg - NvEnc";
   main_client_task_runner_->PostTask(
       FROM_HERE, base::Bind(&Client::SetImplementationName, main_client_,
                             implementation_name_));
@@ -260,7 +260,7 @@ bool NvencVideoEncodeAccelerator::Initialize(
   return true;
 }
 
-void NvencVideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
+void NvEncVideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
   uint32_t old_frame_rate = frame_rate_;
   frame_rate_ =
       framerate
@@ -276,7 +276,7 @@ void NvencVideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
   LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_;
 }
 
-void NvencVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
+void NvEncVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
   if (target_bitrate_ == bitrate) {
     return;
   }
@@ -288,17 +288,17 @@ void NvencVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
   target_bitrate_ = bitrate;
 }
 
-void NvencVideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
+void NvEncVideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
                                          bool force_keyframe) {
   DVLOG(3) << __func__;
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
   encoder_thread_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&NvencVideoEncodeAccelerator::EncodeTask,
+      FROM_HERE, base::Bind(&NvEncVideoEncodeAccelerator::EncodeTask,
                             encoder_task_weak_factory_.GetWeakPtr(), frame,
                             force_keyframe));
 }
 
-void NvencVideoEncodeAccelerator::DrainEncoder() {
+void NvEncVideoEncodeAccelerator::DrainEncoder() {
   while (!bitstream_buffer_queue_.empty()) {
     AVPacket receive_packet = {0};
     av_init_packet(&receive_packet);
@@ -313,7 +313,7 @@ void NvencVideoEncodeAccelerator::DrainEncoder() {
 
     bool is_keyframe = receive_packet.flags & AV_PKT_FLAG_KEY;
 
-    std::unique_ptr<NvencVideoEncodeAccelerator::BitstreamBufferRef>
+    std::unique_ptr<NvEncVideoEncodeAccelerator::BitstreamBufferRef>
         buffer_ref = std::move(bitstream_buffer_queue_.front());
     bitstream_buffer_queue_.pop_front();
 
@@ -381,7 +381,7 @@ void NvencVideoEncodeAccelerator::DrainEncoder() {
 // to be filled once, then returned with BitstreamBufferReady().
 // Parameters:
 //  |buffer| is the bitstream buffer to use for output.
-void NvencVideoEncodeAccelerator::UseOutputBitstreamBuffer(
+void NvEncVideoEncodeAccelerator::UseOutputBitstreamBuffer(
     const BitstreamBuffer& buffer) {
   DVLOG(3) << __func__ << ": buffer size=" << buffer.size();
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
@@ -405,7 +405,7 @@ void NvencVideoEncodeAccelerator::UseOutputBitstreamBuffer(
       new BitstreamBufferRef(buffer.id(), std::move(shm), buffer.size()));
   encoder_thread_task_runner_->PostTask(
       FROM_HERE,
-      base::Bind(&NvencVideoEncodeAccelerator::UseOutputBitstreamBufferTask,
+      base::Bind(&NvEncVideoEncodeAccelerator::UseOutputBitstreamBufferTask,
                  encoder_task_weak_factory_.GetWeakPtr(),
                  base::Passed(&buffer_ref)));
 }
@@ -415,7 +415,7 @@ void NvencVideoEncodeAccelerator::UseOutputBitstreamBuffer(
 // Parameters:
 //  |bitrate| is the requested new bitrate, in bits per second.
 //  |framerate| is the requested new framerate, in frames per second.
-void NvencVideoEncodeAccelerator::RequestEncodingParametersChange(
+void NvEncVideoEncodeAccelerator::RequestEncodingParametersChange(
     uint32_t bitrate,
     uint32_t framerate) {
   DVLOG(3) << __func__ << ": bitrate=" << bitrate
@@ -425,7 +425,7 @@ void NvencVideoEncodeAccelerator::RequestEncodingParametersChange(
   encoder_thread_task_runner_->PostTask(
       FROM_HERE,
       base::Bind(
-          &NvencVideoEncodeAccelerator::RequestEncodingParametersChangeTask,
+          &NvEncVideoEncodeAccelerator::RequestEncodingParametersChangeTask,
           encoder_task_weak_factory_.GetWeakPtr(), bitrate, framerate));
 }
 
@@ -434,9 +434,9 @@ void NvencVideoEncodeAccelerator::RequestEncodingParametersChange(
 // system resources, but its client-visible effects are synchronous. After
 // this method returns no more callbacks will be made on the client. Deletes
 // |this| unconditionally, so make sure to drop all pointers to it!
-void NvencVideoEncodeAccelerator::Destroy() {
+void NvEncVideoEncodeAccelerator::Destroy() {
   // FIXME: Clean up all of the stuff. Basically nothing is freed right now.
-  LOG(INFO) << "Nvenc Encoder " << __func__;
+  LOG(INFO) << "NvEnc Encoder " << __func__;
 
   // avcodec_free_context(&avc_context_);
   // av_free(codec_);
@@ -448,7 +448,7 @@ void NvencVideoEncodeAccelerator::Destroy() {
 
   if (encoder_thread_.IsRunning()) {
     encoder_thread_task_runner_->PostTask(
-        FROM_HERE, base::Bind(&NvencVideoEncodeAccelerator::DestroyTask,
+        FROM_HERE, base::Bind(&NvEncVideoEncodeAccelerator::DestroyTask,
                               encoder_task_weak_factory_.GetWeakPtr()));
     encoder_thread_.Stop();
   }
@@ -456,7 +456,7 @@ void NvencVideoEncodeAccelerator::Destroy() {
   delete this;
 }
 
-bool NvencVideoEncodeAccelerator::TryToSetupEncodeOnSeparateThread(
+bool NvEncVideoEncodeAccelerator::TryToSetupEncodeOnSeparateThread(
     const base::WeakPtr<Client>& encode_client,
     const scoped_refptr<base::SingleThreadTaskRunner>& encode_task_runner) {
   DVLOG(3) << __func__;
@@ -466,7 +466,7 @@ bool NvencVideoEncodeAccelerator::TryToSetupEncodeOnSeparateThread(
   return true;
 }
 
-void NvencVideoEncodeAccelerator::NotifyError(
+void NvEncVideoEncodeAccelerator::NotifyError(
     VideoEncodeAccelerator::Error error) {
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread() ||
          encode_client_task_runner_->BelongsToCurrentThread());
@@ -474,7 +474,7 @@ void NvencVideoEncodeAccelerator::NotifyError(
       FROM_HERE, base::Bind(&Client::NotifyError, main_client_, error));
 }
 
-void NvencVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
+void NvEncVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
                                              bool force_keyframe) {
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
   AVFrame* av_frame = av_frame_alloc();
@@ -513,14 +513,14 @@ void NvencVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
   DrainEncoder();
 }
 
-void NvencVideoEncodeAccelerator::UseOutputBitstreamBufferTask(
+void NvEncVideoEncodeAccelerator::UseOutputBitstreamBufferTask(
     std::unique_ptr<BitstreamBufferRef> buffer_ref) {
   BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
   // If there is already EncodeOutput waiting, copy its output first.
   if (!encoder_output_queue_.empty()) {
-    std::unique_ptr<NvencVideoEncodeAccelerator::EncodeOutput> encode_output =
+    std::unique_ptr<NvEncVideoEncodeAccelerator::EncodeOutput> encode_output =
         std::move(encoder_output_queue_.front());
     encoder_output_queue_.pop_front();
     ReturnBitstreamBuffer(std::move(encode_output), std::move(buffer_ref));
@@ -530,9 +530,9 @@ void NvencVideoEncodeAccelerator::UseOutputBitstreamBufferTask(
   bitstream_buffer_queue_.push_back(std::move(buffer_ref));
 }
 
-void NvencVideoEncodeAccelerator::ReturnBitstreamBuffer(
+void NvEncVideoEncodeAccelerator::ReturnBitstreamBuffer(
     std::unique_ptr<EncodeOutput> encode_output,
-    std::unique_ptr<NvencVideoEncodeAccelerator::BitstreamBufferRef>
+    std::unique_ptr<NvEncVideoEncodeAccelerator::BitstreamBufferRef>
         buffer_ref) {
   DVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
@@ -546,7 +546,7 @@ void NvencVideoEncodeAccelerator::ReturnBitstreamBuffer(
                  encode_output->capture_timestamp));
 }
 
-void NvencVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
+void NvEncVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     uint32_t bitrate,
     uint32_t framerate) {
   BVLOG(3) << __func__;
@@ -563,7 +563,7 @@ void NvencVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
   SetBitRate(bitrate);
 }
 
-void NvencVideoEncodeAccelerator::DestroyTask() {
+void NvEncVideoEncodeAccelerator::DestroyTask() {
   BVLOG(3) << __func__;
   DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
 
@@ -571,7 +571,7 @@ void NvencVideoEncodeAccelerator::DestroyTask() {
   ReleaseEncoderResources();
 }
 
-void NvencVideoEncodeAccelerator::ReleaseEncoderResources() {
+void NvEncVideoEncodeAccelerator::ReleaseEncoderResources() {
   LOG(INFO) << __func__;
 
   //  encoder_.Reset();
