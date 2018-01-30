@@ -16,8 +16,8 @@
 #include <utility>
 #include <vector>
 
-#include <thread>
 #include <mutex>
+#include <thread>
 
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread_task_runner_handle.h"
@@ -61,8 +61,7 @@ const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
 const size_t kMaxKeyFrameInterval = 15;  // seconds
 
-std::mutex logger_cb_mutex ;
-
+std::mutex logger_cb_mutex;
 
 }  // namespace
 
@@ -129,8 +128,10 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   std::string preset = "veryfast";
   std::string tune = "zerolatency";
   std::string x264_params = "";
-  // std::string x264_params = "vbv-maxrate=7000:vbv-bufsize=14000:rc-lookahead=3:sync-lookahead=-1:sliced-threads=0:threads=16"; // VBV
-  // std::string x264_params = "b-frames=3:ref=1:nal-hrd=cbr:force-cfr=1";  // CBR
+  // std::string x264_params =
+  // "vbv-maxrate=7000:vbv-bufsize=14000:rc-lookahead=3:sync-lookahead=-1:sliced-threads=0:threads=16";
+  // // VBV std::string x264_params =
+  // "b-frames=3:ref=1:nal-hrd=cbr:force-cfr=1";  // CBR
   DWORD max_b_frames = 0;
   DWORD rc_buffer_size = 12000000;
   DWORD crf = 0;
@@ -158,7 +159,7 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     }
 
     if (beboKey.HasValue(L"cqp")) {
-       beboKey.ReadValueDW(L"cqp", &cqp);
+      beboKey.ReadValueDW(L"cqp", &cqp);
     }
 
     if (beboKey.HasValue(L"x264-params")) {
@@ -228,16 +229,13 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     LOG(INFO) << "2pass: " << twopass;
   }
 
-  if (x264_params.length() > 3)  {
-    av_opt_set(avc_context_->priv_data,
-               "x264-params", x264_params.c_str(), 0);
+  if (x264_params.length() > 3) {
+    av_opt_set(avc_context_->priv_data, "x264-params", x264_params.c_str(), 0);
     LOG(INFO) << "x264-params: " << x264_params.c_str();
   }
 }
 
-
-void av_log_callback(void *avcl, int level, const char *fmt, va_list vl) {
-
+void av_log_callback(void* avcl, int level, const char* fmt, va_list vl) {
   std::lock_guard<std::mutex> lock(logger_cb_mutex);
 
   char buff[4096];
