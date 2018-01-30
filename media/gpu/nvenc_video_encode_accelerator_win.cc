@@ -215,7 +215,7 @@ bool NvEncVideoEncodeAccelerator::Initialize(
 
   avcodec_register_all();
 
-  codec_ = avcodec_find_encoder_by_name("NvEnc");
+  codec_ = avcodec_find_encoder_by_name("nvenc");
   if (codec_ == NULL) {
     LOG(ERROR) << "Failed to find NvEnc encoder during initialization.";
     return false;
