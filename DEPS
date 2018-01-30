@@ -279,7 +279,7 @@ deps = {
   'src/third_party/mfx_dispatch':
     (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
   'src/third_party/x264':
-    (Var("bebo_git")) + '/x264.git@77046aec499792b3d5ae0f95e523cf2b9ee5b114',
+    (Var("bebo_git")) + '/x264.git@422e64d9f8d064da5e8aa28850245243050a7d6f',
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
