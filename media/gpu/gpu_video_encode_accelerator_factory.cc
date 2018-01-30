@@ -70,7 +70,7 @@ std::unique_ptr<VideoEncodeAccelerator> CreateMediaFoundationVEA() {
       // FIXME: Setup encoder choice.
       // new MediaFoundationVideoEncodeAccelerator());
       // new X264VideoEncodeAccelerator());
-      new NvencVideoEncodeAccelerator());
+      new NvEncVideoEncodeAccelerator());
 }
 #endif
 

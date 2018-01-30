@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "media/gpu/NvEnc_video_encode_accelerator_win.h"
+#include "media/gpu/nvenc_video_encode_accelerator_win.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4800)  // Disable warning for added padding.
@@ -52,7 +52,7 @@ namespace media {
 
 namespace {
 
-const int32_t kDefaultTargetBitrate = 10000000;
+const int32_t kDefaultTargetBitrate = 30000000;
 const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
@@ -121,7 +121,7 @@ void NvEncVideoEncodeAccelerator::ConfigureFromRegistry() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
 
   std::string nvenc_preset = "slow";
-  std::string nvenc_vprofile = "high";
+  std::string nvenc_vprofile = "main";
   std::string nvenc_rc = "";
 
   if (beboKey.Valid()) {
@@ -150,7 +150,7 @@ void NvEncVideoEncodeAccelerator::ConfigureFromRegistry() {
     av_opt_set(avc_context_->priv_data, "vprofile", nvenc_vprofile.c_str(), 0);
     LOG(INFO) << "vprofile: " << nvenc_vprofile;
   }
-  if (NvEnc_rc.length() > 0) {
+  if (nvenc_rc.length() > 0) {
     av_opt_set(avc_context_->priv_data, "rc", nvenc_rc.c_str(), 0);
     LOG(INFO) << "rc: " << nvenc_rc;
   }

@@ -28,9 +28,9 @@ extern "C" {
 namespace media {
 
 // Video encoder interface.
-class NvencVideoEncodeAccelerator : public VideoEncodeAccelerator {
+class NvEncVideoEncodeAccelerator : public VideoEncodeAccelerator {
  public:
-  NvencVideoEncodeAccelerator();
+  NvEncVideoEncodeAccelerator();
 
   // Video encoder functions.
 
@@ -112,7 +112,7 @@ class NvencVideoEncodeAccelerator : public VideoEncodeAccelerator {
  protected:
   // Do not delete directly; use Destroy() or own it with a scoped_ptr, which
   // will Destroy() it properly by default.
-  ~NvencVideoEncodeAccelerator() override;
+  ~NvEncVideoEncodeAccelerator() override;
 
  private:
   // Holds output buffers coming from the client ready to be filled.
@@ -136,7 +136,7 @@ class NvencVideoEncodeAccelerator : public VideoEncodeAccelerator {
   // |encode_client_|.
   void ReturnBitstreamBuffer(
       std::unique_ptr<EncodeOutput> encode_output,
-      std::unique_ptr<NvencVideoEncodeAccelerator::BitstreamBufferRef>
+      std::unique_ptr<NvEncVideoEncodeAccelerator::BitstreamBufferRef>
           buffer_ref);
 
   // Changes encode parameters on |encoder_thread_|.
@@ -174,7 +174,7 @@ class NvencVideoEncodeAccelerator : public VideoEncodeAccelerator {
   AVCodec* codec_;
   AVCodecContext* avc_context_;
 
-  AVPacket* NvencVideoEncodeAccelerator::VideoFrameToAVPacket(
+  AVPacket* NvEncVideoEncodeAccelerator::VideoFrameToAVPacket(
       const scoped_refptr<VideoFrame>& frame);
 
   // To expose client callbacks from VideoEncodeAccelerator.
@@ -197,11 +197,11 @@ class NvencVideoEncodeAccelerator : public VideoEncodeAccelerator {
 
   // Declared last to ensure that all weak pointers are invalidated before
   // other destructors run.
-  base::WeakPtrFactory<NvencVideoEncodeAccelerator> encoder_task_weak_factory_;
+  base::WeakPtrFactory<NvEncVideoEncodeAccelerator> encoder_task_weak_factory_;
 
-  DISALLOW_COPY_AND_ASSIGN(NvencVideoEncodeAccelerator);
+  DISALLOW_COPY_AND_ASSIGN(NvEncVideoEncodeAccelerator);
 };
 
 }  // namespace media
 
-#endif  // Nvenc_VIDEO_ENCODE_ACCELERATOR_WIN_H_
+#endif  // NvEnc_VIDEO_ENCODE_ACCELERATOR_WIN_H_
