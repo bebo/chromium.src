@@ -38,7 +38,6 @@
 #include "media/video/video_encode_accelerator.h"
 
 extern "C" {
-
 #include "libavcodec/avcodec.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
@@ -52,7 +51,7 @@ namespace media {
 
 namespace {
 
-const int32_t kDefaultTargetBitrate = 30000000;
+const int32_t kDefaultTargetBitrate = 15000000;
 const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
@@ -286,6 +285,7 @@ void NvEncVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
   target_bitrate_ = bitrate;
+  
 }
 
 void NvEncVideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
@@ -487,8 +487,7 @@ void NvEncVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
   av_frame->pts = frame->timestamp().InMilliseconds();
 
   av_frame->format = AV_PIX_FMT_YUV420P;
-  LOG(INFO) << "NVENC GOT FRAME";
-  // TODO: better use an input buffer pool
+
   if (av_frame_get_buffer(av_frame, 32) < 0) {
     LOG(ERROR) << "FAILED TO ALLOCATE BUFFER";
     return;
