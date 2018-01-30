@@ -429,16 +429,16 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
     bitstream_buffer_queue_.pop_front();
 
     if (buffer_ref->size < receive_packet.size) {
-      memcpy(buffer_ref->shm->memory(), (void*)receive_packet.data,
-             buffer_ref->size);
-      LOG(INFO) << "avcodec_receive_packet size: " << buffer_ref->size
-                << " keyframe: " << is_keyframe
-                << " pts: " << receive_packet.pts;
+      memcpy(buffer_ref->shm->memory(), (void*)receive_packet.data, 
+          buffer_ref->size);
+      BVLOG(2) << "avcodec_receive_packet size: " << buffer_ref->size
+               << " keyframe: " << is_keyframe
+               << " pts: " << receive_packet.pts;
       encode_client_task_runner_->PostTask(
-          FROM_HERE,
+          FROM_HERE, 
           base::Bind(&Client::BitstreamBufferReady, encode_client_,
                      buffer_ref->id, buffer_ref->size, is_keyframe,
-                     base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+                     base::TimeDelta::FromMicroseconds(receive_packet.pts)));
       int32_t copied = buffer_ref->size;
 
       while (copied < receive_packet.size) {
@@ -466,7 +466,7 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
             FROM_HERE,
             base::Bind(&Client::BitstreamBufferReady, encode_client_,
                        buffer_ref->id, copy_size, is_keyframe,
-                       base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+                       base::TimeDelta::FromMicroseconds(receive_packet.pts)));
         copied += copy_size;
       }
       av_packet_unref(&receive_packet);
@@ -482,7 +482,7 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
         FROM_HERE,
         base::Bind(&Client::BitstreamBufferReady, encode_client_,
                    buffer_ref->id, receive_packet.size, is_keyframe,
-                   base::TimeDelta::FromMilliseconds(receive_packet.pts)));
+                   base::TimeDelta::FromMicroseconds(receive_packet.pts)));
     av_packet_unref(&receive_packet);
   }
 }
@@ -595,7 +595,7 @@ void X264VideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
   av_frame->width = input_visible_size_.width();
   av_frame->height = input_visible_size_.height();
   /* av_frame->reordered_opaque = frame->timestamp().InMilliseconds(); */
-  av_frame->pts = frame->timestamp().InMilliseconds();
+  av_frame->pts = frame->timestamp().InMicroseconds();
 
   av_frame->format = AV_PIX_FMT_YUV420P;
 
