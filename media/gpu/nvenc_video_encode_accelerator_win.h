@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef Nvenc_VIDEO_ENCODE_ACCELERATOR_WIN_H_
-#define Nvenc_VIDEO_ENCODE_ACCELERATOR_WIN_H_
+#ifndef NVENC_VIDEO_ENCODE_ACCELERATOR_WIN_H_
+#define NVENC_VIDEO_ENCODE_ACCELERATOR_WIN_H_
 
 #include <mfapi.h>
 #include <mfidl.h>
@@ -204,4 +204,4 @@ class NvEncVideoEncodeAccelerator : public VideoEncodeAccelerator {
 
 }  // namespace media
 
-#endif  // NvEnc_VIDEO_ENCODE_ACCELERATOR_WIN_H_
+#endif  // NVENC_VIDEO_ENCODE_ACCELERATOR_WIN_H_
