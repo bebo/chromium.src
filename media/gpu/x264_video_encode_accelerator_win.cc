@@ -45,11 +45,6 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
-<<<<<<< HEAD
-#include "x264.h"
-
-=======
->>>>>>> Added NVENC files.
 }
 
 using base::win::RegKey;
@@ -218,16 +213,12 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
   }
 
-<<<<<<< HEAD
-  if (global_quality > 0)  {
-=======
   if (x264_params.length() > 3) {
     av_opt_set(avc_context_->priv_data, "x264-params", x264_params.c_str(), 0);
     LOG(INFO) << "x264-params: " << x264_params.c_str();
   }
 
   if (global_quality > 0) {
->>>>>>> Added NVENC files.
     avc_context_->global_quality = global_quality;
     LOG(INFO) << "global_quality: " << global_quality;
   }
@@ -440,12 +431,8 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
     bitstream_buffer_queue_.pop_front();
 
     if (buffer_ref->size < receive_packet.size) {
-<<<<<<< HEAD
-      memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, buffer_ref->size);
-=======
       memcpy(buffer_ref->shm->memory(), (void*)receive_packet.data,
              buffer_ref->size);
->>>>>>> Added NVENC files.
       LOG(INFO) << "avcodec_receive_packet size: " << buffer_ref->size
                 << " keyframe: " << is_keyframe
                 << " pts: " << receive_packet.pts;
@@ -487,13 +474,8 @@ void X264VideoEncodeAccelerator::DrainEncoder() {
       av_packet_unref(&receive_packet);
       return;
     }
-<<<<<<< HEAD
-
-    memcpy(buffer_ref->shm->memory(), (void*) receive_packet.data, receive_packet.size);
-=======
     memcpy(buffer_ref->shm->memory(), (void*)receive_packet.data,
            receive_packet.size);
->>>>>>> Added NVENC files.
 
     BVLOG(2) << "avcodec_receive_packet size: " << receive_packet.size
              << " keyframe: " << is_keyframe << " pts: " << receive_packet.pts;
