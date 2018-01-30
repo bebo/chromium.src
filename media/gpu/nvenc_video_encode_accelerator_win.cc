@@ -108,7 +108,7 @@ NvencVideoEncodeAccelerator::GetSupportedProfiles() {
   VideoEncodeAccelerator::SupportedProfiles profiles;
   VideoEncodeAccelerator::SupportedProfile profile;
 
-  profile.profile = H264PROFILE_HIGH;
+  profile.profile = H264PROFILE_BASELINE;
   profile.max_framerate_numerator = 60;
   profile.max_framerate_denominator = 1;
   profile.max_resolution.SetSize(1920, 1088);
@@ -120,82 +120,39 @@ NvencVideoEncodeAccelerator::GetSupportedProfiles() {
 void NvencVideoEncodeAccelerator::ConfigureFromRegistry() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
 
-  std::string preset = "fast";
-  std::string tune = "";
-  DWORD max_b_frames = 0;
-  DWORD rc_buffer_size = 100000;
-  DWORD crf = 20;
-  DWORD global_quality = 0;
-  DWORD twopass = 0;
+  std::string nvenc_preset = "slow";
+  std::string nvenc_vprofile = "high";
+  std::string nvenc_rc = "";
 
   if (beboKey.Valid()) {
-    if (beboKey.HasValue(L"preset")) {
+    if (beboKey.HasValue(L"nvenc_preset")) {
       std::wstring value;
-      beboKey.ReadValue(L"preset", &value);
-      preset = base::WideToUTF8(value);
+      beboKey.ReadValue(L"nvenc_preset", &value);
+      nvenc_preset = base::WideToUTF8(value);
     }
 
-    if (beboKey.HasValue(L"max_b_frames")) {
-      beboKey.ReadValueDW(L"max_b_frames", &max_b_frames);
-    }
-
-    if (beboKey.HasValue(L"rc_buffer_size")) {
-      beboKey.ReadValueDW(L"rc_buffer_size", &rc_buffer_size);
-    }
-
-    if (beboKey.HasValue(L"crf")) {
-      beboKey.ReadValueDW(L"crf", &crf);
-    }
-
-    if (beboKey.HasValue(L"global_quality")) {
-      beboKey.ReadValueDW(L"global_quality", &global_quality);
-    }
-
-    if (beboKey.HasValue(L"twopass")) {
-      beboKey.ReadValueDW(L"twopass", &twopass);
-    }
-
-    if (beboKey.HasValue(L"tune")) {
+    if (beboKey.HasValue(L"nvenc_vprofile")) {
       std::wstring value;
-      beboKey.ReadValue(L"tune", &value);
-      tune = base::WideToUTF8(value);
+      beboKey.ReadValue(L"nvenc_vprofile", &value);
+      nvenc_vprofile = base::WideToUTF8(value);
+    }
+
+    if (beboKey.HasValue(L"nvenc_rc")) {
+      std::wstring value;
+      beboKey.ReadValue(L"nvenc_rc", &value);
+      nvenc_rc = base::WideToUTF8(value);
     }
   }
 
   if (codec_->id == AV_CODEC_ID_H264) {
-    av_opt_set(avc_context_->priv_data, "preset", preset.c_str(), 0);
-    LOG(INFO) << "preset: " << preset;
+    av_opt_set(avc_context_->priv_data, "preset", nvenc_preset.c_str(), 0);
+    LOG(INFO) << "preset: " << nvenc_preset;
+    av_opt_set(avc_context_->priv_data, "vprofile", nvenc_vprofile.c_str(), 0);
+    LOG(INFO) << "vprofile: " << nvenc_vprofile;
   }
-
-  if (tune.length() > 0) {
-    av_opt_set(avc_context_->priv_data, "tune", tune.c_str(), 0);
-    LOG(INFO) << "tune: " << tune;
-  }
-
-  avc_context_->max_b_frames = max_b_frames;
-  LOG(INFO) << "max_b_frames: " << avc_context_->max_b_frames;
-
-  if (crf > 0) {
-    av_opt_set_int(avc_context_->priv_data, "crf", 23, 0);
-    LOG(INFO) << "crf: " << crf;
-  } else {
-    av_opt_set_int(avc_context_->priv_data, "cbr", true, 0);
-    LOG(INFO) << "cbr: true";
-  }
-
-  if (rc_buffer_size > 0) {
-    avc_context_->rc_buffer_size = rc_buffer_size;
-    LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
-  }
-
-  if (global_quality > 0) {
-    avc_context_->global_quality = global_quality;
-    LOG(INFO) << "global_quality: " << global_quality;
-  }
-
-  if (twopass > 0) {
-    av_opt_set_int(avc_context_->priv_data, "2pass", twopass, 0);
-    LOG(INFO) << "2pass: " << twopass;
+  if (nvenc_rc.length() > 0) {
+    av_opt_set(avc_context_->priv_data, "rc", nvenc_rc.c_str(), 0);
+    LOG(INFO) << "rc: " << nvenc_rc;
   }
 
   // crf_max
@@ -208,7 +165,7 @@ bool NvencVideoEncodeAccelerator::Initialize(
     VideoCodecProfile output_profile,
     uint32_t initial_bitrate,
     Client* client) {
-  LOG(INFO) << "Initializing Nvenc encoder " << __func__;
+  LOG(INFO) << "Initializing NVENC encoder " << __func__;
 
   if (initial_bitrate == 300000) {
     initial_bitrate = kDefaultTargetBitrate;
@@ -258,9 +215,9 @@ bool NvencVideoEncodeAccelerator::Initialize(
 
   avcodec_register_all();
 
-  codec_ = avcodec_find_encoder_by_name("libNvenc");
+  codec_ = avcodec_find_encoder_by_name("nvenc");
   if (codec_ == NULL) {
-    LOG(ERROR) << "Failed to find Nvenc encoder during initialization.";
+    LOG(ERROR) << "Failed to find NVENC encoder during initialization.";
     return false;
   }
 
@@ -281,9 +238,7 @@ bool NvencVideoEncodeAccelerator::Initialize(
   SetBitRate(initial_bitrate);
   SetFrameRate(kMaxFrameRateNumerator / kMaxFrameRateDenominator);
 
-  // Reference for AvFormatContext options :
-  // https://ffmpeg.org/doxygen/2.8/movenc_8c_source.html
-  // The options seem like they are almost entirely for dumping to a video file.
+  av_opt_set(avc_context_->priv_data, "vprofile", "high", 0);
   int ret = avcodec_open2(avc_context_, codec_, NULL);
   if (ret < 0) {
     LOG(ERROR) << "Could not open codec: " << ret;
@@ -327,7 +282,7 @@ void NvencVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
   }
 
   avc_context_->rc_max_rate = bitrate;
-  avc_context_->bit_rate = bitrate / 2;
+  avc_context_->bit_rate = bitrate;
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
   target_bitrate_ = bitrate;
@@ -337,7 +292,6 @@ void NvencVideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
                                          bool force_keyframe) {
   DVLOG(3) << __func__;
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
-
   encoder_thread_task_runner_->PostTask(
       FROM_HERE, base::Bind(&NvencVideoEncodeAccelerator::EncodeTask,
                             encoder_task_weak_factory_.GetWeakPtr(), frame,
