@@ -245,9 +245,9 @@ bool NvEncVideoEncodeAccelerator::Initialize(
     return false;
   };
   LOG(INFO) << "Initialized NvEnc encoder with codec "
-            << "libNvEnc";
+            << "nvenc";
 
-  implementation_name_ = "ffmpeg - NvEnc";
+  implementation_name_ = "nvenc";
   main_client_task_runner_->PostTask(
       FROM_HERE, base::Bind(&Client::SetImplementationName, main_client_,
                             implementation_name_));
@@ -487,7 +487,7 @@ void NvEncVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
   av_frame->pts = frame->timestamp().InMilliseconds();
 
   av_frame->format = AV_PIX_FMT_YUV420P;
-
+  LOG(INFO) << "NVENC GOT FRAME";
   // TODO: better use an input buffer pool
   if (av_frame_get_buffer(av_frame, 32) < 0) {
     LOG(ERROR) << "FAILED TO ALLOCATE BUFFER";
