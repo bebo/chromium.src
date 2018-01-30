@@ -63,6 +63,28 @@ class DesktopCaptureChooseDesktopMediaFunctionBase
       const GURL& origin,
       const base::string16 target_name);
 
+  // |web_contents| is the WebContents for which the stream is created, and will
+  // also be used to determine where to show the picker's UI.
+  // |origin| is the origin for which the stream is created.
+  // |target_name| is the display name of the stream target.
+  bool ExecuteList(
+      const std::vector<api::desktop_capture::DesktopCaptureSourceType>&
+          sources,
+      content::WebContents* web_contents,
+      const GURL& origin,
+      const base::string16 target_name);
+
+  // |web_contents| is the WebContents for which the stream is created, and will
+  // also be used to determine where to show the picker's UI.
+  // |origin| is the origin for which the stream is created.
+  // |target_name| is the display name of the stream target.
+  bool ExecuteRegister(
+      const std::string source_id,
+      content::WebContents* web_contents,
+      const GURL& origin,
+      const base::string16 target_name);
+
+
   // Returns the calling application name to show in the picker.
   std::string GetCallerDisplayName() const;
 

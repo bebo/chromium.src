@@ -12,6 +12,12 @@
         "type": "string",
         "enum": ["screen", "window", "tab", "audio"],
         "description": "Enum used to define set of desktop media sources used in chooseDesktopMedia()."
+      },
+      {
+        "id": "DesktopCaptureSourceType",
+        "type": "string",
+        "enum": ["screen", "window", "tab", "audio"],
+        "description": "Enum used to define set of desktop media sources used in chooseDesktopMedia()."
       }
     ],
     "functions": [
@@ -46,10 +52,10 @@
                 "type": "object",
                 "description": "Contains properties that describe the stream.",
                 "properties": {
-                   "canRequestAudioTrack": {
-                     "type": "boolean",
-                     "description": "True if \"audio\" is included in parameter sources, and the end user does not uncheck the \"Share audio\" checkbox. Otherwise false, and in this case, one should not ask for audio stream through getUserMedia call."
-                   } 
+                  "canRequestAudioTrack": {
+                    "type": "boolean",
+                    "description": "True if \"audio\" is included in parameter sources, and the end user does not uncheck the \"Share audio\" checkbox. Otherwise false, and in this case, one should not ask for audio stream through getUserMedia call."
+                  } 
                 }
               }
             ]
@@ -59,7 +65,7 @@
           "type": "integer",
           "description": "An id that can be passed to cancelChooseDesktopMedia() in case the prompt need to be canceled."
         }
-      },
+      }, 
       {
         "name": "cancelChooseDesktopMedia",
         "type": "function",
@@ -69,6 +75,70 @@
             "name": "desktopMediaRequestId",
             "type": "integer",
             "description": "Id returned by chooseDesktopMedia()"
+          }
+        ]
+      },
+      {
+        "name": "listDesktopMedia",
+        "type": "function",
+        "description": "Shows desktop media picker UI with the specified set of sources.",
+        "parameters": [
+          {
+            "type": "array",
+            "items": { "$ref": "DesktopCaptureSourceType" },
+            "name": "sources",
+            "description": "Set of sources that should be shown to the user. The sources order in the set decides the tab order in the picker."
+          },
+          {
+            "type": "function",
+            "name": "callback",
+            "parameters": [
+              {
+                "name": "sources",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string",
+                      "description": "source id"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "source name."
+                    },
+                    "options": {
+                      "type": "object",
+                      "description": "Contains properties that describe the stream.",
+                      "properties": {
+                        "canRequestAudioTrack": {
+                          "type": "boolean",
+                          "description": "True if \"audio\" is included in parameter sources, and the end user does not uncheck the \"Share audio\" checkbox. Otherwise false, and in this case, one should not ask for audio stream through getUserMedia call."
+                        } 
+                      }
+                    }
+                  }
+                },
+                "description": ""
+              }
+            ]
+          }
+        ],
+        "returns": {
+          "type": "integer",
+          "description": "An id that can be passed to cancelChooseDesktopMedia() in case the prompt need to be canceled."
+        }
+      },
+
+      {
+        "name": "registerDesktopMedia",
+        "type": "function",
+        "description": "Register desktop / application sources as media sources.",
+        "parameters": [
+          {
+            "name": "sourceId",
+            "type": "string",
+            "description": "Id returned by listDesktopMedia()"
           }
         ]
       }

@@ -215,6 +215,167 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::Execute(
   return true;
 }
 
+bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
+    const std::vector<api::desktop_capture::DesktopCaptureSourceType>& sources,
+    content::WebContents* web_contents,
+    const GURL& origin,
+    const base::string16 target_name) {
+  // Register to be notified when the tab is closed.
+  Observe(web_contents);
+
+  gfx::NativeWindow parent_window = web_contents->GetTopLevelNativeWindow();
+  // In case of coming from background extension page, |parent_window| will
+  // be null. We are going to make the picker modal to the current browser
+  // window.
+  if (!parent_window) {
+    Browser* target_browser = chrome::FindLastActiveWithProfile(
+        Profile::FromBrowserContext(web_contents->GetBrowserContext()));
+
+    if (target_browser)
+      parent_window = target_browser->window()->GetNativeWindow();
+  }
+
+  // Keep same order as the input |sources| and avoid duplicates.
+  std::vector<std::unique_ptr<DesktopMediaList>> source_lists;
+  bool have_screen_list = false;
+  bool have_window_list = false;
+  bool have_tab_list = false;
+  bool request_audio = false;
+  for (auto source_type : sources) {
+    switch (source_type) {
+      case api::desktop_capture::DESKTOP_CAPTURE_SOURCE_TYPE_NONE: {
+        error_ = kInvalidSourceNameError;
+        return false;
+      }
+      case api::desktop_capture::DESKTOP_CAPTURE_SOURCE_TYPE_SCREEN: {
+        if (have_screen_list) {
+          continue;
+        }
+        std::unique_ptr<DesktopMediaList> screen_list;
+        if (g_picker_factory) {
+          screen_list =
+              g_picker_factory->CreateMediaList(DesktopMediaID::TYPE_SCREEN);
+        } else {
+#if defined(OS_CHROMEOS)
+          screen_list = base::MakeUnique<DesktopMediaListAsh>(
+              DesktopMediaID::TYPE_SCREEN);
+#else   // !defined(OS_CHROMEOS)
+          screen_list = base::MakeUnique<NativeDesktopMediaList>(
+              content::DesktopMediaID::TYPE_SCREEN,
+              webrtc::DesktopCapturer::CreateScreenCapturer(
+                  content::CreateDesktopCaptureOptions()));
+#endif  // !defined(OS_CHROMEOS)
+        }
+        have_screen_list = true;
+        source_lists.push_back(std::move(screen_list));
+        break;
+      }
+      case api::desktop_capture::DESKTOP_CAPTURE_SOURCE_TYPE_WINDOW: {
+        if (have_window_list) {
+          continue;
+        }
+        std::unique_ptr<DesktopMediaList> window_list;
+        if (g_picker_factory) {
+          window_list =
+              g_picker_factory->CreateMediaList(DesktopMediaID::TYPE_WINDOW);
+        } else {
+#if defined(OS_CHROMEOS)
+          window_list = base::MakeUnique<DesktopMediaListAsh>(
+              DesktopMediaID::TYPE_WINDOW);
+#else   // !defined(OS_CHROMEOS)
+          // NativeDesktopMediaList calls the capturers on a background thread.
+          // This means that the two DesktopCapturer instances (for screens and
+          // windows) created here cannot share the same DesktopCaptureOptions
+          // instance. DesktopCaptureOptions owns X connection, which cannot be
+          // used on multiple threads concurrently.
+          window_list = base::MakeUnique<NativeDesktopMediaList>(
+              content::DesktopMediaID::TYPE_WINDOW,
+              webrtc::DesktopCapturer::CreateWindowCapturer(
+                  content::CreateDesktopCaptureOptions()));
+#endif  // !defined(OS_CHROMEOS)
+        }
+        have_window_list = true;
+        source_lists.push_back(std::move(window_list));
+        break;
+      }
+      case api::desktop_capture::DESKTOP_CAPTURE_SOURCE_TYPE_TAB: {
+        if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+                extensions::switches::kDisableTabForDesktopShare) ||
+            have_tab_list) {
+          continue;
+        }
+        std::unique_ptr<DesktopMediaList> tab_list;
+        if (g_picker_factory) {
+          tab_list = g_picker_factory->CreateMediaList(
+              DesktopMediaID::TYPE_WEB_CONTENTS);
+        } else {
+          tab_list = base::MakeUnique<TabDesktopMediaList>();
+        }
+        have_tab_list = true;
+        source_lists.push_back(std::move(tab_list));
+        break;
+      }
+      case api::desktop_capture::DESKTOP_CAPTURE_SOURCE_TYPE_AUDIO: {
+        bool audio_capture_disabled =
+            base::CommandLine::ForCurrentProcess()->HasSwitch(
+                extensions::switches::kDisableDesktopCaptureAudio);
+        if (!audio_capture_disabled) {
+          request_audio = true;
+        }
+        break;
+      }
+    }
+  }
+  if (source_lists.empty()) {
+    error_ = kEmptySourcesListError;
+    return false;
+  }
+
+  if (g_picker_factory) {
+    picker_ = g_picker_factory->CreatePicker();
+  } else {
+    // DesktopMediaPicker is implemented only for Windows, OSX and
+    // Aura Linux builds.
+#if defined(TOOLKIT_VIEWS) || defined(OS_MACOSX)
+    picker_ = DesktopMediaPicker::Create();
+#else
+    error_ = "Desktop Capture API is not yet implemented for this platform.";
+    return false;
+#endif
+  }
+
+#if 0
+  DesktopMediaPicker::DoneCallback callback = base::Bind(
+      &DesktopCaptureChooseDesktopMediaFunctionBase::OnPickerDialogResults,
+      this);
+
+  picker_->Show(web_contents, parent_window, parent_window,
+                base::UTF8ToUTF16(GetCallerDisplayName()), target_name,
+                std::move(source_lists), request_audio, callback);
+#endif
+  std::vector<api::desktop_capture::ListDesktopMedia::Results::SourcesType> result_sources;
+
+  for (const auto& media_desktop : source_lists) {
+    for (int i = 0; i < media_desktop->GetSourceCount(); i++) {
+      const DesktopMediaList::Source& media = media_desktop->GetSource(i);
+
+      //api::desktop_capture::ListDesktopMedia::Results::SourcesType result_source;
+      api::desktop_capture::ListDesktopMedia::Results::SourcesType::Options options;
+      // options.can_request_audio_track = source.audio_share;
+
+      // result_source.source_id = media.id.ToString();
+      // result_source.name = base::UTF16ToUTF8(media.name);
+      // result_source.options = options;
+      // result_sources.emplace_back(media.id.ToString(), media.name, options);
+    }
+  }
+  results_ = api::desktop_capture::ListDesktopMedia::Results::Create(result_sources);
+  SendResponse(true);
+  origin_ = origin;
+  return true;
+}
+
+
 std::string DesktopCaptureChooseDesktopMediaFunctionBase::GetCallerDisplayName()
     const {
   if (extension()->location() == Manifest::COMPONENT ||

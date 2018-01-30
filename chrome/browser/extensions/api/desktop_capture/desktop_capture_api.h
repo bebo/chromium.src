@@ -28,6 +28,45 @@ class DesktopCaptureChooseDesktopMediaFunction
   std::string GetExtensionTargetName() const;
 };
 
+class DesktopCaptureListDesktopMediaFunction
+    : public DesktopCaptureChooseDesktopMediaFunctionBase {
+ public:
+  DECLARE_EXTENSION_FUNCTION("desktopCapture.listDesktopMedia",
+                             DESKTOPCAPTURE_LISTDESKTOPMEDIA)
+
+  DesktopCaptureListDesktopMediaFunction();
+
+ private:
+  ~DesktopCaptureListDesktopMediaFunction() override;
+
+  // ExtensionFunction overrides.
+  bool RunAsync() override;
+
+  // Returns the target name to show in the picker when capture is requested for
+  // an extension.  Currently this is the same as the application name.
+  std::string GetExtensionTargetName() const;
+};
+
+class DesktopCaptureRegisterDesktopMediaFunction
+    : public DesktopCaptureChooseDesktopMediaFunctionBase {
+ public:
+  DECLARE_EXTENSION_FUNCTION("desktopCapture.registerDesktopMedia",
+                             DESKTOPCAPTURE_REGISTERDESKTOPMEDIA)
+
+  DesktopCaptureRegisterDesktopMediaFunction();
+
+ private:
+  ~DesktopCaptureRegisterDesktopMediaFunction() override;
+
+  // ExtensionFunction overrides.
+  bool RunAsync() override;
+
+  // Returns the target name to show in the picker when capture is requested for
+  // an extension.  Currently this is the same as the application name.
+  std::string GetExtensionTargetName() const;
+};
+
+
 class DesktopCaptureCancelChooseDesktopMediaFunction
     : public DesktopCaptureCancelChooseDesktopMediaFunctionBase {
  public:
