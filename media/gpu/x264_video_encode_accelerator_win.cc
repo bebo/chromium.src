@@ -45,6 +45,8 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
+#include "x264.h"
+
 }
 
 using base::win::RegKey;
@@ -257,19 +259,6 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
                                             uint32_t initial_bitrate,
                                             Client* client) {
   LOG(INFO) << "Initializing X264 encoder " << __func__;
-  avcodec_register_all();
-  LOG(INFO) << "X264 Enumerating Codecs.";
-  AVCodec* current_codec = NULL;
-  current_codec = av_codec_next(current_codec);
-  while (current_codec != NULL) {
-    if (av_codec_is_encoder(current_codec)) {
-      LOG(INFO) << "Found Encoder: " << current_codec->name;
-    } else {
-      LOG(INFO) << "Not an encoder: " << current_codec->name;
-    }
-    current_codec = av_codec_next(current_codec);
-  }
-  LOG(INFO) << "Finished Enumerating Codecs.";
 
   if (initial_bitrate == 300000) {
     initial_bitrate = kDefaultTargetBitrate;
@@ -281,6 +270,7 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
     return false;
   }
 
+  // FIXME: this should not be COM MTA thread. 
   encoder_thread_.init_com_with_mta(false);  // TODO: this seems odd
   if (!encoder_thread_.Start()) {
     DLOG(ERROR) << "Failed spawning encoder thread.";
