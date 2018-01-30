@@ -23,6 +23,8 @@
 #include "media/base/media_switches.h"
 #include "media/gpu/media_foundation_video_encode_accelerator_win.h"
 #include "media/gpu/x264_video_encode_accelerator_win.h"
+#include "media/gpu/nvenc_video_encode_accelerator_win.h"
+
 #endif
 #if BUILDFLAG(USE_VAAPI)
 #include "media/gpu/vaapi_video_encode_accelerator.h"
@@ -65,9 +67,10 @@ std::unique_ptr<VideoEncodeAccelerator> CreateVTVEA() {
 #if defined(OS_WIN)
 std::unique_ptr<VideoEncodeAccelerator> CreateMediaFoundationVEA() {
   return base::WrapUnique<VideoEncodeAccelerator>(
-      // FIXME: Setup encoder choice. 
-      //new MediaFoundationVideoEncodeAccelerator());
-      new X264VideoEncodeAccelerator());
+      // FIXME: Setup encoder choice.
+      // new MediaFoundationVideoEncodeAccelerator());
+      // new X264VideoEncodeAccelerator());
+      new NvencVideoEncodeAccelerator());
 }
 #endif
 
