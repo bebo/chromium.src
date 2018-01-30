@@ -16,6 +16,9 @@
 #include <utility>
 #include <vector>
 
+#include <thread>
+#include <mutex>
+
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/trace_event.h"
@@ -42,6 +45,7 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
+#include "x264.h"
 
 }
 
@@ -58,6 +62,9 @@ const size_t kMaxFrameRateNumerator = 60;
 const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
 const size_t kMaxKeyFrameInterval = 15; // seconds
+
+std::mutex logger_cb_mutex ;
+
 
 }  // namespace
 
@@ -127,6 +134,7 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   DWORD max_b_frames = 0;
   DWORD rc_buffer_size = 12000000;
   DWORD crf = 0;
+  DWORD cqp = 0;
   DWORD global_quality = 0;
   DWORD twopass = 0;
 
@@ -147,6 +155,10 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
 
     if (beboKey.HasValue(L"crf")) {
        beboKey.ReadValueDW(L"crf", &crf);
+    }
+
+    if (beboKey.HasValue(L"cqp")) {
+       beboKey.ReadValueDW(L"cqp", &cqp);
     }
 
     if (beboKey.HasValue(L"x264-params")) {
@@ -186,13 +198,18 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   if (crf > 0) {
     av_opt_set_int(avc_context_->priv_data, "crf", crf, 0);
     LOG(INFO) << "crf: " << crf;
+  } else if (cqp > 0) {
+    av_opt_set_int(avc_context_->priv_data, "cqp", crf, 0);
+    LOG(INFO) << "cqp: " << crf;
   } else {
-    av_opt_set_int(avc_context_->priv_data, "cbr", true, 0);
-    LOG(INFO) << "cbr: true";
+    /* av_opt_set_int(avc_context_->priv_data, "cbr", true, 0); */
+    LOG(INFO) << "cbr: true (implicit)";
+    /* LOG(INFO) << "nal-hrd: cbr"; */
   }
 
   if (rc_buffer_size > 0) {
     avc_context_->rc_buffer_size = rc_buffer_size;
+    /* avc_context_->rc_initial_buffer_occupancy  = rc_buffer_size / 2; */
     LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
   }
 
@@ -213,7 +230,24 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   }
 
   // crf_max
-  // cqp
+}
+
+
+void av_log_callback(void *avcl, int level, const char *fmt, va_list vl) {
+
+  std::lock_guard<std::mutex> lock(logger_cb_mutex);
+
+  char buff[4096];
+  vsnprintf(buff, sizeof(buff), fmt, vl);
+  if (level == AV_LOG_ERROR) {
+    LOG(ERROR) << "ffmpeg " << buff;
+  } else if (level == AV_LOG_WARNING) {
+    LOG(WARNING) << "ffmpeg " << buff;
+  } else if (level == AV_LOG_INFO) {
+    LOG(INFO) << "ffmpeg " << buff;
+  } else {
+    DVLOG(1) << "ffmpeg " << buff;
+  }
 }
 
 bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
@@ -269,6 +303,8 @@ bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   }
 
   avcodec_register_all();
+
+  av_log_set_callback(av_log_callback);
 
   codec_ = avcodec_find_encoder_by_name("libx264");
   if (codec_ == NULL) {
@@ -338,8 +374,8 @@ void X264VideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
     return;
   }
 
-  avc_context_->rc_max_rate = bitrate;
   avc_context_->bit_rate = bitrate;
+  avc_context_->rc_max_rate = bitrate;
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
   target_bitrate_ = bitrate;

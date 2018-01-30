@@ -366,6 +366,9 @@ component("gpu") {
       "//third_party/ffmpeg",
       "//third_party/ffmpeg:ffmpeg_features",
     ]
+    include_dirs = [
+      "//third_party/x264/build/include",
+    ]
     libs += [
       "d3d9.lib",
       "d3d11.lib",
