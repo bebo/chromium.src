@@ -650,6 +650,8 @@ split_static_library("browser") {
     "media/webrtc/media_stream_devices_controller.h",
     "media/webrtc/native_desktop_media_list.cc",
     "media/webrtc/native_desktop_media_list.h",
+    "media/webrtc/native_desktop_media_list_simple.cc",
+    "media/webrtc/native_desktop_media_list_simple.h",
     "media/webrtc/permission_bubble_media_access_handler.cc",
     "media/webrtc/permission_bubble_media_access_handler.h",
 

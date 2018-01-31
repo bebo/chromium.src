@@ -14,10 +14,23 @@
         "description": "Enum used to define set of desktop media sources used in chooseDesktopMedia()."
       },
       {
-        "id": "DesktopCaptureSourceType",
-        "type": "string",
-        "enum": ["screen", "window", "tab", "audio"],
-        "description": "Enum used to define set of desktop media sources used in chooseDesktopMedia()."
+        "id": "Source",
+        "type": "object",
+        "description": "object for source",
+        "properties": {
+          "sourceId": { "type": "string", "description": "source id." },
+          "name": { "type": "string", "description": "source name." },
+          "options": {
+            "type": "object",
+            "description": "Contains properties that describe the stream.",
+            "properties": {
+              "canRequestAudioTrack": {
+                "type": "boolean",
+                "description": "True if \"audio\" is included in parameter sources, and the end user does not uncheck the \"Share audio\" checkbox. Otherwise false, and in this case, one should not ask for audio stream through getUserMedia call."
+              } 
+            }
+          }
+        }
       }
     ],
     "functions": [
@@ -84,9 +97,9 @@
         "description": "Shows desktop media picker UI with the specified set of sources.",
         "parameters": [
           {
+            "name": "sources",
             "type": "array",
             "items": { "$ref": "DesktopCaptureSourceType" },
-            "name": "sources",
             "description": "Set of sources that should be shown to the user. The sources order in the set decides the tab order in the picker."
           },
           {
@@ -94,32 +107,10 @@
             "name": "callback",
             "parameters": [
               {
-                "name": "sources",
+                "name": "mediaSources",
                 "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "sourceId": {
-                      "type": "string",
-                      "description": "source id"
-                    },
-                    "name": {
-                      "type": "string",
-                      "description": "source name."
-                    },
-                    "options": {
-                      "type": "object",
-                      "description": "Contains properties that describe the stream.",
-                      "properties": {
-                        "canRequestAudioTrack": {
-                          "type": "boolean",
-                          "description": "True if \"audio\" is included in parameter sources, and the end user does not uncheck the \"Share audio\" checkbox. Otherwise false, and in this case, one should not ask for audio stream through getUserMedia call."
-                        } 
-                      }
-                    }
-                  }
-                },
-                "description": ""
+                "items": { "$ref": "Source" },
+                "description": "results of available sources to capture"
               }
             ]
           }
@@ -129,7 +120,6 @@
           "description": "An id that can be passed to cancelChooseDesktopMedia() in case the prompt need to be canceled."
         }
       },
-
       {
         "name": "registerDesktopMedia",
         "type": "function",

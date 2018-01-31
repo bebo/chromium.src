@@ -16,6 +16,7 @@
 #include "chrome/browser/media/webrtc/desktop_streams_registry.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/native_desktop_media_list.h"
+#include "chrome/browser/media/webrtc/native_desktop_media_list_simple.h"
 #include "chrome/browser/media/webrtc/tab_desktop_media_list.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -252,20 +253,24 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
           continue;
         }
         std::unique_ptr<DesktopMediaList> screen_list;
+#if 0
         if (g_picker_factory) {
           screen_list =
               g_picker_factory->CreateMediaList(DesktopMediaID::TYPE_SCREEN);
         } else {
+#endif
 #if defined(OS_CHROMEOS)
           screen_list = base::MakeUnique<DesktopMediaListAsh>(
               DesktopMediaID::TYPE_SCREEN);
 #else   // !defined(OS_CHROMEOS)
-          screen_list = base::MakeUnique<NativeDesktopMediaList>(
+          screen_list = base::MakeUnique<NativeDesktopMediaListSimple>(
               content::DesktopMediaID::TYPE_SCREEN,
               webrtc::DesktopCapturer::CreateScreenCapturer(
                   content::CreateDesktopCaptureOptions()));
 #endif  // !defined(OS_CHROMEOS)
+#if 0
         }
+#endif
         have_screen_list = true;
         source_lists.push_back(std::move(screen_list));
         break;
@@ -275,10 +280,13 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
           continue;
         }
         std::unique_ptr<DesktopMediaList> window_list;
+
+#if 0
         if (g_picker_factory) {
           window_list =
               g_picker_factory->CreateMediaList(DesktopMediaID::TYPE_WINDOW);
         } else {
+#endif 
 #if defined(OS_CHROMEOS)
           window_list = base::MakeUnique<DesktopMediaListAsh>(
               DesktopMediaID::TYPE_WINDOW);
@@ -293,7 +301,9 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
               webrtc::DesktopCapturer::CreateWindowCapturer(
                   content::CreateDesktopCaptureOptions()));
 #endif  // !defined(OS_CHROMEOS)
+#if 0
         }
+#endif
         have_window_list = true;
         source_lists.push_back(std::move(window_list));
         break;
@@ -305,12 +315,16 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
           continue;
         }
         std::unique_ptr<DesktopMediaList> tab_list;
+#if 0
         if (g_picker_factory) {
           tab_list = g_picker_factory->CreateMediaList(
               DesktopMediaID::TYPE_WEB_CONTENTS);
         } else {
+#endif
           tab_list = base::MakeUnique<TabDesktopMediaList>();
+#if 0
         }
+#endif
         have_tab_list = true;
         source_lists.push_back(std::move(tab_list));
         break;
@@ -331,6 +345,8 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
     return false;
   }
 
+#if 0
+
   if (g_picker_factory) {
     picker_ = g_picker_factory->CreatePicker();
   } else {
@@ -344,7 +360,6 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
 #endif
   }
 
-#if 0
   DesktopMediaPicker::DoneCallback callback = base::Bind(
       &DesktopCaptureChooseDesktopMediaFunctionBase::OnPickerDialogResults,
       this);
@@ -353,25 +368,36 @@ bool DesktopCaptureChooseDesktopMediaFunctionBase::ExecuteList(
                 base::UTF8ToUTF16(GetCallerDisplayName()), target_name,
                 std::move(source_lists), request_audio, callback);
 #endif
-  std::vector<api::desktop_capture::ListDesktopMedia::Results::SourcesType> result_sources;
+
+  origin_ = origin;
+
+  std::vector<api::desktop_capture::Source> result_sources;
+
 
   for (const auto& media_desktop : source_lists) {
+    LOG(INFO) << "source list count: " << source_lists.size() << ", media count: " << media_desktop->GetSourceCount();
+
     for (int i = 0; i < media_desktop->GetSourceCount(); i++) {
       const DesktopMediaList::Source& media = media_desktop->GetSource(i);
 
-      //api::desktop_capture::ListDesktopMedia::Results::SourcesType result_source;
-      api::desktop_capture::ListDesktopMedia::Results::SourcesType::Options options;
+      LOG(INFO) << "source id: " << media.id.ToString() << ", name: " << base::UTF16ToUTF8(media.name);
+#if 0
+      api::desktop_capture::Source result_source;
+      // api::desktop_capture::Source::Options options;
       // options.can_request_audio_track = source.audio_share;
-
-      // result_source.source_id = media.id.ToString();
-      // result_source.name = base::UTF16ToUTF8(media.name);
       // result_source.options = options;
-      // result_sources.emplace_back(media.id.ToString(), media.name, options);
+
+      result_source.source_id = media.id.ToString();
+      result_source.name = base::UTF16ToUTF8(media.name);
+
+      result_sources.push_back(result_source);
+#endif
+
     }
   }
+
   results_ = api::desktop_capture::ListDesktopMedia::Results::Create(result_sources);
   SendResponse(true);
-  origin_ = origin;
   return true;
 }
 
