@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CHROME_BROWSER_MEDIA_WEBRTC_NATIVE_DESKTOP_MEDIA_LIST_H_
-#define CHROME_BROWSER_MEDIA_WEBRTC_NATIVE_DESKTOP_MEDIA_LIST_H_
+#ifndef CHROME_BROWSER_MEDIA_WEBRTC_NATIVE_DESKTOP_MEDIA_LIST_SIMPLE_H_
+#define CHROME_BROWSER_MEDIA_WEBRTC_NATIVE_DESKTOP_MEDIA_LIST_SIMPLE_H_
 
 #include <memory>
 
@@ -30,6 +30,8 @@ class NativeDesktopMediaListSimple : public DesktopMediaListBase {
 
   class Worker;
   friend class Worker;
+
+  std::vector<Source> simple_sources_;
 
   // Refresh() posts a task for the |worker_| to update list of windows, get
   // thumbnails and schedule next refresh.
@@ -71,4 +73,4 @@ class NativeDesktopMediaListSimple : public DesktopMediaListBase {
   DISALLOW_COPY_AND_ASSIGN(NativeDesktopMediaListSimple);
 };
 
-#endif  // CHROME_BROWSER_MEDIA_WEBRTC_NATIVE_DESKTOP_MEDIA_LIST_H_
+#endif  // CHROME_BROWSER_MEDIA_WEBRTC_NATIVE_DESKTOP_MEDIA_LIST_SIMPLE_H_

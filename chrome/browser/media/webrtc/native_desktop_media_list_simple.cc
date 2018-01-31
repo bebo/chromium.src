@@ -355,7 +355,7 @@ void NativeDesktopMediaListSimple::OnAuraThumbnailCaptured(const DesktopMediaID&
   }
 }
 
-void DesktopMediaListBase::SimpleUpdateSourcesList(
+void NativeDesktopMediaListSimple::SimpleUpdateSourcesList(
     const std::vector<SourceDescription>& new_sources) {
   typedef std::set<DesktopMediaID> SourceSet;
   SourceSet new_source_set;
@@ -363,50 +363,50 @@ void DesktopMediaListBase::SimpleUpdateSourcesList(
     new_source_set.insert(new_sources[i].id);
   }
   // Iterate through the old sources to find the removed sources.
-  for (size_t i = 0; i < sources_.size(); ++i) {
-    if (new_source_set.find(sources_[i].id) == new_source_set.end()) {
-      sources_.erase(sources_.begin() + i);
+  for (size_t i = 0; i < simple_sources_.size(); ++i) {
+    if (new_source_set.find(simple_sources_[i].id) == new_source_set.end()) {
+      simple_sources_.erase(simple_sources_.begin() + i);
       --i;
     }
   }
   // Iterate through the new sources to find the added sources.
-  if (new_sources.size() > sources_.size()) {
+  if (new_sources.size() > simple_sources_.size()) {
     SourceSet old_source_set;
-    for (size_t i = 0; i < sources_.size(); ++i) {
-      old_source_set.insert(sources_[i].id);
+    for (size_t i = 0; i < simple_sources_.size(); ++i) {
+      old_source_set.insert(simple_sources_[i].id);
     }
 
     for (size_t i = 0; i < new_sources.size(); ++i) {
       if (old_source_set.find(new_sources[i].id) == old_source_set.end()) {
-        sources_.insert(sources_.begin() + i, Source());
-        sources_[i].id = new_sources[i].id;
-        sources_[i].name = new_sources[i].name;
+        simple_sources_.insert(simple_sources_.begin() + i, Source());
+        simple_sources_[i].id = new_sources[i].id;
+        simple_sources_[i].name = new_sources[i].name;
       }
     }
   }
-  DCHECK_EQ(new_sources.size(), sources_.size());
+  DCHECK_EQ(new_sources.size(), simple_sources_.size());
 
   // Find the moved/changed sources.
   size_t pos = 0;
-  while (pos < sources_.size()) {
-    if (!(sources_[pos].id == new_sources[pos].id)) {
+  while (pos < simple_sources_.size()) {
+    if (!(simple_sources_[pos].id == new_sources[pos].id)) {
       // Find the source that should be moved to |pos|, starting from |pos + 1|
-      // of |sources_|, because entries before |pos| should have been sorted.
+      // of |simple_sources_|, because entries before |pos| should have been sorted.
       size_t old_pos = pos + 1;
-      for (; old_pos < sources_.size(); ++old_pos) {
-        if (sources_[old_pos].id == new_sources[pos].id)
+      for (; old_pos < simple_sources_.size(); ++old_pos) {
+        if (simple_sources_[old_pos].id == new_sources[pos].id)
           break;
       }
-      DCHECK(sources_[old_pos].id == new_sources[pos].id);
+      DCHECK(simple_sources_[old_pos].id == new_sources[pos].id);
 
       // Move the source from |old_pos| to |pos|.
-      Source temp = sources_[old_pos];
-      sources_.erase(sources_.begin() + old_pos);
-      sources_.insert(sources_.begin() + pos, temp);
+      Source temp = simple_sources_[old_pos];
+      simple_sources_.erase(simple_sources_.begin() + old_pos);
+      simple_sources_.insert(simple_sources_.begin() + pos, temp);
     }
 
-    if (sources_[pos].name != new_sources[pos].name) {
-      sources_[pos].name = new_sources[pos].name;
+    if (simple_sources_[pos].name != new_sources[pos].name) {
+      simple_sources_[pos].name = new_sources[pos].name;
     }
     ++pos;
   }
