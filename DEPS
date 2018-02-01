@@ -1,3 +1,4 @@
+# bebo: ideally, we'd use tag as revision and not branch name.
 vars = {
   'node-nw_revision':
     'origin/bebo27',
@@ -6,9 +7,9 @@ vars = {
   'ffmpeg_revision':
     'origin/bebo27',
   'x264_revision':
-    'origin/bebo27',
+    'origin/bebo',
   'mfx_dispatch_revision':
-    'origin/master',
+    'origin/bebo',
   'webrtc_revision':
     'origin/bebo27',
   'angle_revision':
