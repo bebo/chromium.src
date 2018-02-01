@@ -1,3 +1,4 @@
+# bebo: ideally, we'd use tag as revision and not branch name.
 vars = {
   'node-nw_revision':
     'origin/bebo28',
@@ -7,6 +8,10 @@ vars = {
     'origin/bebo28',
   'webrtc_revision':
     'origin/bebo28',
+  'x264_revision':
+    'origin/bebo',
+  'mfx_dispatch_revision':
+    'origin/bebo',
   'bebo_git':
     'git@github.com:bebo',
   'angle_revision':
@@ -277,9 +282,9 @@ deps = {
   'src/third_party/ffmpeg':
     (Var("bebo_git")) + '/ffmpeg.git@' + (Var("ffmpeg_revision")),
   'src/third_party/mfx_dispatch':
-    (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
+    (Var("bebo_git")) + '/mfx_dispatch.git@' + (Var("mfx_dispatch_revision")),
   'src/third_party/x264':
-    (Var("bebo_git")) + '/x264.git@422e64d9f8d064da5e8aa28850245243050a7d6f',
+    (Var("bebo_git")) + '/x264.git@' + (Var("x264_revision")),
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
