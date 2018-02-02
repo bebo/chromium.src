@@ -4,226 +4,132 @@
 
 #include "media/gpu/x264_video_encode_accelerator_win.h"
 
-#pragma warning(push)
-#pragma warning(disable : 4800)  // Disable warning for added padding.
-
-#include <codecapi.h>
-#include <mferror.h>
-#include <mftransform.h>
-#include <objbase.h>
-
-#include <iterator>
-#include <utility>
-#include <vector>
-
 #include "base/strings/utf_string_conversions.h"
-#include "base/threading/thread_task_runner_handle.h"
-#include "base/trace_event/trace_event.h"
 #include "base/win/registry.h"
-#include "base/win/scoped_co_mem.h"
-#include "base/win/scoped_variant.h"
-#include "base/win/windows_version.h"
-#include "media/base/win/mf_helpers.h"
-#include "media/base/win/mf_initializer.h"
-#include "third_party/libyuv/include/libyuv.h"
-
-#include "base/atomic_ref_count.h"
-#include "base/bind.h"
-#include "base/containers/circular_deque.h"
-#include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread.h"
-#include "base/time/time.h"
-#include "base/win/scoped_comptr.h"
-#include "media/video/video_encode_accelerator.h"
 
 extern "C" {
 #include "libavcodec/avcodec.h"
+#include "libavutil/opt.h"
+#include "libavutil/rational.h"
+#include "x264.h"
 }
 
 using base::win::RegKey;
-using base::win::ScopedComPtr;
-using media::mf::MediaBufferScopedPointer;
-
-#define BVLOG VLOG
 
 namespace media {
-X264VideoEncodeAccelerator::X264VideoEncodeAccelerator()
-    : implementation_name_("X264") {
-  fmt_dict_opts = NULL;
-  LOG(INFO) << "X264 Constructor. " << __func__;
+
+X264VideoEncodeAccelerator::X264VideoEncodeAccelerator():
+  FFMpegBaseVideoEncodeAccelerator("libx264") {
 }
 
 X264VideoEncodeAccelerator::~X264VideoEncodeAccelerator() {}
 
-VideoEncodeAccelerator::SupportedProfiles
-X264VideoEncodeAccelerator::GetSupportedProfiles() {
-  LOG(INFO) << "X264 Getting supported profiles.";
-  VideoEncodeAccelerator::SupportedProfiles profiles;
-  VideoEncodeAccelerator::SupportedProfile profile;
+void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
+  RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
 
-  profile.profile = H264PROFILE_BASELINE;
-  profile.max_framerate_numerator = 60;
-  profile.max_framerate_denominator = 1;
-  profile.max_resolution.SetSize(1920, 1088);
-  profiles.push_back(profile);
-  LOG(INFO) << "Returning supported profiles.";
-  return profiles;
-}
+  std::string preset = "faster";
+  std::string tune = "zerolatency";
+  std::string x264_params = "";
+  // std::string x264_params =
+  // "vbv-maxrate=7000:vbv-bufsize=14000:rc-lookahead=3:sync-lookahead=-1:sliced-threads=0:threads=16";
+  // // VBV std::string x264_params =
+  // "b-frames=3:ref=1:nal-hrd=cbr:force-cfr=1";  // CBR
+  DWORD max_b_frames = 0;
+  DWORD rc_buffer_size = 12000000;
+  DWORD crf = 0;
+  DWORD cqp = 0;
+  DWORD global_quality = 0;
+  DWORD twopass = 0;
 
-bool X264VideoEncodeAccelerator::Initialize(VideoPixelFormat input_format,
-                                            const gfx::Size& input_visible_size,
-                                            VideoCodecProfile output_profile,
-                                            uint32_t initial_bitrate,
-                                            Client* client) {
-  LOG(INFO) << "Initializing X264 encoder " << __func__;
-  client_ = client;
-
-  avcodec_register_all();
-
-  LOG(INFO) << "X264 Enumerating Codecs.";
-  AVCodec* current_codec = NULL;
-  current_codec = av_codec_next(current_codec);
-  while (current_codec != NULL) {
-    if (av_codec_is_encoder(current_codec)) {
-      LOG(INFO) << "Found Encoder: " << current_codec->name;
-    } else {
-      LOG(INFO) << "Not an encoder: " << current_codec->name;
+  if (beboKey.Valid()) {
+    if (beboKey.HasValue(L"preset")) {
+      std::wstring value;
+      beboKey.ReadValue(L"preset", &value);
+      preset = base::WideToUTF8(value);
     }
-    current_codec = av_codec_next(current_codec);
+
+    if (beboKey.HasValue(L"max_b_frames")) {
+      beboKey.ReadValueDW(L"max_b_frames", &max_b_frames);
+    }
+
+    if (beboKey.HasValue(L"rc_buffer_size")) {
+      beboKey.ReadValueDW(L"rc_buffer_size", &rc_buffer_size);
+    }
+
+    if (beboKey.HasValue(L"crf")) {
+      beboKey.ReadValueDW(L"crf", &crf);
+    }
+
+    if (beboKey.HasValue(L"cqp")) {
+      beboKey.ReadValueDW(L"cqp", &cqp);
+    }
+
+    if (beboKey.HasValue(L"x264-params")) {
+      std::wstring value;
+      beboKey.ReadValue(L"x264-params", &value);
+      x264_params = base::WideToUTF8(value);
+    }
+
+    if (beboKey.HasValue(L"global_quality")) {
+      beboKey.ReadValueDW(L"global_quality", &global_quality);
+    }
+
+    if (beboKey.HasValue(L"twopass")) {
+      beboKey.ReadValueDW(L"twopass", &twopass);
+    }
+
+    if (beboKey.HasValue(L"tune")) {
+      std::wstring value;
+      beboKey.ReadValue(L"tune", &value);
+      tune = base::WideToUTF8(value);
+    }
   }
 
-  // FIXME: Can't find the encoders.
-  codec_ = avcodec_find_encoder_by_name("libx264");
-  if (codec_ == NULL) {
-    LOG(ERROR) << "Failed to find x264 encoder during initialization.";
-    return false;
-  }
-  // https://ffmpeg.org/doxygen/3.2/structAVCodecContext.html
-  avc_context_ = avcodec_alloc_context3(codec_);
-  width_ = input_visible_size.width();
-  height_ = input_visible_size.height();
-  avc_context_->width = width_;
-  avc_context_->height = height_;
-  avc_context_->bit_rate = initial_bitrate;
-  // FIXME: Use actual format.
-  avc_context_->pix_fmt = AV_PIX_FMT_YUV420P;
-  avc_context_->max_b_frames = 3;
-  // FIXME: Figure out how to set initial framerate.
-  avc_context_->framerate.num = 60;
-
-  // Reference for AvFormatContext options :
-  // https://ffmpeg.org/doxygen/2.8/movenc_8c_source.html
-  // The options seem like they are almost entirely for dumping to a video file.
-  if (avcodec_open2(avc_context_, codec_, &fmt_dict_opts) < 0) {
-    LOG(ERROR) << "Could not open codec";
-    return false;
-  };
-  LOG(INFO) << "Initializing X264 encoder2";
-
-  return true;
-}
-
-// Encodes the given frame.
-// Parameters:
-//  |frame| is the VideoFrame that is to be encoded.
-//  |force_keyframe| forces the encoding of a keyframe for this frame.
-void X264VideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
-                                        bool force_keyframe) {
-  // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
-  LOG(INFO) << "X264 Encoder " << __func__;
-  AVFrame* av_frame = av_frame_alloc();
-
-  // const VideoFrameMetadata* metadata = frame.get()->metadata();
-  av_frame->key_frame = (int)force_keyframe;
-  av_frame->width = width_;
-  av_frame->height = height_;
-  av_frame->reordered_opaque = frame->timestamp().InMilliseconds();
-
-  // FIXME: format incorrect.
-  av_frame->format = GoogleVideoFrameFormatToAVFormat(frame.get()->format());
-  // FIXME: I'm not sure that this is the right way to copy the planes over.
-  for (uint8_t i = 0; i < VideoFrame::kMaxPlanes; i++) {
-    av_frame->linesize[i] = frame.get()->row_bytes(i);
-    av_frame->data[i] =
-        (uint8_t*)frame.get()->shared_memory_handle().GetHandle();
+  if (codec_->id == AV_CODEC_ID_H264) {
+    av_opt_set(avc_context_->priv_data, "preset", preset.c_str(), 0);
+    LOG(INFO) << "preset: " << preset;
   }
 
-  int err = avcodec_send_frame(avc_context_, av_frame);
-  if (err < 0) {
-    LOG(ERROR) << "avcodec_send_frame failed with status: " << err;
-    return;
+  if (tune.length() > 0) {
+    av_opt_set(avc_context_->priv_data, "tune", tune.c_str(), 0);
+    LOG(INFO) << "tune: " << tune;
   }
-  if (output_buffer_.size() == 0) {
-    return;
+
+  avc_context_->max_b_frames = max_b_frames;
+  LOG(INFO) << "max_b_frames: " << avc_context_->max_b_frames;
+
+  if (crf > 0) {
+    av_opt_set_int(avc_context_->priv_data, "crf", crf, 0);
+    LOG(INFO) << "crf: " << crf;
+  } else if (cqp > 0) {
+    av_opt_set_int(avc_context_->priv_data, "cqp", crf, 0);
+    LOG(INFO) << "cqp: " << crf;
+  } else {
+    /* av_opt_set_int(avc_context_->priv_data, "cbr", true, 0); */
+    LOG(INFO) << "cbr: true (implicit)";
+    /* LOG(INFO) << "nal-hrd: cbr"; */
   }
-  AVPacket* receive_packet = NULL;
 
-  // FIXME: Repeat this call until it returns AVERROR(EAGAIN) which means there
-  // is no more data available, the chrome output buffer is full, or we get an
-  // error.
-  err = avcodec_receive_packet(avc_context_, receive_packet);
-  if (err < 0) {
-    // FIXME: Do we need to cleanup the allocated packet if the method fails.
-    LOG(ERROR) << "avcodec_receive_packet failed with status: " << err;
-    return;
+  if (rc_buffer_size > 0) {
+    avc_context_->rc_buffer_size = rc_buffer_size;
+    /* avc_context_->rc_initial_buffer_occupancy  = rc_buffer_size / 2; */
+    LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
   }
-  // Copy from the packet we received to the output buffer.
-  base::SharedMemoryHandle buffer_handle = output_buffer_.handle();
-  HANDLE handle = buffer_handle.GetHandle();
-  memcpy(handle, (void*)receive_packet->data, receive_packet->size);
-  // FIXME: Figure out how to actually call this.  How are we supposed to know
-  // whether arbitrary output data sent to us contains a keyframe? Fix the
-  // timestamp.
-  client_->BitstreamBufferReady(
-      output_buffer_.id(), receive_packet->size, force_keyframe,
-      base::TimeDelta::FromMilliseconds(receive_packet->pts));
-  av_packet_unref(receive_packet);
+
+  if (global_quality > 0) {
+    avc_context_->global_quality = global_quality;
+    LOG(INFO) << "global_quality: " << global_quality;
+  }
+
+  if (twopass > 0) {
+    av_opt_set_int(avc_context_->priv_data, "2pass", twopass, 0);
+    LOG(INFO) << "2pass: " << twopass;
+  }
+
+  if (x264_params.length() > 3) {
+    av_opt_set(avc_context_->priv_data, "x264-params", x264_params.c_str(), 0);
+    LOG(INFO) << "x264-params: " << x264_params.c_str();
+  }
 }
 
-int X264VideoEncodeAccelerator::GoogleVideoFrameFormatToAVFormat(
-    int frame_format) {
-  // FIXME: todo.
-  return AV_PIX_FMT_YUV420P;
-}
-
-// Send a bitstream buffer to the encoder to be used for storing future
-// encoded output.  Each call here with a given |buffer| will cause the buffer
-// to be filled once, then returned with BitstreamBufferReady().
-// Parameters:
-//  |buffer| is the bitstream buffer to use for output.
-void X264VideoEncodeAccelerator::UseOutputBitstreamBuffer(
-    const BitstreamBuffer& buffer) {
-  // FIXME
-  output_buffer_ = buffer;
-  LOG(INFO) << "Received a bitstream buffer to hold encoded data.";
-}
-
-// Request a change to the encoding parameters.  This is only a request,
-// fulfilled on a best-effort basis.
-// Parameters:
-//  |bitrate| is the requested new bitrate, in bits per second.
-//  |framerate| is the requested new framerate, in frames per second.
-void X264VideoEncodeAccelerator::RequestEncodingParametersChange(
-    uint32_t bitrate,
-    uint32_t framerate) {
-  // FIXME: I couldn't quickly find a clear answer an how to dynamically change
-  // the bitrate, especially after the somewhat recent libavcodec changes.
-  LOG(INFO) << "X264 Encoder " << __func__;
-  avc_context_->bit_rate = bitrate;
-  avc_context_->framerate.num = framerate;
-}
-
-// Destroys the encoder: all pending inputs and outputs are dropped
-// immediately and the component is freed.  This call may asynchronously free
-// system resources, but its client-visible effects are synchronous. After
-// this method returns no more callbacks will be made on the client. Deletes
-// |this| unconditionally, so make sure to drop all pointers to it!
-void X264VideoEncodeAccelerator::Destroy() {
-  // FIXME: Clean up all of the stuff. Basically nothing is freed right now.
-  LOG(INFO) << "X264 Encoder " << __func__;
-
-  // avcodec_free_context(&avc_context_);
-  // av_free(codec_);
-}
 }  // namespace media

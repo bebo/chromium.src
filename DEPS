@@ -1,9 +1,16 @@
+# bebo: ideally, we'd use tag as revision and not branch name.
 vars = {
   'node-nw_revision':
     'origin/bebo27',
   'nwjs_revision':
     'origin/bebo27',
   'ffmpeg_revision':
+    'origin/bebo27',
+  'x264_revision':
+    'origin/bebo',
+  'mfx_dispatch_revision':
+    'origin/bebo',
+  'webrtc_revision':
     'origin/bebo27',
   'angle_revision':
     'c3bc984156967837f0b17b866aca0b12a2edf0e6',
@@ -255,9 +262,9 @@ deps = {
   'src/third_party/ffmpeg':
     (Var("bebo_git")) + '/ffmpeg.git@' + (Var("ffmpeg_revision")),
   'src/third_party/mfx_dispatch':
-    (Var("bebo_git")) + '/mfx_dispatch.git@f623d4314eb76119461228b118186a24ad12e092',
+    (Var("bebo_git")) + '/mfx_dispatch.git@' + (Var("mfx_dispatch_revision")),
   'src/third_party/x264':
-    (Var("bebo_git")) + '/x264.git@77046aec499792b3d5ae0f95e523cf2b9ee5b114',
+    (Var("bebo_git")) + '/x264.git@' + (Var("x264_revision")),
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
@@ -527,7 +534,7 @@ deps = {
   'src/third_party/webgl/src':
     (Var("chromium_git")) + '/external/khronosgroup/webgl.git@34842fa3c36988840c89f5bc6a68503175acf7d9',
   'src/third_party/webrtc':
-    (Var("bebo_git")) + '/webrtc.git@5708477211a6b5e19f88cfe6d6e9b178ae0107f3',
+    (Var("bebo_git")) + '/webrtc.git@' + (Var("webrtc_revision")),
   'src/third_party/xdg-utils': {
     'condition':
       'checkout_linux',
