@@ -348,6 +348,8 @@ component("gpu") {
       "dxva_video_decode_accelerator_win.h",
       "media_foundation_video_encode_accelerator_win.cc",
       "media_foundation_video_encode_accelerator_win.h",
+      "ffmpeg_base_video_encode_accelerator_win.cc",
+      "ffmpeg_base_video_encode_accelerator_win.h",
       "x264_video_encode_accelerator_win.cc",
       "x264_video_encode_accelerator_win.h",
       "qsv_video_encode_accelerator_win.cc",
