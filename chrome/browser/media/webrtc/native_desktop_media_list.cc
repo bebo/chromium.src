@@ -158,7 +158,7 @@ void NativeDesktopMediaList::Worker::Refresh(
     }
 
     DesktopMediaID media_id = DesktopMediaID(type_, sources[i].id);
-    LOG(INFO) << "id: " << sources[i].id <<  ", title: " << title << ", class_name: " << sources[i].class_name;
+    // LOG(INFO) << "id: " << sources[i].id <<  ", title: " << title << ", class_name: " << sources[i].class_name;
     if (sources[i].class_name.length() > 0) {
       media_id.class_name = base::UTF8ToUTF16(sources[i].class_name);
     }
