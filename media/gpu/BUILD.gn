@@ -370,6 +370,14 @@ component("gpu") {
       "dxva_video_decode_accelerator_win.h",
       "media_foundation_video_encode_accelerator_win.cc",
       "media_foundation_video_encode_accelerator_win.h",
+      "ffmpeg_base_video_encode_accelerator_win.cc",
+      "ffmpeg_base_video_encode_accelerator_win.h",
+      "x264_video_encode_accelerator_win.cc",
+      "x264_video_encode_accelerator_win.h",
+      "qsv_video_encode_accelerator_win.cc",
+      "qsv_video_encode_accelerator_win.h",
+      "nvenc_video_encode_accelerator_win.cc",
+      "nvenc_video_encode_accelerator_win.h",
     ]
     configs += [
       # TODO(crbug.com/167187): Fix size_t to int truncations.
@@ -381,6 +389,11 @@ component("gpu") {
       "//third_party/angle:includes",
       "//third_party/libyuv",
       "//ui/display",
+      "//third_party/ffmpeg",
+      "//third_party/ffmpeg:ffmpeg_features",
+    ]
+    include_dirs = [
+      "//third_party/x264/build/include",
     ]
     libs += [
       "d3d9.lib",
