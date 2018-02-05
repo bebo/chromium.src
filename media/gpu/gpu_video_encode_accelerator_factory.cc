@@ -71,7 +71,6 @@ std::unique_ptr<VideoEncodeAccelerator> CreateVTVEA() {
 #if defined(OS_WIN)
 // Creates a MediaFoundationVEA for Windows 8 or above only.
 std::unique_ptr<VideoEncodeAccelerator> CreateMediaFoundationVEA() {
-
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   std::string encoder = "x264";
   std::wstring value;
@@ -82,18 +81,18 @@ std::unique_ptr<VideoEncodeAccelerator> CreateMediaFoundationVEA() {
     }
   }
 
-  if (encoder.compare("mft") == 0) {
-    LOG(INFO) << "MFT encoder selected." << __func__;
+  if (encoder.compare("x264") == 0) {
+    LOG(INFO) << "x264 encoder selected." << __func__;
     return base::WrapUnique<VideoEncodeAccelerator>(
-        new MediaFoundationVideoEncodeAccelerator(false));
+        new X264VideoEncodeAccelerator());
   } else if (encoder.compare("nvenc") == 0) {
     LOG(INFO) << "NVENC encoder selected." << __func__;
     return base::WrapUnique<VideoEncodeAccelerator>(
         new NvEncVideoEncodeAccelerator());
   } else {
-    LOG(INFO) << "x264 encoder selected." << __func__;
+    LOG(INFO) << "MFT encoder selected." << __func__;
     return base::WrapUnique<VideoEncodeAccelerator>(
-        new X264VideoEncodeAccelerator());
+        new MediaFoundationVideoEncodeAccelerator(false));
   }
 }
 
