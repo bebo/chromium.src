@@ -72,7 +72,7 @@ std::unique_ptr<VideoEncodeAccelerator> CreateVTVEA() {
 // Creates a MediaFoundationVEA for Windows 8 or above only.
 std::unique_ptr<VideoEncodeAccelerator> CreateMediaFoundationVEA() {
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
-  std::string encoder = "x264";
+  std::string encoder = "mft";
   std::wstring value;
   if (beboKey.Valid()) {
     if (beboKey.HasValue(L"encoder")) {
