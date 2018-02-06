@@ -267,10 +267,20 @@ IpcPacketSocket::~IpcPacketSocket() {
 
   UMA_HISTOGRAM_CUSTOM_COUNTS("WebRTC.ApplicationMaxConsecutiveBytesDiscard.v2",
                               max_discard_bytes_sequence_, 1, 1000000, 200);
+
+  double packets_discarded = 0;
   if (total_packets_ > 0) {
+    packets_discarded = (packets_discarded_ * 100) / total_packets_;
+
     UMA_HISTOGRAM_PERCENTAGE("WebRTC.ApplicationPercentPacketsDiscarded",
-                             (packets_discarded_ * 100) / total_packets_);
+                             packets_discarded);
   }
+
+  LOG(INFO) << "IpcSocketFactory stats: "
+    << "WebRTC.ApplicationPercentPacketsDiscarded: "
+    << packets_discarded << "%, "
+    << "WebRTC.ApplicationMaxConsecutiveBytesDiscard.v2: "
+    << (max_discard_bytes_sequence_);
 }
 
 void IpcPacketSocket::TraceSendThrottlingState() const {
@@ -423,9 +433,6 @@ int IpcPacketSocket::SendTo(const void *data, size_t data_size,
       WebRtcLogMessage(base::StringPrintf(
           "IpcPacketSocket: sending is blocked. %d packets_in_flight.",
           static_cast<int>(in_flight_packet_records_.size())));
-      LOG(WARNING) << base::StringPrintf(
-            "IpcPacketSocket: sending is blocked. %d packets_in_flight.",
-            static_cast<int>(in_flight_packet_records_.size()));
 
       writable_signal_expected_ = true;
     }
@@ -672,8 +679,6 @@ void IpcPacketSocket::OnSendComplete(const P2PSendPacketMetrics& send_metrics) {
     WebRtcLogMessage(base::StringPrintf(
         "IpcPacketSocket: sending is unblocked. %d packets in flight.",
         static_cast<int>(in_flight_packet_records_.size())));
-    LOG(WARNING) << base::StringPrintf("IpcPacketSocket: sending is unblocked. %d packets in flight.",
-        static_cast<int>(in_flight_packet_records_.size()));
 
     SignalReadyToSend(this);
     writable_signal_expected_ = false;
