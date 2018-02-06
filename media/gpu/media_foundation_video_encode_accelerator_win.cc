@@ -49,6 +49,8 @@ const size_t kNumInputBuffers = 3;
 const size_t kOneMicrosecondInMFSampleTimeUnits = 10;
 const size_t kOutputSampleBufferSizeRatio = 4;
 
+const double kFramerateBoundPercent = 0.034;
+
 constexpr const wchar_t* const kMediaFoundationVideoEncoderDLLs[] = {
     L"mf.dll", L"mfplat.dll",
 };
@@ -1069,13 +1071,13 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
   }
   uint32_t current_length = VideoFrame::AllocationSize(PIXEL_FORMAT_NV12, input_visible_size_);
   hr = input_buffer.Get()->SetCurrentLength(current_length);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't set current length", );
+  RETURN_ON_HR_FAILURE(hr, "Couldn't set current length",);
 
   input_sample->SetSampleTime(frame->timestamp().InMicroseconds() *
                                kOneMicrosecondInMFSampleTimeUnits);
   UINT64 sample_duration = 1;
   hr = MFFrameRateToAverageTimePerFrame(frame_rate_, 1, &sample_duration);
-  RETURN_ON_HR_FAILURE(hr, "Couldn't calculate sample duration", );
+  RETURN_ON_HR_FAILURE(hr, "Couldn't calculate sample duration",);
   input_sample->SetSampleDuration(sample_duration);
 
   LONGLONG sample_time;
@@ -1090,7 +1092,6 @@ void MediaFoundationVideoEncodeAccelerator::QueueFrame(scoped_refptr<VideoFrame>
 
 
 void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
-
   BVLOG(3) << __func__ << " events: " << input_events_ << " queue empty: " << input_sample_queue_.empty() ;
 
   while(! input_sample_queue_.empty() && input_events_ > 0) {
@@ -1115,13 +1116,13 @@ void MediaFoundationVideoEncodeAccelerator::ProcessInput() {
         LOG(ERROR) << "Coudn't encode (after not accepting) 0x" << std::hex << hr << std:: dec;
         alive_ = false;
         NotifyError(kPlatformFailureError);
-        RETURN_ON_HR_FAILURE(hr, "Couldn't encode", );
+        RETURN_ON_HR_FAILURE(hr, "Couldn't encode",);
       }
     } else if (!SUCCEEDED(hr)) {
       LOG(ERROR) << "Coudn't encode 0x" << std::hex << hr << std:: dec;
       alive_ = false;
       NotifyError(kPlatformFailureError);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't encode", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't encode",);
     }
 
     BVLOG(3) << "ProcessInput  - Sent for encode - timestamp " << sample_time;
@@ -1173,10 +1174,10 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     } else if (hr == E_UNEXPECTED) {
       LOG(ERROR) << "Couldn't get encoded data - shutting down encoder 0x" << std::hex << hr << std::dec;
       NotifyError(kPlatformFailureError);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data",);
     } else if (! SUCCEEDED(hr)) {
       LOG(ERROR) << "Couldn't get encoded data 0x" << std::hex << hr << std::dec;
-      RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't get encoded data",);
     }
     BVLOG(3) << "Got encoded data " << hr;
     
@@ -1190,16 +1191,16 @@ void MediaFoundationVideoEncodeAccelerator::ProcessOutput() {
     ComPtr<IMFMediaBuffer> output_buffer;
     if (buffer_cnt == 1) {
       hr = output_data_buffer.pSample->GetBufferByIndex(0, output_buffer.GetAddressOf());
-      RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer by index", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer by index",);
     } else {
       LOG(WARNING) << "Unexpected large buffer converting: " << buffer_cnt;
       hr = output_data_buffer.pSample->ConvertToContiguousBuffer(output_buffer.GetAddressOf());
-      RETURN_ON_HR_FAILURE(hr, "Couldn't get contiguous buffer", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't get contiguous buffer",);
     }
 
     DWORD size = 0;
     hr = output_buffer->GetCurrentLength(&size);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer length", );
+    RETURN_ON_HR_FAILURE(hr, "Couldn't get buffer length",);
 
     base::TimeDelta timestamp;
     LONGLONG sample_time;
@@ -1318,29 +1319,35 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
     return;
   }
 
-  // NVIDIA MFT sends half the expected bitrate if MF_MT_FRAME_RATE is set to 60 and actual is 30
+  framerate = framerate
+      ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
+      : 1;
+
   uint32_t old_frame_rate = frame_rate_;
-  frame_rate_ =
-      framerate
-          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
-          : 1;
+  if (old_frame_rate != framerate) {
+    uint32_t framerate_bound_limit = (uint32_t) (frame_rate_ * kFramerateBoundPercent);
+    uint32_t framerate_diff = frame_rate_ > framerate ?
+      (frame_rate_ - framerate) : (framerate - frame_rate_);
 
-  if (old_frame_rate != frame_rate_) {
+    // we only change the framerate if the new framerate is more/less than 3.4% of existing framerate.
+    if (framerate_diff > framerate_bound_limit) {
+      // NVIDIA MFT sends half the expected bitrate if MF_MT_FRAME_RATE is set to 60 and actual is 30
+      frame_rate_ = framerate;
 
-    HRESULT hr = MFSetAttributeRatio(imf_output_media_type_.Get(), MF_MT_FRAME_RATE,
-                             frame_rate_, 1);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate",);
-    hr = MFSetAttributeRatio(imf_input_media_type_.Get(), MF_MT_FRAME_RATE,
-                             frame_rate_, 1);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate",);
-    hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
-                                 0);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set output media type", );
+      HRESULT hr = MFSetAttributeRatio(imf_output_media_type_.Get(), MF_MT_FRAME_RATE,
+          frame_rate_, 1);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate",);
+      hr = MFSetAttributeRatio(imf_input_media_type_.Get(), MF_MT_FRAME_RATE,
+          frame_rate_, 1);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set frame rate",);
+      hr = encoder_->SetOutputType(output_stream_id_, imf_output_media_type_.Get(),
+          0);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set output media type",);
+      hr = encoder_->SetInputType(input_stream_id_, imf_input_media_type_.Get(), 0);
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set input media type",);
 
-    hr = encoder_->SetInputType(input_stream_id_, imf_input_media_type_.Get(), 0);
-    RETURN_ON_HR_FAILURE(hr, "Couldn't set input media type", );
-
-    LOG(INFO) << "FPS: " << frame_rate_;
+      LOG(INFO) << "FPS: " << frame_rate_;
+    }
   }
 
   if (target_bitrate_ != bitrate) {
@@ -1361,7 +1368,7 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
       var.vt = VT_UI4;
       var.ulVal = target_bitrate_;
       HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMaxBitRate, &var);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set max bitrate",);
       LOG(INFO) << "CODECAPI_AVEncCommonMaxBitRate: " << var.ulVal;
 
       // var.ulVal = target_bitrate_ * (100-AVEncCommonMaxBitRate_) / 100;
@@ -1371,7 +1378,7 @@ void MediaFoundationVideoEncodeAccelerator::RequestEncodingParametersChangeTask(
 
     } else {
       HRESULT hr = codec_api_->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &var);
-      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate", );
+      RETURN_ON_HR_FAILURE(hr, "Couldn't set bitrate",);
       LOG(INFO) << "CODECAPI_AVEncCommonMeanBitRate: " << target_bitrate_;
     }
   }
