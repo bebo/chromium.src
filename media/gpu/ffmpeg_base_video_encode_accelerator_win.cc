@@ -26,7 +26,6 @@ namespace media {
 
 namespace {
 
-
 std::mutex logger_cb_mutex;
 
 }  // namespace
@@ -38,6 +37,23 @@ class FFMpegBaseVideoEncodeAccelerator::EncoderQueueItem {
     std::unique_ptr<AVPacket> packet;
     size_t offset;
 };
+
+void av_log_callback(void* avcl, int level, const char* fmt, va_list vl) {
+  std::lock_guard<std::mutex> lock(logger_cb_mutex);
+
+  char buff[4096];
+  vsnprintf(buff, sizeof(buff), fmt, vl);
+  if (level == AV_LOG_ERROR) {
+    LOG(ERROR) << "ffmpeg " << buff;
+  } else if (level == AV_LOG_WARNING) {
+    LOG(WARNING) << "ffmpeg " << buff;
+  } else if (level == AV_LOG_INFO) {
+    LOG(INFO) << "ffmpeg " << buff;
+  } else {
+    LOG(INFO) << "ffmpeg " << buff;
+    /* DVLOG(1) << "ffmpeg " << buff; */
+  }
+}
 
 class FFMpegBaseVideoEncodeAccelerator::EncodeOutput {
  public:
@@ -70,10 +86,11 @@ struct FFMpegBaseVideoEncodeAccelerator::BitstreamBufferRef {
   DISALLOW_IMPLICIT_CONSTRUCTORS(BitstreamBufferRef);
 };
 
-FFMpegBaseVideoEncodeAccelerator::FFMpegBaseVideoEncodeAccelerator(std::string ffmpeg_encoder_name)
+FFMpegBaseVideoEncodeAccelerator::FFMpegBaseVideoEncodeAccelerator(std::string ffmpeg_encoder_name, AVPixelFormat native_format)
     : frame_rate_(0),
       target_bitrate_(0),
       ffmpeg_encoder_name_(ffmpeg_encoder_name),
+      native_format_(native_format),
       main_client_task_runner_(base::ThreadTaskRunnerHandle::Get()),
       encoder_thread_("ffmpeg - " + ffmpeg_encoder_name),
       encoder_task_weak_factory_(this){
@@ -83,7 +100,7 @@ FFMpegBaseVideoEncodeAccelerator::~FFMpegBaseVideoEncodeAccelerator() {}
 
 VideoEncodeAccelerator::SupportedProfiles
 FFMpegBaseVideoEncodeAccelerator::GetSupportedProfiles() {
-  LOG(INFO) << "X264 Getting supported profiles.";
+  LOG(INFO) << implementation_name_ << " Getting supported profiles.";
   VideoEncodeAccelerator::SupportedProfiles profiles;
   VideoEncodeAccelerator::SupportedProfile profile;
 
@@ -102,41 +119,36 @@ FFMpegBaseVideoEncodeAccelerator::GetSupportedProfiles() {
   return profiles;
 }
 
-void av_log_callback(void* avcl, int level, const char* fmt, va_list vl) {
-  std::lock_guard<std::mutex> lock(logger_cb_mutex);
 
-  char buff[4096];
-  vsnprintf(buff, sizeof(buff), fmt, vl);
-  if (level == AV_LOG_ERROR) {
-    LOG(ERROR) << "ffmpeg " << buff;
-  } else if (level == AV_LOG_WARNING) {
-    LOG(WARNING) << "ffmpeg " << buff;
-  } else if (level == AV_LOG_INFO) {
-    LOG(INFO) << "ffmpeg " << buff;
-  } else {
-    DVLOG(1) << "ffmpeg " << buff;
+bool FFMpegBaseVideoEncodeAccelerator::Initialize(
+    VideoPixelFormat format,
+    const gfx::Size& input_visible_size,
+    VideoCodecProfile output_profile,
+    uint32_t initial_bitrate,
+    Client* client) {
+
+  LOG(INFO) << __func__ << ": input_format=" << VideoPixelFormatToString(format)
+           << ", input_visible_size=" << input_visible_size.ToString()
+           << ", output_profile=" << output_profile
+           << ", initial_bitrate=" << initial_bitrate;
+  DCHECK(main_client_task_runner_->BelongsToCurrentThread());
+
+  if (PIXEL_FORMAT_I420 != format) {
+    DLOG(ERROR) << "Input format not supported= "
+                << VideoPixelFormatToString(format);
+    return false;
   }
-}
-
-bool FFMpegBaseVideoEncodeAccelerator::Initialize(VideoPixelFormat format,
-                                            const gfx::Size& input_visible_size,
-                                            VideoCodecProfile output_profile,
-                                            uint32_t initial_bitrate,
-                                            Client* client) {
-  LOG(INFO) << "Initializing X264 encoder " << __func__;
 
   if (initial_bitrate == 300000) {
     initial_bitrate = kDefaultTargetBitrate;
   }
 
-  if (PIXEL_FORMAT_I420 != format) {
-    LOG(ERROR) << "Input format not supported= "
-               << VideoPixelFormatToString(format);
-    return false;
-  }
+  // FIXME
+  /* if (GetH264VProfile(output_profile) == eAVEncH264VProfile_unknown) { */
+  /*   DLOG(ERROR) << "Output profile not supported= " << output_profile; */
+  /*   return false; */
+  /* } */
 
-  // FIXME: this should not be COM MTA thread. 
-  encoder_thread_.init_com_with_mta(false);  // TODO: this seems odd
   if (!encoder_thread_.Start()) {
     DLOG(ERROR) << "Failed spawning encoder thread.";
     return false;
@@ -145,25 +157,43 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(VideoPixelFormat format,
 
   main_client_weak_factory_.reset(new base::WeakPtrFactory<Client>(client));
   main_client_ = main_client_weak_factory_->GetWeakPtr();
-
   input_visible_size_ = input_visible_size;
 
   bitstream_buffer_size_ = input_visible_size.GetArea();
 
-  u_plane_offset_ =
-      VideoFrame::PlaneSize(PIXEL_FORMAT_I420, VideoFrame::kYPlane,
-                            input_visible_size_)
-          .GetArea();
-  v_plane_offset_ = u_plane_offset_ + VideoFrame::PlaneSize(PIXEL_FORMAT_I420,
-                                                            VideoFrame::kUPlane,
-                                                            input_visible_size_)
-                                          .GetArea();
-  y_stride_ = VideoFrame::RowBytes(VideoFrame::kYPlane, PIXEL_FORMAT_I420,
-                                   input_visible_size_.width());
-  u_stride_ = VideoFrame::RowBytes(VideoFrame::kUPlane, PIXEL_FORMAT_I420,
-                                   input_visible_size_.width());
-  v_stride_ = VideoFrame::RowBytes(VideoFrame::kVPlane, PIXEL_FORMAT_I420,
-                                   input_visible_size_.width());
+  if (native_format_ == AV_PIX_FMT_YUV420P) {
+
+    u_plane_offset_ =
+        VideoFrame::PlaneSize(PIXEL_FORMAT_I420, VideoFrame::kYPlane,
+                              input_visible_size_)
+            .GetArea();
+    v_plane_offset_ = u_plane_offset_ + VideoFrame::PlaneSize(PIXEL_FORMAT_I420,
+                                                              VideoFrame::kUPlane,
+                                                              input_visible_size_)
+                                            .GetArea();
+    y_stride_ = VideoFrame::RowBytes(VideoFrame::kYPlane, PIXEL_FORMAT_I420,
+                                     input_visible_size_.width());
+    u_stride_ = VideoFrame::RowBytes(VideoFrame::kUPlane, PIXEL_FORMAT_I420,
+                                     input_visible_size_.width());
+    v_stride_ = VideoFrame::RowBytes(VideoFrame::kVPlane, PIXEL_FORMAT_I420,
+                                     input_visible_size_.width());
+
+  } else if (native_format_ == AV_PIX_FMT_NV12) {
+
+    u_plane_offset_ = VideoFrame::PlaneSize(PIXEL_FORMAT_NV12,
+                                            VideoFrame::kYPlane,
+                                            input_visible_size_).GetArea();
+    y_stride_ = VideoFrame::RowBytes(VideoFrame::kYPlane, PIXEL_FORMAT_NV12,
+                                     input_visible_size_.width());
+    u_stride_ = VideoFrame::RowBytes(VideoFrame::kUPlane, PIXEL_FORMAT_NV12,
+                                     input_visible_size_.width());
+  } else {
+    LOG(ERROR) << "ENCODER NATIVE FORMAT NOT IMPLEMENTED: " << native_format_;
+  }
+
+  LOG(INFO) << "u_plane_offset: " << u_plane_offset_
+    << " y_stride: " << y_stride_
+    << " u_stride: " <<  u_stride_;
 
   // Pin all client callbacks to the main task runner initially. It can be
   // reassigned by TryToSetupEncodeOnSeparateThread().
@@ -190,7 +220,8 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   avc_context_->width = input_visible_size.width();
   avc_context_->height = input_visible_size.height();
 
-  avc_context_->pix_fmt = AV_PIX_FMT_YUV420P;
+  avc_context_->pix_fmt = native_format_;
+
   avc_context_->framerate.num = kMaxFrameRateNumerator;
   avc_context_->framerate.den = kMaxFrameRateDenominator;
   avc_context_->time_base.num = kMaxFrameRateDenominator;
@@ -213,7 +244,7 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(VideoPixelFormat format,
   implementation_name_ = "ffmpeg - " + ffmpeg_encoder_name_;
   main_client_task_runner_->PostTask(
       FROM_HERE, base::Bind(&Client::SetImplementationName, main_client_,
-                            implementation_name_));
+      implementation_name_));
   VLOG(3) << "Posting SetImplementationName: " << implementation_name_;
 
   main_client_task_runner_->PostTask(
@@ -246,16 +277,17 @@ void FFMpegBaseVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
   }
 
   avc_context_->bit_rate = bitrate;
-  avc_context_->rc_min_rate = bitrate / 2;
-  avc_context_->rc_max_rate = bitrate;
-  avc_context_->rc_min_rate = bitrate * 0.8;
+  /* avc_context_->rc_min_rate = bitrate / 2; */
+  /* avc_context_->rc_max_rate = bitrate; */
+  /* avc_context_->rc_min_rate = bitrate * 0.8; */
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
   target_bitrate_ = bitrate;
 }
 
-void FFMpegBaseVideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
-                                        bool force_keyframe) {
+void FFMpegBaseVideoEncodeAccelerator::Encode(
+    const scoped_refptr<VideoFrame>& frame,
+    bool force_keyframe) {
   DVLOG(3) << __func__;
   DCHECK(encode_client_task_runner_->BelongsToCurrentThread());
 
@@ -423,10 +455,6 @@ void FFMpegBaseVideoEncodeAccelerator::RequestEncodingParametersChange(
 // this method returns no more callbacks will be made on the client. Deletes
 // |this| unconditionally, so make sure to drop all pointers to it!
 void FFMpegBaseVideoEncodeAccelerator::Destroy() {
-  // FIXME: Clean up all of the stuff. Basically nothing is freed right now.
-
-  // avcodec_free_context(&avc_context_);
-  // av_free(codec_);
   DVLOG(3) << __func__;
   DCHECK(main_client_task_runner_->BelongsToCurrentThread());
 
@@ -486,23 +514,49 @@ void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> fram
     << " microseconds: " << frame->timestamp().InMicroseconds()
     << " frame->timestamp(): " << frame->timestamp();
 
-  av_frame->format = AV_PIX_FMT_YUV420P;
+  av_frame->format = native_format_;
 
   // TODO: better use an input buffer pool
-  if (av_frame_get_buffer(av_frame, 32) < 0) {
+  // QSV needs 64 byte alignment
+  if (av_frame_get_buffer(av_frame, 64) < 0) {
     LOG(ERROR) << "FAILED TO ALLOCATE BUFFER";
     return;
   }
 
-  libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane),
-                   frame->stride(VideoFrame::kYPlane),
-                   frame->visible_data(VideoFrame::kUPlane),
-                   frame->stride(VideoFrame::kUPlane),
-                   frame->visible_data(VideoFrame::kVPlane),
-                   frame->stride(VideoFrame::kVPlane), av_frame->data[0],
-                   y_stride_, av_frame->data[1], u_stride_, av_frame->data[2],
-                   v_stride_, input_visible_size_.width(),
-                   input_visible_size_.height());
+  if (native_format_ == AV_PIX_FMT_YUV420P) {
+
+    libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane),
+                     frame->stride(VideoFrame::kYPlane),
+                     frame->visible_data(VideoFrame::kUPlane),
+                     frame->stride(VideoFrame::kUPlane),
+                     frame->visible_data(VideoFrame::kVPlane),
+                     frame->stride(VideoFrame::kVPlane),
+                     av_frame->data[0],
+                     av_frame->linesize[0],
+                     av_frame->data[1],
+                     av_frame->linesize[1],
+                     av_frame->data[2],
+                     av_frame->linesize[2],
+                     input_visible_size_.width(),
+                     input_visible_size_.height());
+
+  } else if (native_format_ == AV_PIX_FMT_NV12) {
+
+    libyuv::I420ToNV12(frame->visible_data(VideoFrame::kYPlane),
+                     frame->stride(VideoFrame::kYPlane),
+                     frame->visible_data(VideoFrame::kUPlane),
+                     frame->stride(VideoFrame::kUPlane),
+                     frame->visible_data(VideoFrame::kVPlane),
+                     frame->stride(VideoFrame::kVPlane),
+                     av_frame->data[0],
+                     av_frame->linesize[0],
+                     av_frame->data[1],
+                     av_frame->linesize[1],
+                     input_visible_size_.width(),
+                     input_visible_size_.height());
+  } else {
+    LOG(ERROR) << "ENCODER NATIVE FORMAT NOT IMPLEMENTED: " << native_format_;
+  }
 
   int err = avcodec_send_frame(avc_context_, av_frame);
   av_frame_free(&av_frame);
@@ -560,10 +614,63 @@ void FFMpegBaseVideoEncodeAccelerator::DestroyTask() {
   ReleaseEncoderResources();
 }
 
-void FFMpegBaseVideoEncodeAccelerator::ReleaseEncoderResources() {
+void FFMpegBaseVideoEncodeAccelerator::FlushEncoder() {
+  DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
   LOG(INFO) << __func__;
 
-  //  encoder_.Reset();
+  int err = avcodec_send_frame(avc_context_, nullptr);
+  if (err < 0) {
+    LOG(ERROR) << "avcodec_send_frame failed with status: " << err;
+  }
+
+  while(true) {
+
+    std::unique_ptr<AVPacket> receive_packet = base::MakeUnique<AVPacket>();
+    av_init_packet(receive_packet.get());
+
+    int err = avcodec_receive_packet(avc_context_, receive_packet.get());
+    if (err == AVERROR_EOF) {
+      LOG(INFO) << "avcodec flushed";
+      break;
+    } else if (err == AVERROR(EAGAIN)) {
+      LOG(ERROR) << "avcodec_receive_packet failed with status: EAGAIN";
+      break;
+    } else if (err < 0) {
+      LOG(ERROR) << "avcodec_receive_packet failed with status: " << err;
+      break;
+    }
+    av_packet_unref(receive_packet.get());
+  }
+  avcodec_flush_buffers(avc_context_);
+}
+
+void FFMpegBaseVideoEncodeAccelerator::ReleaseEncoderResources() {
+  DCHECK(encoder_thread_task_runner_->BelongsToCurrentThread());
+  LOG(INFO) << __func__;
+  FlushEncoder();
+
+  for (auto &it: encoder_output_queue_) {
+    if (it->packet.get() != nullptr) {
+      av_packet_unref(it->packet.get());
+    }
+  }
+  encoder_output_queue_.erase(
+      encoder_output_queue_.begin(),
+      encoder_output_queue_.end());
+  encoder_output_queue_.clear();
+
+  for (auto &it: encoder_queue_) {
+    if (it.second->packet.get() != nullptr) {
+      av_packet_unref(it.second->packet.get());
+    }
+  }
+  encoder_queue_.erase(
+      encoder_queue_.begin(),
+      encoder_queue_.end());
+  encoder_queue_.clear();
+
+  avcodec_free_context(&avc_context_);
+  av_free(codec_);
 }
 
 }  // namespace media

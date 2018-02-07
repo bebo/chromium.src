@@ -19,7 +19,7 @@ using base::win::RegKey;
 namespace media {
 
 X264VideoEncodeAccelerator::X264VideoEncodeAccelerator():
-  FFMpegBaseVideoEncodeAccelerator("libx264") {
+  FFMpegBaseVideoEncodeAccelerator("libx264", AV_PIX_FMT_YUV420P) {
 }
 
 X264VideoEncodeAccelerator::~X264VideoEncodeAccelerator() {}

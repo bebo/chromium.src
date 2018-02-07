@@ -194,12 +194,6 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
     uint32_t initial_bitrate,
     Client* client) {
 
-  // FIXME
-  initial_bitrate = kDefaultTargetBitrate;
-  DVLOG(3) << __func__ << ": input_format=" << VideoPixelFormatToString(format)
-           << ", input_visible_size=" << input_visible_size.ToString()
-           << ", output_profile=" << output_profile
-           << ", initial_bitrate=" << initial_bitrate;
   LOG(INFO) << __func__ << ": input_format=" << VideoPixelFormatToString(format)
            << ", input_visible_size=" << input_visible_size.ToString()
            << ", output_profile=" << output_profile
@@ -210,6 +204,10 @@ bool MediaFoundationVideoEncodeAccelerator::Initialize(
     DLOG(ERROR) << "Input format not supported= "
                 << VideoPixelFormatToString(format);
     return false;
+  }
+
+  if (initial_bitrate == 300000) {
+    initial_bitrate = kDefaultTargetBitrate;
   }
 
   if (GetH264VProfile(output_profile) == eAVEncH264VProfile_unknown) {

@@ -31,7 +31,7 @@ const size_t kMaxKeyFrameInterval = 15;  // seconds
 class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
  public:
   FFMpegBaseVideoEncodeAccelerator();
-  FFMpegBaseVideoEncodeAccelerator(std::string ffmpeg_encoder_name);
+  FFMpegBaseVideoEncodeAccelerator(std::string ffmpeg_encoder_name, AVPixelFormat native_format);
 
   // Video encoder functions.
 
@@ -150,6 +150,9 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   // Destroys encode session on |encoder_thread_|.
   void DestroyTask();
 
+  // Flush all frames / buffers in encoder
+  void FlushEncoder();
+
   // Releases resources encoder holds.
   void ReleaseEncoderResources();
 
@@ -160,9 +163,8 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   // EncodeOutput needs to be copied into a BitstreamBufferRef as a FIFO.
   base::circular_deque<std::unique_ptr<EncoderQueueItem>> encoder_output_queue_;
 
-  /* uint64_t pts_timestamps_[kMaxFrameRateNumerator] = {0}; */
   std::map<uint32_t, std::unique_ptr<EncoderQueueItem>> encoder_queue_;
-  uint32_t last_pts_ = {0};
+  uint32_t last_pts_ = 0;
 
   void DrainEncoder();
   bool ReceivePacket();
@@ -184,10 +186,11 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   size_t v_stride_;
   std::string ffmpeg_encoder_name_;
   std::string implementation_name_;
+  AVPixelFormat native_format_;
   AVCodec *codec_;
   AVCodecContext *avc_context_;
 
-  AVPacket* VideoFrameToAVPacket(const scoped_refptr<VideoFrame>& frame);
+  /* AVPacket* VideoFrameToAVPacket(const scoped_refptr<VideoFrame>& frame); */
 
   // To expose client callbacks from VideoEncodeAccelerator.
   // NOTE: all calls to this object *MUST* be executed on

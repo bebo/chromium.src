@@ -21,7 +21,10 @@ using base::win::RegKey;
 namespace media {
 
 NvEncVideoEncodeAccelerator::NvEncVideoEncodeAccelerator():
-  FFMpegBaseVideoEncodeAccelerator("nvenc") {
+  //TODO - the nvenc encoder name is deprecated - should use h264_nvenc - but
+  //need to rebuild ffmpeg to expose... and skipping the 4.5 h for now
+  /* FFMpegBaseVideoEncodeAccelerator("h264_nvenc") { */
+  FFMpegBaseVideoEncodeAccelerator("nvenc", AV_PIX_FMT_YUV420P) {
 }
 
 NvEncVideoEncodeAccelerator::~NvEncVideoEncodeAccelerator() {}
