@@ -516,31 +516,40 @@ void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> fram
 
   av_frame->format = native_format_;
 
-  // TODO: better use an input buffer pool
-  // QSV needs 64 byte alignment
-  if (av_frame_get_buffer(av_frame, 64) < 0) {
-    LOG(ERROR) << "FAILED TO ALLOCATE BUFFER";
-    return;
-  }
-
   if (native_format_ == AV_PIX_FMT_YUV420P) {
 
-    libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane),
-                     frame->stride(VideoFrame::kYPlane),
-                     frame->visible_data(VideoFrame::kUPlane),
-                     frame->stride(VideoFrame::kUPlane),
-                     frame->visible_data(VideoFrame::kVPlane),
-                     frame->stride(VideoFrame::kVPlane),
-                     av_frame->data[0],
-                     av_frame->linesize[0],
-                     av_frame->data[1],
-                     av_frame->linesize[1],
-                     av_frame->data[2],
-                     av_frame->linesize[2],
-                     input_visible_size_.width(),
-                     input_visible_size_.height());
+    // not reference counted frame
+    av_frame->data[0] = frame->visible_data(VideoFrame::kYPlane);
+    av_frame->data[1] = frame->visible_data(VideoFrame::kUPlane);
+    av_frame->data[2] = frame->visible_data(VideoFrame::kVPlane);
+    av_frame->data[3] = nullptr;
+    av_frame->linesize[0] = frame->stride(VideoFrame::kYPlane);
+    av_frame->linesize[1] = frame->stride(VideoFrame::kUPlane);
+    av_frame->linesize[2] = frame->stride(VideoFrame::kVPlane);
+
+    /* libyuv::I420Copy(frame->visible_data(VideoFrame::kYPlane), */
+    /*                  frame->stride(VideoFrame::kYPlane), */
+    /*                  frame->visible_data(VideoFrame::kUPlane), */
+    /*                  frame->stride(VideoFrame::kUPlane), */
+    /*                  frame->visible_data(VideoFrame::kVPlane), */
+    /*                  frame->stride(VideoFrame::kVPlane), */
+    /*                  av_frame->data[0], */
+    /*                  av_frame->linesize[0], */
+    /*                  av_frame->data[1], */
+    /*                  av_frame->linesize[1], */
+    /*                  av_frame->data[2], */
+    /*                  av_frame->linesize[2], */
+    /*                  input_visible_size_.width(), */
+    /*                  input_visible_size_.height()); */
 
   } else if (native_format_ == AV_PIX_FMT_NV12) {
+
+    // TODO: better use an input buffer pool
+    // QSV needs 64 byte alignment
+    if (av_frame_get_buffer(av_frame, 64) < 0) {
+      LOG(ERROR) << "FAILED TO ALLOCATE BUFFER";
+      return;
+    }
 
     libyuv::I420ToNV12(frame->visible_data(VideoFrame::kYPlane),
                      frame->stride(VideoFrame::kYPlane),

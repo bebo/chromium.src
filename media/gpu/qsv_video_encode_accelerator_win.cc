@@ -18,7 +18,7 @@ using base::win::RegKey;
 namespace media {
 
 QsvVideoEncodeAccelerator::QsvVideoEncodeAccelerator():
-  FFMpegBaseVideoEncodeAccelerator("libQsv") {
+  FFMpegBaseVideoEncodeAccelerator("h264_qsv", AV_PIX_FMT_NV12) {
 }
 
 QsvVideoEncodeAccelerator::~QsvVideoEncodeAccelerator() {}
