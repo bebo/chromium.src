@@ -251,6 +251,10 @@ void DesktopCaptureDevice::Core::OnCaptureResult(
   }
   DCHECK(frame);
 
+  // jake: webrtc returns us SUCCEEDDED but with no frame. 
+  if (!frame)
+    return;
+
   base::TimeDelta capture_time(
       base::TimeDelta::FromMilliseconds(frame->capture_time_ms()));
 
