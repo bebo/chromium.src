@@ -106,7 +106,7 @@ FFMpegBaseVideoEncodeAccelerator::GetSupportedProfiles() {
 
   profile.profile = H264PROFILE_BASELINE;
   profile.max_framerate_numerator = kMaxFrameRateNumerator;
-  profile.max_framerate_denominator = kMaxFrameRateDenominator;
+  profile.max_framerate_denominator = kFrameRateDenominator;
   profile.max_resolution.SetSize(1920, 1088);
   profiles.push_back(profile);
 
@@ -222,13 +222,8 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(
 
   avc_context_->pix_fmt = native_format_;
 
-  avc_context_->framerate.num = kMaxFrameRateNumerator;
-  avc_context_->framerate.den = kMaxFrameRateDenominator;
-  avc_context_->time_base.num = kMaxFrameRateDenominator;
-  avc_context_->time_base.den = kMaxFrameRateNumerator;
-
   SetBitRate(initial_bitrate);
-  SetFrameRate(kMaxFrameRateNumerator / kMaxFrameRateDenominator);
+  SetFrameRate(kMaxFrameRateNumerator / kFrameRateDenominator);
 
   // Reference for AvFormatContext options :
   // https://ffmpeg.org/doxygen/2.8/movenc_8c_source.html
@@ -256,19 +251,33 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(
 
 void FFMpegBaseVideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
   uint32_t old_frame_rate = frame_rate_;
-  frame_rate_ =
-      framerate
-          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator))
-          : 1;
+  /* LOG(INFO) << "new frame_rate: " << framerate  << " old: " << old_frame_rate; */
 
-  if (old_frame_rate == frame_rate_) {
+  if (old_frame_rate == framerate) {
     return;
   }
+  frame_rate_ =
+      framerate
+          ? std::min(framerate, static_cast<uint32_t>(kMaxFrameRateNumerator/kFrameRateDenominator))
+          : 1;
 
-  avc_context_->framerate.num = frame_rate_;
+  avc_context_->framerate.num = frame_rate_ * kFrameRateDenominator;
+  avc_context_->framerate.den = kFrameRateDenominator;
+  avc_context_->time_base.num = kTimeBaseNumerator;
+  avc_context_->time_base.den = kTimeBaseDenominator;
+  avc_context_->ticks_per_frame = (kTimeBaseDenominator * kFrameRateDenominator) / (frame_rate_ * kTimeBaseNumerator);
+
   avc_context_->keyint_min = frame_rate_;
   avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
-  LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_;
+
+  /* LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_; */
+
+  LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_
+            << " framerate.num: " <<   avc_context_->framerate.num
+            << " framerate.den: " <<   avc_context_->framerate.den
+            << " time_base.num: " <<   avc_context_->time_base.num
+            << " time_base.den: " <<   avc_context_->time_base.den
+            << " ticks_per_frame: " << avc_context_->ticks_per_frame;
 }
 
 void FFMpegBaseVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
@@ -278,7 +287,7 @@ void FFMpegBaseVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
 
   avc_context_->bit_rate = bitrate;
   /* avc_context_->rc_min_rate = bitrate / 2; */
-  /* avc_context_->rc_max_rate = bitrate; */
+  avc_context_->rc_max_rate = bitrate * 1.1;
   /* avc_context_->rc_min_rate = bitrate * 0.8; */
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
@@ -491,6 +500,19 @@ void FFMpegBaseVideoEncodeAccelerator::NotifyError(
 
 void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
                                             bool force_keyframe) {
+
+  /* if (last_pts_ == 0) { */
+  /*   if (frame_rate_ == 0) { */
+  /*     LOG(INFO) << implementation_name_ << " framerate not set from GUM - dropping frame"; */
+  /*     return; */
+  /*   } */
+  /*   LOG(INFO) << implementation_name_ */
+  /*     << " first frame bitrate: " << target_bitrate_ */
+  /*     << " framerate.num: " << avc_context_->framerate.num */
+  /*     << " framerate.den: " << avc_context_->framerate.den; */
+  /*   force_keyframe = true; */
+  /* }; */
+
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
   AVFrame* av_frame = av_frame_alloc();
 

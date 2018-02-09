@@ -21,8 +21,13 @@ extern "C" {
 namespace media {
 
 const size_t kMaxFrameRateNumerator = 60;
+const size_t kFrameRateDenominator = 1;
+
+const size_t kTimeBaseDenominator = kMaxFrameRateNumerator * 10;
+const size_t kTimeBaseNumerator = kFrameRateDenominator;
+
+
 const int32_t kDefaultTargetBitrate = 6000000;
-const size_t kMaxFrameRateDenominator = 1;
 const size_t kNumInputBuffers = 6;
 const size_t kMaxKeyFrameInterval = 15;  // seconds
 
