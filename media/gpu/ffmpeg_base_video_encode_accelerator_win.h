@@ -169,7 +169,6 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   base::circular_deque<std::unique_ptr<EncoderQueueItem>> encoder_output_queue_;
 
   std::map<uint32_t, std::unique_ptr<EncoderQueueItem>> encoder_queue_;
-  uint32_t last_pts_ = 0;
 
   void DrainEncoder();
   bool ReceivePacket();
@@ -191,11 +190,15 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   size_t v_stride_;
   std::string ffmpeg_encoder_name_;
   std::string implementation_name_;
+
   AVPixelFormat native_format_;
   AVCodec *codec_;
   AVCodecContext *avc_context_;
 
-  /* AVPacket* VideoFrameToAVPacket(const scoped_refptr<VideoFrame>& frame); */
+  uint32_t last_pts_ = 0;
+  uint32_t rc_max_rate_pct_ = 0; // set max to avg bitrate * x/100
+  uint32_t rc_min_rate_pct_ = 0; // set min to avg bitrate * x/100
+  uint32_t rc_buffer_size_ms_ = 0;
 
   // To expose client callbacks from VideoEncodeAccelerator.
   // NOTE: all calls to this object *MUST* be executed on

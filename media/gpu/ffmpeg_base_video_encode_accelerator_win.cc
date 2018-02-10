@@ -286,9 +286,17 @@ void FFMpegBaseVideoEncodeAccelerator::SetBitRate(uint32_t bitrate) {
   }
 
   avc_context_->bit_rate = bitrate;
-  /* avc_context_->rc_min_rate = bitrate / 2; */
-  avc_context_->rc_max_rate = bitrate * 1.1;
-  /* avc_context_->rc_min_rate = bitrate * 0.8; */
+  if (rc_max_rate_pct_ != 0) {
+    avc_context_->rc_max_rate = bitrate * rc_max_rate_pct_ / 100;
+  }
+
+  if (rc_min_rate_pct_ != 0) {
+    avc_context_->rc_min_rate = bitrate * rc_min_rate_pct_ / 100;
+  }
+
+  if (rc_buffer_size_ms_ != 0) {
+    avc_context_->rc_buffer_size = rc_buffer_size_ms_ * bitrate / 1000;
+  }
 
   LOG(INFO) << "changed bitrate: " << target_bitrate_ << " -> " << bitrate;
   target_bitrate_ = bitrate;
