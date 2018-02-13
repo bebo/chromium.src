@@ -15,6 +15,7 @@
 #include "base/optional.h"
 #include "base/strings/string_piece.h"
 #include "base/timer/timer.h"
+#include "media/audio/audio_manager.h"
 #include "media/base/audio_parameters.h"
 #include "media/base/media_export.h"
 
@@ -72,7 +73,6 @@ class SingleThreadTaskRunner;
 namespace media {
 
 class AudioInputStream;
-class AudioManager;
 class AudioBus;
 
 // Only do power monitoring for non-mobile platforms to save resources.
@@ -83,7 +83,8 @@ class AudioBus;
 class UserInputMonitor;
 
 class MEDIA_EXPORT AudioInputController
-    : public base::RefCountedThreadSafe<AudioInputController> {
+    : public base::RefCountedThreadSafe<AudioInputController>,
+      public AudioManager::AudioDeviceListener  {
  public:
   // Error codes to make native logging more clear. These error codes are added
   // to generic error strings to provide a higher degree of details.
@@ -212,6 +213,12 @@ class MEDIA_EXPORT AudioInputController
   // to muted and 1.0 to maximum volume.
   virtual void SetVolume(double volume);
 
+  // AudioDeviceListener implementation.  When called AudioOutputController will
+  // shutdown the existing |stream_|, transition to the kRecreating state,
+  // create a new stream, and then transition back to an equivalent state prior
+  // to being called.
+  void OnDeviceChange() override;
+
  protected:
   friend class base::RefCountedThreadSafe<AudioInputController>;
 
@@ -260,7 +267,10 @@ class MEDIA_EXPORT AudioInputController
                        SyncWriter* sync_writer,
                        UserInputMonitor* user_input_monitor,
                        const AudioParameters& params,
-                       StreamType type);
+                       StreamType type,
+                       AudioManager* audio_manager,
+                       const std::string& device_id,
+                       bool enable_agc);
   virtual ~AudioInputController();
 
   const scoped_refptr<base::SingleThreadTaskRunner>& GetTaskRunnerForTesting()
@@ -275,10 +285,12 @@ class MEDIA_EXPORT AudioInputController
   void DoCreate(AudioManager* audio_manager,
                 const AudioParameters& params,
                 const std::string& device_id,
-                bool enable_agc);
+                bool enable_agc,
+                bool reconnect);
   void DoCreateForStream(AudioInputStream* stream_to_control, bool enable_agc);
   void DoRecord();
   void DoClose();
+  void DoCloseForReconnect();
   void DoReportError();
   void DoSetVolume(double volume);
   void DoLogAudioLevels(float level_dbfs, int microphone_volume_percent);
@@ -364,6 +376,11 @@ class MEDIA_EXPORT AudioInputController
 
   bool is_muted_ = false;
   base::RepeatingTimer check_muted_state_timer_;
+
+  AudioManager* const audio_manager_;
+  const AudioParameters params_;
+  std::string device_id_;
+  bool agc_enabled_;
 
   class AudioCallback;
   // Holds a pointer to the callback object that receives audio data from

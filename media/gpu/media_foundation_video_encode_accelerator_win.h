@@ -13,6 +13,7 @@
 
 #include <memory>
 
+#include "base/atomic_ref_count.h"
 #include "base/bind.h"
 #include "base/containers/circular_deque.h"
 #include "base/memory/weak_ptr.h"
@@ -32,7 +33,7 @@ namespace media {
 // correct task runners. It starts an internal encoder thread on which
 // VideoEncodeAccelerator implementation tasks are posted.
 class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
-    : public VideoEncodeAccelerator {
+    : public VideoEncodeAccelerator, IMFAsyncCallback {
  public:
   // If |compatible_with_win7| is true, MediaFoundationVideoEncoderAccelerator
   // works on Windows 7. Some attributes of the encoder are not supported on old
@@ -61,6 +62,13 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   // correctly loaded.
   static bool PreSandboxInitialization();
 
+  // IMFAsyncCallback
+  ULONG STDMETHODCALLTYPE AddRef() override;
+  ULONG STDMETHODCALLTYPE Release() override;
+  STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override;
+  STDMETHODIMP GetParameters(DWORD * pdwFlags, DWORD * pdwQueue);
+  STDMETHODIMP Invoke(IMFAsyncResult * pAsyncResult);
+
  protected:
   ~MediaFoundationVideoEncodeAccelerator() override;
 
@@ -77,6 +85,9 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   // Initializes and allocates memory for input and output samples.
   bool InitializeInputOutputSamples(VideoCodecProfile output_profile);
 
+  // Initialize Async Event Generator
+  bool InitializeEventGenerator();
+
   // Initializes encoder parameters for real-time use.
   bool SetEncoderModes();
 
@@ -91,8 +102,14 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   // Encoding tasks to be run on |encoder_thread_|.
   void EncodeTask(scoped_refptr<VideoFrame> frame, bool force_keyframe);
 
+  void QueueFrame(scoped_refptr<VideoFrame> frame, bool force_keyframe);
+  bool DrainEvents();
+  void ProcessInput();
+  bool ProcessEvent(Microsoft::WRL::ComPtr<IMFMediaEvent> event);
+
   // Checks for and copies encoded output on |encoder_thread_|.
   void ProcessOutput();
+  void ProcessInputOutput();
 
   // Inserts the output buffers for reuse on |encoder_thread_|.
   void UseOutputBitstreamBufferTask(
@@ -124,27 +141,50 @@ class MEDIA_GPU_EXPORT MediaFoundationVideoEncodeAccelerator
   // EncodeOutput needs to be copied into a BitstreamBufferRef as a FIFO.
   base::circular_deque<std::unique_ptr<EncodeOutput>> encoder_output_queue_;
 
+  // Input samples waiting to be processed by the encoder
+  std::deque<Microsoft::WRL::ComPtr<IMFSample>> input_sample_queue_;
+
   gfx::Size input_visible_size_;
   size_t bitstream_buffer_size_;
   uint32_t frame_rate_;
   uint32_t target_bitrate_;
+  DWORD AVEncCommonMaxBitRate_;
   size_t u_plane_offset_;
   size_t v_plane_offset_;
   size_t y_stride_;
   size_t u_stride_;
   size_t v_stride_;
 
+  // debug counters
+  uint64_t dropped_input_cnt_;
+  uint64_t dropped_bitstream_queue_cnt_;
+
+  std::atomic<bool> alive_;
+  std::atomic<uint32_t> input_events_;
+  std::atomic<uint32_t> output_events_;
+  HANDLE drained_;
+
+  Microsoft::WRL::ComPtr<IMFMediaEventGenerator> imf_media_event_generator_;
   Microsoft::WRL::ComPtr<IMFTransform> encoder_;
   Microsoft::WRL::ComPtr<ICodecAPI> codec_api_;
+
+  std::string implementation_name_;
 
   DWORD input_stream_id_;
   DWORD output_stream_id_;
 
+  base::AtomicRefCount ref_count_;
+
   Microsoft::WRL::ComPtr<IMFMediaType> imf_input_media_type_;
   Microsoft::WRL::ComPtr<IMFMediaType> imf_output_media_type_;
 
-  Microsoft::WRL::ComPtr<IMFSample> input_sample_;
-  Microsoft::WRL::ComPtr<IMFSample> output_sample_;
+  Microsoft::WRL::ComPtr<IMFSample> GetInputSample();
+  Microsoft::WRL::ComPtr<IMFSample> GetOutputSample();
+
+  std::list<Microsoft::WRL::ComPtr<IMFSample>> input_sample_pool_;
+  std::list<Microsoft::WRL::ComPtr<IMFSample>> output_sample_pool_;
+
+  bool encoder_provides_samples_;
 
   // To expose client callbacks from VideoEncodeAccelerator.
   // NOTE: all calls to this object *MUST* be executed on

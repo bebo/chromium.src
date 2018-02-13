@@ -20,7 +20,7 @@ namespace mf {
 #define RETURN_ON_FAILURE(result, log, ret) \
   do {                                      \
     if (!(result)) {                        \
-      DLOG(ERROR) << log;                   \
+      LOG(ERROR) << log;                   \
       mf::LogDXVAError(__LINE__);           \
       return ret;                           \
     }                                       \
@@ -69,6 +69,28 @@ class MF_INITIALIZER_EXPORT MediaBufferScopedPointer {
   DWORD current_length_;
 
   DISALLOW_COPY_AND_ASSIGN(MediaBufferScopedPointer);
+};
+
+//////////////////////////////////////////////////////////////////////////
+// Pretty Print Media Type based on MS example:
+// https://github.com/Microsoft/Windows-driver-samples/blob/master/avstream/sampledevicemft/multipinmftutils.cpp
+//////////////////////////////////////////////////////////////////////////
+//  CMediaTypePrinter
+//  Description: Rudimentary class for printing media type!
+//////////////////////////////////////////////////////////////////////////
+
+#define MEDIAPRINTER_STARTLEN  (1024)
+
+class MF_INITIALIZER_EXPORT CMediaTypePrinter {
+private:
+    IMFMediaType        *pMediaType;
+    PCHAR                m_pBuffer;
+    ULONG                buffLen;
+public:
+    CMediaTypePrinter( _In_ IMFMediaType *_pMediaType );
+    ~CMediaTypePrinter( );
+    STDMETHODIMP_(PCHAR) ToCompleteString( );
+    STDMETHODIMP_(PCHAR) ToString();
 };
 
 }  // namespace mf

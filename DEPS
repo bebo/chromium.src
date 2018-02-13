@@ -1,4 +1,19 @@
+# bebo: ideally, we'd use tag as revision and not branch name.
 vars = {
+  'node-nw_revision':
+    'origin/bebo28',
+  'nwjs_revision':
+    'origin/bebo28',
+  'ffmpeg_revision':
+    'origin/bebo28',
+  'webrtc_revision':
+    'origin/bebo28',
+  'x264_revision':
+    'origin/bebo',
+  'mfx_dispatch_revision':
+    'origin/bebo',
+  'bebo_git':
+    'git@github.com:bebo',
   'angle_revision':
     '54a29ffd82e7782c764b5257365e7f148f48ca4a',
   'aomedia_git':
@@ -62,7 +77,7 @@ vars = {
   'swiftshader_revision':
     '3e2b10936c5304477fdadfa233671738008fe154',
   'v8_revision':
-    '0407506af3d9d7e2718be1d8759296165b218fcf',
+    'origin/bebo28',
   'webrtc_git':
     'https://webrtc.googlesource.com'
 }
@@ -265,7 +280,11 @@ deps = {
       (Var("chromium_git")) + '/chromium/third_party/errorprone.git@635c410fc42614b48518ae6818105bc83af88497'
   },
   'src/third_party/ffmpeg':
-    (Var("chromium_git")) + '/chromium/third_party/ffmpeg.git@be759fe02ca12a28c6da19e891f2057cb3004aab',
+    (Var("bebo_git")) + '/ffmpeg.git@' + (Var("ffmpeg_revision")),
+  'src/third_party/mfx_dispatch':
+    (Var("bebo_git")) + '/mfx_dispatch.git@' + (Var("mfx_dispatch_revision")),
+  'src/third_party/x264':
+    (Var("bebo_git")) + '/x264.git@' + (Var("x264_revision")),
   'src/third_party/findbugs': {
     'condition':
       'checkout_android',
@@ -541,7 +560,7 @@ deps = {
   'src/third_party/webgl/src':
     (Var("chromium_git")) + '/external/khronosgroup/webgl.git@e4919fa03c74bd561dcabf3e61668fa3c7e54353',
   'src/third_party/webrtc':
-    (Var("webrtc_git")) + '/src.git@88f5d9180eae78a6162cccd78850ff416eb82483',
+    (Var("bebo_git")) + '/webrtc.git@' + (Var("webrtc_revision")),
   'src/third_party/xdg-utils': {
     'condition':
       'checkout_linux',
@@ -563,6 +582,12 @@ deps = {
   #  (Var("nwjs_git")) + '/nw.js.git@origin/nw16',
   #'src/third_party/node':
   #  (Var("nwjs_git")) + '/node.git@origin/nw16',
+  'src/third_party/node-nw':
+    (Var("bebo_git")) + '/node-nw.git@' + (Var("node-nw_revision")),
+  'src/v8':
+    (Var("bebo_git")) + '/v8.git@' + (Var("v8_revision")),
+  'src/content/nw':
+    (Var("bebo_git")) + '/nwjs.git@' + (Var("nwjs_revision")),
 }
 
 gclient_gn_args = [

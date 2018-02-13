@@ -1,0 +1,52 @@
+# Copyright 2017 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//media/media_options.gni")
+
+source_set("direct_show") {
+
+  visibility = [ "//media/audio", "//media/capture:capture_lib" ]
+
+  sources = [
+    "direct_show.h",
+    "direct_show.cc",
+    "direct_show_device_factory.h",
+    "direct_show_device_factory.cc",
+    "direct_show_filter_base.h",
+    "direct_show_filter_base.cc",
+    "direct_show_pin_base.h",
+    "direct_show_pin_base.cc",
+    "audio_sink_filter_observer.h",
+    "audio_sink_filter.h",
+    "audio_sink_filter.cc",
+    "audio_sink_input_pin.h",
+    "audio_sink_input_pin.cc",
+    "video_capture_types.h",
+    "video_capture_types.cc",
+    "capability_list_win.h",
+    "capability_list_win.cc",
+    "video_sink_filter_observer.h",
+    "video_sink_filter.h",
+    "video_sink_filter.cc",
+    "video_sink_input_pin.h",
+    "video_sink_input_pin.cc",
+  ]
+
+  configs += [ "//media:subcomponent_config" ]
+
+  deps = [
+    "//base",
+    "//media/base",
+  ]
+
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = []
+
+  deps = [
+    "//base",
+  ]
+}

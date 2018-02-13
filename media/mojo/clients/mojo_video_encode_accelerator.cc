@@ -39,6 +39,7 @@ class VideoEncodeAcceleratorClient
                             bool key_frame,
                             base::TimeDelta timestamp) override;
   void NotifyError(VideoEncodeAccelerator::Error error) override;
+  void SetImplementationName(const std::string& implementation_name) override;
 
  private:
   VideoEncodeAccelerator::Client* client_;
@@ -75,6 +76,12 @@ void VideoEncodeAcceleratorClient::BitstreamBufferReady(
            << "B,  key_frame=" << key_frame;
   client_->BitstreamBufferReady(bitstream_buffer_id, payload_size, key_frame,
                                 timestamp);
+}
+
+void VideoEncodeAcceleratorClient::SetImplementationName(
+    const std::string& implementation_name) {
+  DVLOG(2) << __func__ << " implementation_name=" << implementation_name;
+  client_->SetImplementationName(implementation_name);
 }
 
 void VideoEncodeAcceleratorClient::NotifyError(

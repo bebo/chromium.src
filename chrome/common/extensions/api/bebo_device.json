@@ -1,0 +1,101 @@
+// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+[
+  {
+    "namespace": "beboDevice",
+    "description": "Use the <code>chrome.beboDevice</code> API to interact with the bebo custom devices functions.",
+    "functions": [
+      {
+        "name": "openPropertyPage",
+        "type": "function",
+        "description": "Open the property page for the device.",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "type": "string",
+            "description": "The ID that is used for opening the property page."
+          },
+          {
+            "name": "type",
+            "type": "string",
+            "description": "The type for property page to be opened."
+          },
+          {
+            "name": "callback",
+            "type": "function",
+            "description": "Function called when property page is opened.",
+            "parameters": []
+          }
+        ]
+      },
+      {
+        "name": "getResolution",
+        "type": "function",
+        "description": "Get the device resolution.",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "type": "string",
+            "description": "The ID that is used for opening the property page."
+          },
+          {
+            "name": "callback",
+            "type": "function",
+            "description": "A function that is called to get the resolutions available for the device.",
+            "parameters": [
+              {
+                "name": "resolutions",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "integer",
+                      "description": "resolution width."
+                    },
+                    "height": {
+                      "type": "integer",
+                      "description": "resolution height."
+                    }
+                  }
+                },
+                "description": "A device ID from the media devices."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "getCapabilities",
+        "type": "function",
+        "description": "Get the device capabilities.",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "type": "string",
+            "description": "The ID that is used for opening the property page."
+          },
+          {
+            "name": "callback",
+            "type": "function",
+            "description": "A function that is called to get the resolutions available for the device.",
+            "parameters": [
+              {
+                "name": "capabilities",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 0
+                },
+                "description": "A device ID from the media devices."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
+

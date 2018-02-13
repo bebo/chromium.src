@@ -187,5 +187,8 @@ IPC_MESSAGE_ROUTED4(AcceleratedVideoEncoderHostMsg_BitstreamBufferReady,
 IPC_MESSAGE_ROUTED1(AcceleratedVideoEncoderHostMsg_NotifyError,
                     media::VideoEncodeAccelerator::Error /* error */)
 
+IPC_MESSAGE_ROUTED1(AcceleratedVideoEncoderHostMsg_SetImplementationName,
+                    std::string /* implementation_name */)
+
 // Send destroy request to the encoder.
 IPC_MESSAGE_ROUTED0(AcceleratedVideoEncoderMsg_Destroy)

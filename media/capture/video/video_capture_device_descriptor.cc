@@ -67,6 +67,8 @@ const char* VideoCaptureDeviceDescriptor::GetCaptureApiTypeString() const {
       return "Media Foundation";
     case VideoCaptureApi::WIN_DIRECT_SHOW:
       return "Direct Show";
+    case VideoCaptureApi::WIN_DIRECT_SHOW_AV:
+      return "Direct Show AV";
     case VideoCaptureApi::MACOSX_AVFOUNDATION:
       return "AV Foundation";
     case VideoCaptureApi::MACOSX_DECKLINK:

@@ -209,6 +209,8 @@ source_set("audio") {
       "win/device_enumeration_win.h",
       "win/waveout_output_win.cc",
       "win/waveout_output_win.h",
+      "win/direct_show_input_win.h",
+      "win/direct_show_input_win.cc",
     ]
 
     libs += [
@@ -216,6 +218,11 @@ source_set("audio") {
       "setupapi.lib",
       "winmm.lib",
     ]
+
+    deps += [
+      "//media/direct_show"
+    ]
+
   }
 
   if (is_android) {

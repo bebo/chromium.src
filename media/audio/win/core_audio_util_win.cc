@@ -604,8 +604,13 @@ std::string CoreAudioUtil::GetFriendlyName(const std::string& device_id,
   if (!audio_device.Get())
     return std::string();
 
+  return GetFriendlyName(audio_device.Get());
+}
+
+std::string CoreAudioUtil::GetFriendlyName(IMMDevice* audio_device) {
+
   AudioDeviceName device_name;
-  HRESULT hr = GetDeviceName(audio_device.Get(), &device_name);
+  HRESULT hr = GetDeviceName(audio_device, &device_name);
   if (FAILED(hr))
     return std::string();
 
