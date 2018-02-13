@@ -75,6 +75,8 @@ struct CONTENT_EXPORT DesktopMediaID {
   // This records whether the desktop share has sound or not.
   bool audio_share = false;
 
+  base::string16 class_name;
+
   // This id contains information for WebContents capture.
   WebContentsMediaCaptureId web_contents_id;
 };

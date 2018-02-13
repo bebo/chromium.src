@@ -125,11 +125,13 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   // The Open() method is divided into these sub methods.
   HRESULT SetCaptureDevice();
   HRESULT GetAudioEngineStreamFormat();
+
   // Returns whether the desired format is supported or not and writes the
   // result of a failing system call to |*hr|, or S_OK if successful. If this
   // function returns false with |*hr| == S_FALSE, the OS supports a closest
   // match but we don't support conversion to it.
   bool DesiredFormatIsSupported(HRESULT* hr);
+  void ResetFormat(WAVEFORMATEXTENSIBLE *format);
   HRESULT InitializeAudioEngine();
   void ReportOpenResult(HRESULT hr) const;
 
@@ -169,7 +171,7 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   std::unique_ptr<base::DelegateSimpleThread> capture_thread_;
 
   // Contains the desired audio format which is set up at construction.
-  WAVEFORMATEX format_;
+  WAVEFORMATEXTENSIBLE format_;
 
   bool opened_ = false;
   bool started_ = false;
@@ -193,6 +195,9 @@ class MEDIA_EXPORT WASAPIAudioInputStream
   // Note that AudioDeviceDescription::kDefaultDeviceId represents the default
   // device role and is not a valid ID as such.
   std::string device_id_;
+  bool is_loopback_device_;
+
+  std::string friendly_name_;
 
   // Pointer to the object that will receive the recorded audio samples.
   AudioInputCallback* sink_ = nullptr;
@@ -254,6 +259,8 @@ class MEDIA_EXPORT WASAPIAudioInputStream
 
   // Callback to send log messages.
   AudioManager::LogCallback log_callback_;
+
+  const AudioParameters params_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 

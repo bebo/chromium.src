@@ -106,7 +106,7 @@ int ProcessMetrics::CalculateIdleWakeupsPerSecond(
 }
 #else
 int ProcessMetrics::GetIdleWakeupsPerSecond() {
-  NOTIMPLEMENTED();  // http://crbug.com/120488
+  // NOTIMPLEMENTED();  // http://crbug.com/120488
   return 0;
 }
 #endif  // defined(OS_MACOSX) || defined(OS_LINUX) || defined(OS_AIX)

@@ -66,6 +66,7 @@ class GpuVideoEncodeAccelerator
                             bool key_frame,
                             base::TimeDelta timestamp) override;
   void NotifyError(VideoEncodeAccelerator::Error error) override;
+  void SetImplementationName(const std::string& implementation_name) override;
 
   // gpu::GpuCommandBufferStub::DestructionObserver implementation.
   void OnWillDestroyStub() override;
