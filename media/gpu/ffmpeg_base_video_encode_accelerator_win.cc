@@ -267,8 +267,10 @@ void FFMpegBaseVideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
   avc_context_->time_base.den = kTimeBaseDenominator;
   avc_context_->ticks_per_frame = (kTimeBaseDenominator * kFrameRateDenominator) / (frame_rate_ * kTimeBaseNumerator);
 
-  avc_context_->keyint_min = frame_rate_;
-  avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
+  // avc_context_->keyint_min = frame_rate_;
+  // avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
+  const int keyint_sec = 2;
+  avc_context_->gop_size = keyint_sec * avc_context_->framerate.num / avc_context_->framerate.den;
 
   /* LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_; */
 
