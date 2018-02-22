@@ -214,6 +214,15 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(
 
   avc_context_ = avcodec_alloc_context3(codec_);
 
+  RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
+  if (beboKey.Valid()) {
+    if (beboKey.HasValue(L"max_keyint_ms")) {
+      DWORD max_keyint_ms;
+      beboKey.ReadValueDW(L"max_keyint_ms", &max_keyint_ms);
+      max_keyint_ms_ = max_keyint_ms;
+    }
+  }
+
   ConfigureFromRegistry();
 
   // https://ffmpeg.org/doxygen/3.2/structAVCodecContext.html
@@ -348,7 +357,12 @@ bool FFMpegBaseVideoEncodeAccelerator::ReceivePacket() {
     av_packet_unref(receive_packet.get());
     return false;
   }
+  bool is_keyframe = receive_packet->flags & AV_PKT_FLAG_KEY;
   it->second->packet = std::move(receive_packet);
+
+  if (is_keyframe) {
+    last_keyframe_ms_ = it->second->timestamp.InMilliseconds();
+  }
 
   encoder_output_queue_.push_back(std::move(it->second));
   encoder_queue_.erase(it);
@@ -378,10 +392,9 @@ bool FFMpegBaseVideoEncodeAccelerator::SendPacket() {
   std::unique_ptr<EncoderQueueItem>
     queue_item = std::move(encoder_output_queue_.front());
 
-  /* std::unique_ptr<AVPacket> receive_packet = std::move(it->second.packet) */
-
   bool is_keyframe = queue_item->packet->flags & AV_PKT_FLAG_KEY;
   base::TimeDelta timestamp = queue_item->timestamp;
+
 
   std::unique_ptr<FFMpegBaseVideoEncodeAccelerator::BitstreamBufferRef> buffer_ref =
       std::move(bitstream_buffer_queue_.front());
@@ -509,17 +522,10 @@ void FFMpegBaseVideoEncodeAccelerator::NotifyError(
 void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
                                             bool force_keyframe) {
 
-  /* if (last_pts_ == 0) { */
-  /*   if (frame_rate_ == 0) { */
-  /*     LOG(INFO) << implementation_name_ << " framerate not set from GUM - dropping frame"; */
-  /*     return; */
-  /*   } */
-  /*   LOG(INFO) << implementation_name_ */
-  /*     << " first frame bitrate: " << target_bitrate_ */
-  /*     << " framerate.num: " << avc_context_->framerate.num */
-  /*     << " framerate.den: " << avc_context_->framerate.den; */
-  /*   force_keyframe = true; */
-  /* }; */
+  if (last_keyframe_ms_ == 0 ||
+      ((frame->timestamp().InMilliseconds() - last_keyframe_ms_) > max_keyint_ms_)) {
+      force_keyframe = true;
+  }
 
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
   AVFrame* av_frame = av_frame_alloc();
@@ -540,9 +546,9 @@ void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> fram
   av_frame->pts = pts;
   BVLOG(3) << __func__
     << " PTS: " << pts  
-    << " i: " << pts % kMaxFrameRateNumerator 
     << " microseconds: " << frame->timestamp().InMicroseconds()
-    << " frame->timestamp(): " << frame->timestamp();
+    << " frame->timestamp(): " << frame->timestamp()
+    << " is_keyframe: " << av_frame->key_frame;
 
   av_frame->format = native_format_;
 
