@@ -77,7 +77,7 @@ vars = {
   'swiftshader_revision':
     '3e2b10936c5304477fdadfa233671738008fe154',
   'v8_revision':
-    'origin/bebo28',
+    'origin/bebo28.1',
   'webrtc_git':
     'https://webrtc.googlesource.com'
 }
