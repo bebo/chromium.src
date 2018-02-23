@@ -276,8 +276,10 @@ void FFMpegBaseVideoEncodeAccelerator::SetFrameRate(uint32_t framerate) {
   avc_context_->time_base.den = kTimeBaseDenominator;
   avc_context_->ticks_per_frame = (kTimeBaseDenominator * kFrameRateDenominator) / (frame_rate_ * kTimeBaseNumerator);
 
+  const int keyint_sec = 1; // 1 sec, but ffprobe shows 2s keyframe
   avc_context_->keyint_min = frame_rate_;
-  avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
+  avc_context_->gop_size = keyint_sec * (frame_rate_ * kFrameRateDenominator) / kFrameRateDenominator;
+  // avc_context_->gop_size = frame_rate_ * kMaxKeyFrameInterval;
 
   /* LOG(INFO) << "changed framerate: " << old_frame_rate << " -> " << frame_rate_; */
 
@@ -362,7 +364,9 @@ bool FFMpegBaseVideoEncodeAccelerator::ReceivePacket() {
 
   if (is_keyframe) {
     last_keyframe_ms_ = it->second->timestamp.InMilliseconds();
+    // LOG(INFO) << "ReceivePacket " << it->second->packet->pts << " " << last_keyframe_ms_ << " " << is_keyframe;
   }
+
 
   encoder_output_queue_.push_back(std::move(it->second));
   encoder_queue_.erase(it);
