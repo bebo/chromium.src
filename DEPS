@@ -1,13 +1,13 @@
 # bebo: ideally, we'd use tag as revision and not branch name.
 vars = {
   'node-nw_revision':
-    'origin/bebo28.1',
+    'origin/bebo28.2',
   'nwjs_revision':
-    'origin/bebo28.1',
+    'origin/bebo28.2',
   'ffmpeg_revision':
-    'origin/bebo28.1',
+    'origin/bebo28.2',
   'webrtc_revision':
-    'origin/bebo28.1',
+    'origin/bebo28.2',
   'x264_revision':
     'origin/bebo',
   'mfx_dispatch_revision':
@@ -77,7 +77,7 @@ vars = {
   'swiftshader_revision':
     '3e2b10936c5304477fdadfa233671738008fe154',
   'v8_revision':
-    'origin/bebo28.1',
+    'origin/bebo28.2',
   'webrtc_git':
     'https://webrtc.googlesource.com'
 }
