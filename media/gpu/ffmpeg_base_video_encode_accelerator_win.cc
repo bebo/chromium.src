@@ -522,9 +522,21 @@ void FFMpegBaseVideoEncodeAccelerator::NotifyError(
 void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
                                             bool force_keyframe) {
 
-  if (last_keyframe_ms_ == 0 ||
-      ((frame->timestamp().InMilliseconds() - last_keyframe_ms_) > max_keyint_ms_)) {
+  // force interval and don't drift - we want this for twitch
+  int64_t period = frame->timestamp().InMilliseconds() / max_keyint_ms_;
+
+  if (period != last_keyframe_period_) {
       force_keyframe = true;
+      last_keyframe_ms_ = frame->timestamp().InMilliseconds();
+      last_keyframe_period_ = period;
+  }
+
+  // this shoudn't hit because of the above - but would still make sense
+
+  if (last_keyframe_ms_ == 0 ||
+      ((frame->timestamp().InMilliseconds() - last_keyframe_ms_) >= max_keyint_ms_)) {
+      force_keyframe = true;
+      last_keyframe_ms_ = frame->timestamp().InMilliseconds();
   }
 
   // https://www.ffmpeg.org/doxygen/2.1/group__lavc__encoding.html
