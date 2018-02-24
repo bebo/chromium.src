@@ -106,6 +106,10 @@ void NvEncVideoEncodeAccelerator::ConfigureFromRegistry() {
     LOG(INFO) << implementation_name_ << " temporal-aq: " << nvenc_temporal_aq;
   }
 
+  av_opt_set_int(avc_context_->priv_data, "forced-idr", 1, 0);
+  LOG(INFO) << implementation_name_ << " forced-idr: " << 1;
+
+
   LOG(INFO) << implementation_name_ << " rc_max_rate_pct: " << rc_max_rate_pct_
             << " rc_min_rate_pct: " << rc_min_rate_pct_
             << " rc_buffer_size_ms: " << rc_buffer_size_ms_ ;

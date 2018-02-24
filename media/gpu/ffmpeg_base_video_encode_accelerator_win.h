@@ -183,6 +183,8 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   size_t bitstream_buffer_size_;
   uint32_t frame_rate_;
   uint32_t target_bitrate_;
+  int64_t last_keyframe_ms_ = 0;
+  int64_t last_keyframe_period_ = 0;
   size_t u_plane_offset_;
   size_t v_plane_offset_;
   size_t y_stride_;
@@ -199,6 +201,8 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   uint32_t rc_max_rate_pct_ = 0; // set max to avg bitrate * x/100
   uint32_t rc_min_rate_pct_ = 0; // set min to avg bitrate * x/100
   uint32_t rc_buffer_size_ms_ = 0;
+  uint32_t forced_idr_ = 1;
+  int64_t max_keyint_ms_ = 2000;
 
   // To expose client callbacks from VideoEncodeAccelerator.
   // NOTE: all calls to this object *MUST* be executed on
