@@ -544,6 +544,9 @@ void FFMpegBaseVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> fram
 
   // const VideoFrameMetadata* metadata = frame.get()->metadata();
   av_frame->key_frame = (int)force_keyframe;
+  if (force_keyframe) {
+    av_frame->pict_type = AV_PICTURE_TYPE_I;
+  }
   av_frame->width = input_visible_size_.width();
   av_frame->height = input_visible_size_.height();
 
