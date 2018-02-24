@@ -216,14 +216,48 @@ bool FFMpegBaseVideoEncodeAccelerator::Initialize(
 
   RegKey beboKey(HKEY_CURRENT_USER, L"SOFTWARE\\Bebo\\App", KEY_READ);
   if (beboKey.Valid()) {
+
     if (beboKey.HasValue(L"max_keyint_ms")) {
       DWORD max_keyint_ms;
       beboKey.ReadValueDW(L"max_keyint_ms", &max_keyint_ms);
       max_keyint_ms_ = max_keyint_ms;
     }
+
+    if (beboKey.HasValue(L"rc_buffer_size_ms")) {
+      DWORD rc_buffer_size_ms;
+      beboKey.ReadValueDW(L"rc_buffer_size_ms", &rc_buffer_size_ms);
+      rc_buffer_size_ms_ = rc_buffer_size_ms;
+    }
+
+    if (beboKey.HasValue(L"rc_min_rate_pct")) {
+      DWORD rc_min_rate_pct;
+      beboKey.ReadValueDW(L"rc_min_rate_pct", &rc_min_rate_pct);
+      rc_min_rate_pct_ = rc_min_rate_pct;
+    }
+
+    if (beboKey.HasValue(L"rc_max_rate_pct")) {
+      DWORD rc_max_rate_pct;
+      beboKey.ReadValueDW(L"rc_max_rate_pct", &rc_max_rate_pct);
+      rc_max_rate_pct_ = rc_max_rate_pct;
+    }
+
+    if (beboKey.HasValue(L"forced_idr")) {
+      DWORD forced_idr;
+      beboKey.ReadValueDW(L"forced_idr", &forced_idr);
+      forced_idr_ = forced_idr;
+    }
+
+
   }
 
   ConfigureFromRegistry();
+
+  LOG(INFO) << implementation_name_ << " rc_max_rate_pct: " << rc_max_rate_pct_
+            << " rc_min_rate_pct: " << rc_min_rate_pct_
+            << " rc_buffer_size_ms: " << rc_buffer_size_ms_
+            << " forced_idr: " << forced_idr_;
+
+  av_opt_set_int(avc_context_->priv_data, "forced-idr", forced_idr_, 0);
 
   // https://ffmpeg.org/doxygen/3.2/structAVCodecContext.html
   avc_context_->width = input_visible_size.width();

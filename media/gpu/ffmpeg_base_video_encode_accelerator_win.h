@@ -201,6 +201,7 @@ class FFMpegBaseVideoEncodeAccelerator : public VideoEncodeAccelerator {
   uint32_t rc_max_rate_pct_ = 0; // set max to avg bitrate * x/100
   uint32_t rc_min_rate_pct_ = 0; // set min to avg bitrate * x/100
   uint32_t rc_buffer_size_ms_ = 0;
+  uint32_t forced_idr_ = 1;
   int64_t max_keyint_ms_ = 2000;
 
   // To expose client callbacks from VideoEncodeAccelerator.

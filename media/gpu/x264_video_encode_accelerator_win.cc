@@ -20,6 +20,7 @@ namespace media {
 
 X264VideoEncodeAccelerator::X264VideoEncodeAccelerator():
   FFMpegBaseVideoEncodeAccelerator("libx264", AV_PIX_FMT_YUV420P) {
+  rc_buffer_size_ms_ = 2000;
 }
 
 X264VideoEncodeAccelerator::~X264VideoEncodeAccelerator() {}
@@ -35,7 +36,6 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
   // // VBV std::string x264_params =
   // "b-frames=3:ref=1:nal-hrd=cbr:force-cfr=1";  // CBR
   DWORD max_b_frames = 0;
-  DWORD rc_buffer_size = 12000000;
   DWORD crf = 0;
   DWORD cqp = 0;
   DWORD global_quality = 0;
@@ -50,10 +50,6 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
 
     if (beboKey.HasValue(L"max_b_frames")) {
       beboKey.ReadValueDW(L"max_b_frames", &max_b_frames);
-    }
-
-    if (beboKey.HasValue(L"rc_buffer_size")) {
-      beboKey.ReadValueDW(L"rc_buffer_size", &rc_buffer_size);
     }
 
     if (beboKey.HasValue(L"crf")) {
@@ -108,12 +104,6 @@ void X264VideoEncodeAccelerator::ConfigureFromRegistry() {
     /* av_opt_set_int(avc_context_->priv_data, "cbr", true, 0); */
     LOG(INFO) << "cbr: true (implicit)";
     /* LOG(INFO) << "nal-hrd: cbr"; */
-  }
-
-  if (rc_buffer_size > 0) {
-    avc_context_->rc_buffer_size = rc_buffer_size;
-    /* avc_context_->rc_initial_buffer_occupancy  = rc_buffer_size / 2; */
-    LOG(INFO) << "rc_buffer_size: " << rc_buffer_size;
   }
 
   if (global_quality > 0) {
