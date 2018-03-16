@@ -95,6 +95,11 @@ bool SinkInputPin::IsMediaTypeValid(const AM_MEDIA_TYPE* media_type) {
     resulting_format_.pixel_format = PIXEL_FORMAT_RGB32;
     return true;
   }
+  if (sub_type == MEDIASUBTYPE_ARGB32 &&
+      pvi->bmiHeader.biCompression == BI_RGB) {
+    resulting_format_.pixel_format = PIXEL_FORMAT_ARGB;
+    return true;
+  }
   if (sub_type == kMediaSubTypeY16 &&
       pvi->bmiHeader.biCompression == MAKEFOURCC('Y', '1', '6', ' ')) {
     resulting_format_.pixel_format = PIXEL_FORMAT_Y16;
@@ -194,6 +199,15 @@ bool SinkInputPin::GetValidMediaType(int index, AM_MEDIA_TYPE* media_type) {
       pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
       pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 4;
       media_type->subtype = MEDIASUBTYPE_RGB32;
+      break;
+    }
+    case 5: {
+      pvi->bmiHeader.biCompression = BI_RGB;
+      pvi->bmiHeader.biBitCount = 32;
+      pvi->bmiHeader.biWidth = requested_info_header_.biWidth;
+      pvi->bmiHeader.biHeight = requested_info_header_.biHeight;
+      pvi->bmiHeader.biSizeImage = GetArea(requested_info_header_) * 4;
+      media_type->subtype = MEDIASUBTYPE_ARGB32;
       break;
     }
     default:
