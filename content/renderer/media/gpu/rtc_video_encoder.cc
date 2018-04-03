@@ -505,11 +505,16 @@ void RTCVideoEncoder::Impl::BitstreamBufferReady(int32_t bitstream_buffer_id,
   }
   output_buffers_free_count_--;
 
-  // Derive the capture time in ms from system clock. Make sure that it is
-  // greater than the last.
-  const int64_t capture_time_us = rtc::TimeMicros();
+  int64_t capture_time_us = rtc::TimeMicros();
   int64_t capture_time_ms =
-      capture_time_us / base::Time::kMicrosecondsPerMillisecond;
+        capture_time_us / base::Time::kMicrosecondsPerMillisecond;
+  if (!timestamp.is_zero()) {
+    capture_time_us = timestamp.InMicroseconds();;
+    capture_time_ms = timestamp.InMilliseconds();
+  } else {
+    // Derive the capture time in ms from system clock. Make sure that it is
+    // greater than the last.
+  }
   capture_time_ms = std::max(capture_time_ms, last_capture_time_ms_ + 1);
   last_capture_time_ms_ = capture_time_ms;
 
