@@ -334,7 +334,7 @@ void AudioInputController::DoCreate(AudioManager* audio_manager,
   DoCreateForStream(stream, enable_agc);
 
   if (device_id.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
-    audio_manager_->AddOutputDeviceChangeListener(this);
+    // audio_manager_->AddOutputDeviceChangeListener(this);
   }
 }
 
@@ -411,7 +411,7 @@ void AudioInputController::DoClose() {
     return;
 
   if (device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
-    audio_manager_->RemoveOutputDeviceChangeListener(this);
+    // audio_manager_->RemoveOutputDeviceChangeListener(this);
   }
 
   check_muted_state_timer_.AbandonAndStop();
@@ -484,7 +484,7 @@ void AudioInputController::DoCloseForReconnect() {
     return;
 
   if (device_id_.compare(AudioDeviceDescription::kLoopbackInputDeviceId) == 0) {
-    audio_manager_->RemoveOutputDeviceChangeListener(this);
+    // audio_manager_->RemoveOutputDeviceChangeListener(this);
   }
 
   check_muted_state_timer_.AbandonAndStop();
