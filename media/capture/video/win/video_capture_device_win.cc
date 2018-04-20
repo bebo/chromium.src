@@ -25,17 +25,17 @@ using Microsoft::WRL::ComPtr;
 using base::win::ScopedCoMem;
 using base::win::ScopedVariant;
 
-GUID kBeboGameCaptureCLSID = {0x1f1383ef,
-                          0x8019,
-                          0x4f96,
-                          {0x9f, 0x53, 0x1f, 0x0d, 0xa2, 0x68, 0x41, 0x63}};
+GUID kBeboGameCaptureCLSID = {0xb44bf41d,
+                          0xa061,
+                          0x4c8e,
+                          {0x8f, 0x03, 0x78, 0x35, 0x80, 0xc4, 0x0f, 0x6c}};
 enum FILTER {
   FILTER_BEBO_GAME_CAPTUIRE = 0,
   FILTER_MAX = FILTER_BEBO_GAME_CAPTUIRE,
 };
 const int kFilterSize = FILTER_MAX + 1;
 const GUID kFilterArray[kFilterSize] = {kBeboGameCaptureCLSID};
-const std::string kFilterArrayName[kFilterSize] = {"bebo-game-capture"};
+const std::string kFilterArrayName[kFilterSize] = {"bebo-gst-to-dshow"};
 
 namespace media {
 

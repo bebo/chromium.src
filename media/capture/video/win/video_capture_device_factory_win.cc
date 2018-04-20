@@ -77,7 +77,7 @@ enum WhitelistedFilterNames {
   WHITELISTED_FILTER_MAX = WHITELISTED_FILTER_BEBO_CAPTURE,
 };
 static const char* const kWhitelistedFilterNames[] = {
-  "bebo-game-capture",
+  "bebo-gst-to-dshow",
 };
 static_assert(arraysize(kWhitelistedFilterNames) == WHITELISTED_FILTER_MAX + 1,
               "kWhitelistedFilterNames should be same size as "
