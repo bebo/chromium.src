@@ -1,4 +1,12 @@
 vars = {
+  'node-nw_revision':
+    'origin/bebo30.5',
+  'nwjs_revision':
+    'origin/bebo30.5',
+  'v8_revision':
+    'origin/bebo30.5',
+  'bebo_git':
+    'git@github.com:bebo',
   'android_git':
     'https://android.googlesource.com',
   'angle_revision':
@@ -65,8 +73,6 @@ vars = {
     'https://swiftshader.googlesource.com',
   'swiftshader_revision':
     'b04881b856b90984a54c9d370f2d5e04d6383cc1',
-  'v8_revision':
-    'd500271571b92cb18dcd7b15885b51e8f437d640',
   'webrtc_git':
     'https://webrtc.googlesource.com'
 }
@@ -597,6 +603,12 @@ deps = {
   #  (Var("nwjs_git")) + '/nw.js.git@origin/nw16',
   #'src/third_party/node':
   #  (Var("nwjs_git")) + '/node.git@origin/nw16',
+  'src/third_party/node-nw':
+    (Var("bebo_git")) + '/node-nw.git@' + (Var("node-nw_revision")),
+  'src/v8':
+    (Var("bebo_git")) + '/v8.git@' + (Var("v8_revision")),
+  'src/content/nw':
+    (Var("bebo_git")) + '/nwjs.git@' + (Var("nwjs_revision")),
 }
 
 gclient_gn_args = [
