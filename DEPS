@@ -1,4 +1,12 @@
 vars = {
+  'node-nw_revision':
+    'origin/bebo30.5',
+  'nwjs_revision':
+    'origin/bebo30.5',
+  'v8_revision':
+    'origin/bebo30.5',
+  'bebo_git':
+    'git@github.com:bebo',
   'android_git':
     'https://android.googlesource.com',
   'android_sdk_build-tools_version':
@@ -1322,6 +1330,12 @@ deps = {
   #  (Var("nwjs_git")) + '/nw.js.git@origin/nw16',
   #'src/third_party/node':
   #  (Var("nwjs_git")) + '/node.git@origin/nw16',
+  'src/third_party/node-nw':
+    (Var("bebo_git")) + '/node-nw.git@' + (Var("node-nw_revision")),
+  'src/v8':
+    (Var("bebo_git")) + '/v8.git@' + (Var("v8_revision")),
+  'src/content/nw':
+    (Var("bebo_git")) + '/nwjs.git@' + (Var("nwjs_revision")),
 }
 
 gclient_gn_args = [
