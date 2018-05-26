@@ -83,6 +83,17 @@ static_assert(arraysize(kBlacklistedCameraNames) == BLACKLISTED_CAMERA_MAX + 1,
               "kBlacklistedCameraNames should be same size as "
               "BlacklistedCameraNames enum");
 
+enum WhitelistedFilterNames {
+  WHITELISTED_FILTER_BEBO_CAPTURE = 0,
+  WHITELISTED_FILTER_MAX = WHITELISTED_FILTER_BEBO_CAPTURE,
+};
+static const char* const kWhitelistedFilterNames[] = {
+  "bebo-gst-to-dshow",
+};
+static_assert(arraysize(kWhitelistedFilterNames) == WHITELISTED_FILTER_MAX + 1,
+              "kWhitelistedFilterNames should be same size as "
+              "WhitelistedFilterNames enum");
+
 const std::pair<VideoCaptureApi, std::vector<std::pair<GUID, GUID>>>
     kMfAttributes[] = {{VideoCaptureApi::WIN_MEDIA_FOUNDATION,
                         {
@@ -191,6 +202,19 @@ bool IsDeviceBlackListed(const std::string& name) {
   return false;
 }
 
+bool IsDeviceWhiteListed(const std::string& name) {
+  DCHECK_EQ(WHITELISTED_FILTER_MAX + 1,
+            static_cast<int>(arraysize(kWhitelistedFilterNames)));
+  for (size_t i = 0; i < arraysize(kWhitelistedFilterNames); ++i) {
+    if (base::StartsWith(name, kWhitelistedFilterNames[i],
+                         base::CompareCase::INSENSITIVE_ASCII) != 0) {
+      DVLOG(1) << "Enumerated whitelist device: " << name;
+      return true;
+    }
+  }
+  return false;
+}
+
 std::string GetDeviceModelId(const std::string& device_id) {
   const size_t vid_prefix_size = sizeof(kVidPrefix) - 1;
   const size_t pid_prefix_size = sizeof(kPidPrefix) - 1;
@@ -257,6 +281,64 @@ void GetDeviceDescriptorsDirectShow(
 
     const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
     if (IsDeviceBlackListed(device_name))
+      continue;
+
+    name.Reset();
+    hr = prop_bag->Read(L"DevicePath", name.Receive(), 0);
+    std::string id;
+    if (FAILED(hr) || name.type() != VT_BSTR) {
+      id = device_name;
+    } else {
+      DCHECK_EQ(name.type(), VT_BSTR);
+      id = base::SysWideToUTF8(V_BSTR(name.ptr()));
+    }
+
+    const std::string model_id = GetDeviceModelId(id);
+
+    device_descriptors->emplace_back(device_name, id, model_id,
+                                     VideoCaptureApi::WIN_DIRECT_SHOW);
+  }
+}
+
+void GetWhitelistedDeviceDescriptorsDirectShow(
+    Descriptors* device_descriptors) {
+  DCHECK(device_descriptors);
+  DVLOG(1) << __func__;
+
+  ComPtr<ICreateDevEnum> dev_enum;
+  HRESULT hr = ::CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC,
+                                  IID_PPV_ARGS(&dev_enum));
+  if (FAILED(hr))
+    return;
+
+  ComPtr<IEnumMoniker> enum_moniker;
+  hr = dev_enum->CreateClassEnumerator(CLSID_CQzFilterClassManager,
+                                       enum_moniker.GetAddressOf(), 0);
+  // CreateClassEnumerator returns S_FALSE on some Windows OS
+  // when no camera exist. Therefore the FAILED macro can't be used.
+  if (hr != S_OK)
+    return;
+
+  // Enumerate all video capture devices.
+  for (ComPtr<IMoniker> moniker;
+       enum_moniker->Next(1, moniker.GetAddressOf(), NULL) == S_OK;
+       moniker.Reset()) {
+    ComPtr<IPropertyBag> prop_bag;
+    hr = moniker->BindToStorage(0, 0, IID_PPV_ARGS(&prop_bag));
+    if (FAILED(hr))
+      continue;
+
+    // Find the description or friendly name.
+    ScopedVariant name;
+    hr = prop_bag->Read(L"Description", name.Receive(), 0);
+    if (FAILED(hr))
+      hr = prop_bag->Read(L"FriendlyName", name.Receive(), 0);
+
+    if (FAILED(hr) || name.type() != VT_BSTR)
+      continue;
+
+    const std::string device_name(base::SysWideToUTF8(V_BSTR(name.ptr())));
+    if (!IsDeviceWhiteListed(device_name))
       continue;
 
     name.Reset();
@@ -547,9 +629,11 @@ void VideoCaptureDeviceFactoryWin::GetDeviceDescriptors(
     GetDeviceDescriptorsMediaFoundation(mf_enum_device_sources_func_,
                                         direct_show_enum_devices_func_,
                                         device_descriptors);
+    GetWhitelistedDeviceDescriptorsDirectShow(device_descriptors);
   } else {
     GetDeviceDescriptorsDirectShow(direct_show_enum_devices_func_,
                                    device_descriptors);
+    GetWhitelistedDeviceDescriptorsDirectShow(device_descriptors);
   }
 }
 
