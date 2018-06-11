@@ -94,8 +94,6 @@ vars = {
     'https://swiftshader.googlesource.com',
   'swiftshader_revision':
     '9151a3c4279123986fa2fa02a3e094d5da2d874d',
-  'v8_revision':
-    '8457e810efd34381448d51d93f50079cf1f6a812',
   'webrtc_git':
     'https://webrtc.googlesource.com'
 }
