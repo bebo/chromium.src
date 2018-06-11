@@ -1,10 +1,10 @@
 vars = {
   'node-nw_revision':
-    'origin/bebo30.5',
+    'origin/bebo31.1',
   'nwjs_revision':
-    'origin/bebo30.5',
+    'origin/bebo31.1',
   'v8_revision':
-    'origin/bebo30.5',
+    'origin/bebo31.1',
   'bebo_git':
     'git@github.com:bebo',
   'android_git':
