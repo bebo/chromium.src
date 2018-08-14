@@ -4,6 +4,13 @@
 
 #include "gpu/command_buffer/service/gles2_cmd_decoder_passthrough.h"
 
+#define SHARED_TEXTURE_HANDLE         1073753282
+#define INTERCEPT_FOR_EGL_EXPERIMENT  TRUE
+#if INTERCEPT_FOR_EGL_EXPERIMENT
+#include <EGL/egl.h>
+#include "ui/gl/gl_surface_egl.h"
+#endif
+
 #include "base/bind_helpers.h"
 #include "base/strings/string_number_conversions.h"
 #include "gpu/command_buffer/service/decoder_client.h"
@@ -12,6 +19,7 @@
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gl/dc_renderer_layer_params.h"
 #include "ui/gl/gl_version_info.h"
+
 
 namespace gpu {
 namespace gles2 {
@@ -1254,13 +1262,100 @@ error::Error GLES2DecoderPassthroughImpl::DoGenSamplers(
                    });
 }
 
+#if INTERCEPT_FOR_EGL_EXPERIMENT
+EGLConfig ChooseCompatibleConfig() {
+  const EGLint buffer_bind_to_texture = EGL_BIND_TO_TEXTURE_RGBA;
+  const EGLint buffer_size = 32;
+  EGLint const attrib_list[] = {EGL_RED_SIZE, 8,
+    EGL_GREEN_SIZE, 8,
+    EGL_BLUE_SIZE, 8,
+    EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+    buffer_bind_to_texture, EGL_TRUE,
+    EGL_BUFFER_SIZE, buffer_size,
+    EGL_NONE};
+
+  EGLint num_config;
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  EGLBoolean result =
+    eglChooseConfig(display, attrib_list, nullptr, 0, &num_config);
+  if (result != EGL_TRUE)
+    return nullptr;
+  std::vector<EGLConfig> all_configs(num_config);
+  result = eglChooseConfig(gl::GLSurfaceEGL::GetHardwareDisplay(), attrib_list,
+      all_configs.data(), num_config, &num_config);
+  if (result != EGL_TRUE)
+    return nullptr;
+  for (EGLConfig config : all_configs) {
+    EGLint bits;
+    if (!eglGetConfigAttrib(display, config, EGL_RED_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    if (!eglGetConfigAttrib(display, config, EGL_BLUE_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    if (!eglGetConfigAttrib(display, config, EGL_GREEN_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+    if (!eglGetConfigAttrib(display, config, EGL_ALPHA_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    return config;
+  }
+  return nullptr;
+}
+#endif
+
 error::Error GLES2DecoderPassthroughImpl::DoGenTextures(
     GLsizei n,
     volatile GLuint* textures) {
   return GenHelper(n, textures, &resources_->texture_id_map,
-                   [this](GLsizei n, GLuint* textures) {
-                     api()->glGenTexturesFn(n, textures);
-                   });
+      [this](GLsizei n, GLuint* textures) {
+#if INTERCEPT_FOR_EGL_EXPERIMENT
+      if (n == 2) {
+        gl::EGLApi* egl_api = gl::g_current_egl_context;
+        LOG(ERROR) << "Intercepting DoGenTextures for EGL experiment " << __func__;
+
+        EGLint width = 1280;
+        EGLint height = 720;
+        EGLint pBufferAttributes[] = {
+        EGL_WIDTH, width,
+        EGL_HEIGHT, height,
+        EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
+        EGL_NONE};
+        EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+        EGLConfig config = ChooseCompatibleConfig();
+        HANDLE shared_handle = (HANDLE) SHARED_TEXTURE_HANDLE;
+
+        EGLSurface surface = egl_api->eglCreatePbufferFromClientBufferFn(
+            display,
+            EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE,
+            shared_handle,
+            config,
+            pBufferAttributes);
+        if (surface == EGL_NO_SURFACE) {
+          LOG(ERROR) << "JAKE " << __func__ << " fails. EGL_NO_SURFACE";
+          return;
+        }
+        LOG(ERROR) << "JAKE " << __func__ << " succeed. found surface";
+
+        api()->glGenTexturesFn(1, textures);
+        api()->glBindTextureFn(GL_TEXTURE_2D, *textures);
+        egl_api->eglBindTexImageFn(display, surface, EGL_BACK_BUFFER);
+        api()->glTexParameteriFn(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        api()->glTexParameteriFn(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        return;
+      }
+#endif
+        api()->glGenTexturesFn(n, textures);
+      });
 }
 
 error::Error GLES2DecoderPassthroughImpl::DoGenTransformFeedbacks(
