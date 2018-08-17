@@ -1046,3 +1046,12 @@ void GL_APIENTRY glDrawBuffersEXT(GLsizei count, const GLenum* bufs) {
   if (ext)
     ext->DrawBuffersEXT(glGetCurrentContextPPAPI(), count, bufs);
 }
+
+void GL_APIENTRY glGenAndBindSharedHandleTexture(GLsizei n,
+                                                 GLint width,
+                                                 GLint height,
+                                                 GLuint64 handle,
+                                                 GLuint* textures) {
+  glGetInterfacePPAPI()->GenAndBindSharedHandleTexture(
+      glGetCurrentContextPPAPI(), n, width, height, handle, textures);
+}

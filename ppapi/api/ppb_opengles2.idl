@@ -619,6 +619,12 @@ interface PPB_OpenGLES2 {
                 [in] GLint y,
                 [in] GLsizei width,
                 [in] GLsizei height);
+  void GenAndBindSharedHandleTexture([in] PP_Resource context,
+                                     [in] GLsizei n,
+                                     [in] GLint width,
+                                     [in] GLint height,
+                                     [in] GLuint64 handle,
+                                     [out] GLuint_ptr_t textures);
 };
 
 

@@ -3617,4 +3617,31 @@ void GLES2Implementation::DestroyGpuFenceCHROMIUM(GLuint gpu_fence_id) {
   CheckGLError();
 }
 
+void GLES2Implementation::GenAndBindSharedHandleTexture(GLsizei n,
+                                                        GLint width,
+                                                        GLint height,
+                                                        GLuint64 handle,
+                                                        GLuint* textures) {
+  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glGenAndBindSharedHandleTexture("
+                     << n << ", " << width << ", " << height << ", " << handle
+                     << ", " << static_cast<const void*>(textures) << ")");
+  if (n < 0) {
+    SetGLError(GL_INVALID_VALUE, "glGenAndBindSharedHandleTexture", "n < 0");
+    return;
+  }
+  GPU_CLIENT_SINGLE_THREAD_CHECK();
+  GetIdHandler(SharedIdNamespaces::kTextures)->MakeIds(this, 0, n, textures);
+  GenAndBindSharedHandleTextureHelper(n, width, height, handle, textures);
+  helper_->GenAndBindSharedHandleTextureImmediate(n, width, height, handle,
+                                                  textures);
+  if (share_group_->bind_generates_resource())
+    helper_->CommandBufferHelper::Flush();
+  GPU_CLIENT_LOG_CODE_BLOCK({
+    for (GLsizei i = 0; i < n; ++i) {
+      GPU_CLIENT_LOG("  " << i << ": " << width[i]);
+    }
+  });
+  CheckGLError();
+}
+
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_IMPL_AUTOGEN_H_

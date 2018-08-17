@@ -4627,5 +4627,34 @@ GLES2DecoderPassthroughImpl::HandleSetReadbackBufferShadowAllocationINTERNAL(
   return error::kNoError;
 }
 
+error::Error
+GLES2DecoderPassthroughImpl::HandleGenAndBindSharedHandleTextureImmediate(
+    uint32_t immediate_data_size,
+    const volatile void* cmd_data) {
+  const volatile gles2::cmds::GenAndBindSharedHandleTextureImmediate& c =
+      *static_cast<
+          const volatile gles2::cmds::GenAndBindSharedHandleTextureImmediate*>(
+          cmd_data);
+  GLsizei n = static_cast<GLsizei>(c.n);
+  GLint width = static_cast<GLint>(c.width);
+  GLint height = static_cast<GLint>(c.height);
+  GLuint64 handle = c.handle();
+  uint32_t data_size;
+  if (!SafeMultiplyUint32(n, sizeof(GLuint), &data_size)) {
+    return error::kOutOfBounds;
+  }
+  volatile GLuint* textures =
+      GetImmediateDataAs<volatile GLuint*>(c, data_size, immediate_data_size);
+  if (textures == nullptr) {
+    return error::kOutOfBounds;
+  }
+  error::Error error =
+      DoGenAndBindSharedHandleTexture(n, width, height, handle, textures);
+  if (error != error::kNoError) {
+    return error;
+  }
+  return error::kNoError;
+}
+
 }  // namespace gles2
 }  // namespace gpu

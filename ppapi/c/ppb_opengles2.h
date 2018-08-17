@@ -72,6 +72,7 @@ typedef float GLfloat;
 typedef float GLclampf;
 typedef signed char GLbyte;
 typedef unsigned int GLuint;
+typedef uint64_t GLuint64;
 typedef int GLfixed;
 typedef int GLclampx;
 #ifdef _WIN64
@@ -1004,6 +1005,12 @@ struct PPB_OpenGLES2 {
                    GLint y,
                    GLsizei width,
                    GLsizei height);
+  void (*GenAndBindSharedHandleTexture)(PP_Resource context,
+                                        GLsizei n,
+                                        GLint width,
+                                        GLint height,
+                                        GLuint64 handle,
+                                        GLuint* texture);
 };
 
 struct PPB_OpenGLES2InstancedArrays_1_0 {

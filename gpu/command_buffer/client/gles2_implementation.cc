@@ -7193,6 +7193,14 @@ GLenum GLES2Implementation::GetClientSideGLError() {
   return error;
 }
 
+void GLES2Implementation::GenAndBindSharedHandleTextureHelper(GLsizei /* n */,
+    GLint /* width */,
+    GLint /* height */,
+    GLuint64 /* handle */,
+    const GLuint* /* textures */) {
+}
+
+
 CommandBufferHelper* GLES2Implementation::cmd_buffer_helper() {
   return helper_;
 }

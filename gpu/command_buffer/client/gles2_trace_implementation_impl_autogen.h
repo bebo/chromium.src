@@ -2611,4 +2611,14 @@ void GLES2TraceImplementation::InvalidateReadbackBufferShadowDataCHROMIUM(
   gl_->InvalidateReadbackBufferShadowDataCHROMIUM(buffer_id);
 }
 
+void GLES2TraceImplementation::GenAndBindSharedHandleTexture(GLsizei n,
+                                                             GLint width,
+                                                             GLint height,
+                                                             GLuint64 handle,
+                                                             GLuint* textures) {
+  TRACE_EVENT_BINARY_EFFICIENT0("gpu",
+                                "GLES2Trace::GenAndBindSharedHandleTexture");
+  gl_->GenAndBindSharedHandleTexture(n, width, height, handle, textures);
+}
+
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_TRACE_IMPLEMENTATION_IMPL_AUTOGEN_H_

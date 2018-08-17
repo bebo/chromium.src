@@ -1223,4 +1223,10 @@ void GLES2InterfaceStub::WaitGpuFenceCHROMIUM(GLuint /* gpu_fence_id */) {}
 void GLES2InterfaceStub::DestroyGpuFenceCHROMIUM(GLuint /* gpu_fence_id */) {}
 void GLES2InterfaceStub::InvalidateReadbackBufferShadowDataCHROMIUM(
     GLuint /* buffer_id */) {}
+void GLES2InterfaceStub::GenAndBindSharedHandleTexture(GLsizei /* n */,
+                                                       GLint /* width */,
+                                                       GLint /* height */,
+                                                       GLuint64 /* handle */,
+                                                       GLuint* /* textures */) {
+}
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_INTERFACE_STUB_IMPL_AUTOGEN_H_

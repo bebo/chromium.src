@@ -3328,4 +3328,19 @@ void SetReadbackBufferShadowAllocationINTERNAL(GLuint buffer_id,
   }
 }
 
+void GenAndBindSharedHandleTextureImmediate(GLsizei n,
+                                            GLint width,
+                                            GLint height,
+                                            GLuint64 handle,
+                                            GLuint* textures) {
+  const uint32_t size =
+      gles2::cmds::GenAndBindSharedHandleTextureImmediate::ComputeSize(n);
+  gles2::cmds::GenAndBindSharedHandleTextureImmediate* c =
+      GetImmediateCmdSpaceTotalSize<
+          gles2::cmds::GenAndBindSharedHandleTextureImmediate>(size);
+  if (c) {
+    c->Init(n, width, height, handle, textures);
+  }
+}
+
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_CMD_HELPER_AUTOGEN_H_

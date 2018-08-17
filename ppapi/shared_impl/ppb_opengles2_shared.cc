@@ -1592,6 +1592,19 @@ void DrawBuffersEXT(PP_Resource context_id, GLsizei count, const GLenum* bufs) {
   }
 }
 
+void GenAndBindSharedHandleTexture(PP_Resource context_id,
+                                   GLsizei n,
+                                   GLint width,
+                                   GLint height,
+                                   GLuint64 handle,
+                                   GLuint* textures) {
+  Enter3D enter(context_id, true);
+  if (enter.succeeded()) {
+    ToGles2Impl(&enter)->GenAndBindSharedHandleTexture(n, width, height, handle,
+                                                       textures);
+  }
+}
+
 }  // namespace
 const PPB_OpenGLES2* PPB_OpenGLES2_Shared::GetInterface() {
   static const struct PPB_OpenGLES2 ppb_opengles2 = {
@@ -1736,7 +1749,8 @@ const PPB_OpenGLES2* PPB_OpenGLES2_Shared::GetInterface() {
       &VertexAttrib4f,
       &VertexAttrib4fv,
       &VertexAttribPointer,
-      &Viewport};
+      &Viewport,
+      &GenAndBindSharedHandleTexture};
   return &ppb_opengles2;
 }
 const PPB_OpenGLES2InstancedArrays*

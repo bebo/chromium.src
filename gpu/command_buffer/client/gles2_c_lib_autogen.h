@@ -1796,6 +1796,14 @@ void GL_APIENTRY
 GLES2InvalidateReadbackBufferShadowDataCHROMIUM(GLuint buffer_id) {
   gles2::GetGLContext()->InvalidateReadbackBufferShadowDataCHROMIUM(buffer_id);
 }
+void GL_APIENTRY GLES2GenAndBindSharedHandleTexture(GLsizei n,
+                                                    GLint width,
+                                                    GLint height,
+                                                    GLuint64 handle,
+                                                    GLuint* textures) {
+  gles2::GetGLContext()->GenAndBindSharedHandleTexture(n, width, height, handle,
+                                                       textures);
+}
 
 namespace gles2 {
 
@@ -3148,6 +3156,10 @@ extern const NameToFunc g_gles2_function_table[] = {
         "glInvalidateReadbackBufferShadowDataCHROMIUM",
         reinterpret_cast<GLES2FunctionPointer>(
             glInvalidateReadbackBufferShadowDataCHROMIUM),
+    },
+    {
+        "glGenAndBindSharedHandleTexture",
+        reinterpret_cast<GLES2FunctionPointer>(glGenAndBindSharedHandleTexture),
     },
     {
         NULL, NULL,

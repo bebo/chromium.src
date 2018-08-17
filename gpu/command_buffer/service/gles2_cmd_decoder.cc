@@ -4,6 +4,7 @@
 
 #include "gpu/command_buffer/service/gles2_cmd_decoder.h"
 
+#include <EGL/egl.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -100,6 +101,7 @@
 #include "ui/gl/gl_image.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_surface.h"
+#include "ui/gl/gl_surface_egl.h"
 #include "ui/gl/gl_version_info.h"
 #include "ui/gl/gpu_timing.h"
 #include "ui/gl/init/create_gr_gl_interface.h"
@@ -792,6 +794,8 @@ class GLES2DecoderImpl : public GLES2Decoder, public ErrorStateClient {
   void UpdateCapabilities();
 
   // Helpers for the glGen and glDelete functions.
+  bool GenAndBindSharedHandleTextureHelper(GLsizei n, GLint width,
+      GLint height, GLuint64 handle, const GLuint* client_ids);
   bool GenTexturesHelper(GLsizei n, const GLuint* client_ids);
   void DeleteTexturesHelper(GLsizei n, const volatile GLuint* client_ids);
   bool GenBuffersHelper(GLsizei n, const GLuint* client_ids);
@@ -4322,6 +4326,23 @@ bool GLES2DecoderImpl::GenTexturesHelper(GLsizei n, const GLuint* client_ids) {
   }
   return true;
 }
+
+bool GLES2DecoderImpl::GenAndBindSharedHandleTextureHelper(GLsizei n,
+    GLint width, GLint height, GLuint64 handle, const GLuint* client_ids) {
+  // TODO: Do we need to modify this at all?
+  for (GLsizei ii = 0; ii < n; ++ii) {
+    if (GetTexture(client_ids[ii])) {
+      return false;
+    }
+  }
+  std::unique_ptr<GLuint[]> service_ids(new GLuint[n]);
+  api()->glGenTexturesFn(n, service_ids.get());
+  for (GLsizei ii = 0; ii < n; ++ii) {
+    CreateTexture(client_ids[ii], service_ids[ii]);
+  }
+  return true;
+}
+
 
 bool GLES2DecoderImpl::GenSamplersHelper(GLsizei n, const GLuint* client_ids) {
   for (GLsizei ii = 0; ii < n; ++ii) {
@@ -20259,6 +20280,54 @@ void GLES2DecoderImpl::DoSetReadbackBufferShadowAllocationINTERNAL(
   // All buffers in writes_submitted_but_not_completed_ should have shm
   // allocations.
   writes_submitted_but_not_completed_.insert(buffer);
+}
+
+EGLConfig ChooseCompatibleConfig() {
+  const EGLint buffer_bind_to_texture = EGL_BIND_TO_TEXTURE_RGBA;
+  const EGLint buffer_size = 32;
+  EGLint const attrib_list[] = {EGL_RED_SIZE, 8,
+    EGL_GREEN_SIZE, 8,
+    EGL_BLUE_SIZE, 8,
+    EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+    buffer_bind_to_texture, EGL_TRUE,
+    EGL_BUFFER_SIZE, buffer_size,
+    EGL_NONE};
+
+  EGLint num_config;
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  EGLBoolean result =
+    eglChooseConfig(display, attrib_list, nullptr, 0, &num_config);
+  if (result != EGL_TRUE)
+    return nullptr;
+  std::vector<EGLConfig> all_configs(num_config);
+  result = eglChooseConfig(gl::GLSurfaceEGL::GetHardwareDisplay(), attrib_list,
+      all_configs.data(), num_config, &num_config);
+  if (result != EGL_TRUE)
+    return nullptr;
+  for (EGLConfig config : all_configs) {
+    EGLint bits;
+    if (!eglGetConfigAttrib(display, config, EGL_RED_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    if (!eglGetConfigAttrib(display, config, EGL_BLUE_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    if (!eglGetConfigAttrib(display, config, EGL_GREEN_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+    if (!eglGetConfigAttrib(display, config, EGL_ALPHA_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    return config;
+  }
+  return nullptr;
 }
 
 // Include the auto-generated part of this file. We split this because it means

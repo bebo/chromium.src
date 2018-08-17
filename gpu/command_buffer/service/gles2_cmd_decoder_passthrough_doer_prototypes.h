@@ -1047,5 +1047,10 @@ error::Error DoSetReadbackBufferShadowAllocationINTERNAL(GLuint buffer_id,
                                                          GLuint shm_id,
                                                          GLuint shm_offset,
                                                          GLuint size);
+error::Error DoGenAndBindSharedHandleTexture(GLsizei n,
+                                             GLint width,
+                                             GLint height,
+                                             GLuint64 handle,
+                                             volatile GLuint* textures);
 
 #endif  // GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_PASSTHROUGH_DOER_PROTOTYPES_H_

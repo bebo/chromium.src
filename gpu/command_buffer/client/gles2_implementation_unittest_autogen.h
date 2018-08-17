@@ -3139,4 +3139,22 @@ TEST_F(GLES2ImplementationTest, DestroyGpuFenceCHROMIUM) {
   gl_->DestroyGpuFenceCHROMIUM(1);
   EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
 }
+
+TEST_F(GLES2ImplementationTest, GenAndBindSharedHandleTexture) {
+  GLuint ids[2] = {
+      0,
+  };
+  struct Cmds {
+    cmds::GenAndBindSharedHandleTextureImmediate gen;
+    GLuint data[2];
+  };
+  Cmds expected;
+  expected.gen.Init(arraysize(ids), &ids[0]);
+  expected.data[0] = kTexturesStartId;
+  expected.data[1] = kTexturesStartId + 1;
+  gl_->GenAndBindSharedHandleTexture(arraysize(ids), &ids[0]);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+  EXPECT_EQ(kTexturesStartId, ids[0]);
+  EXPECT_EQ(kTexturesStartId + 1, ids[1]);
+}
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_UNITTEST_AUTOGEN_H_

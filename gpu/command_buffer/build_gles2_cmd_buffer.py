@@ -4059,6 +4059,16 @@ _FUNCTION_INFO = {
     'internal': True,
     'es3': True,
   },
+  'GenAndBindSharedHandleTexture': {
+    'type': 'GenBind',
+    'cmd_args': 'GLsizei n, GLint width, GLint height, GLuint64 handle, GLuint* textures',
+    'decoder_func': 'DoGenAndBindSharedHandleTexture',
+    'resource_type': 'Texture',
+    'resource_types': 'Textures',
+    'impl_func': True,
+    'client_test': False,
+    'unit_test': False,
+  },
 }
 
 

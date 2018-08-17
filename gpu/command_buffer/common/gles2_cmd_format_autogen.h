@@ -16406,4 +16406,81 @@ static_assert(
     offsetof(SetReadbackBufferShadowAllocationINTERNAL, size) == 16,
     "offset of SetReadbackBufferShadowAllocationINTERNAL size should be 16");
 
+struct GenAndBindSharedHandleTextureImmediate {
+  typedef GenAndBindSharedHandleTextureImmediate ValueType;
+  static const CommandId kCmdId = kGenAndBindSharedHandleTextureImmediate;
+  static const cmd::ArgFlags kArgFlags = cmd::kAtLeastN;
+  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
+
+  static uint32_t ComputeDataSize(GLsizei _n) {
+    return static_cast<uint32_t>(sizeof(GLuint) * _n);  // NOLINT
+  }
+
+  static uint32_t ComputeSize(GLsizei _n) {
+    return static_cast<uint32_t>(sizeof(ValueType) +
+                                 ComputeDataSize(_n));  // NOLINT
+  }
+
+  void SetHeader(GLsizei _n) {
+    header.SetCmdByTotalSize<ValueType>(ComputeSize(_n));
+  }
+
+  void Init(GLsizei _n,
+            GLint _width,
+            GLint _height,
+            GLuint64 _handle,
+            GLuint* _textures) {
+    SetHeader(_n);
+    n = _n;
+    width = _width;
+    height = _height;
+    GLES2Util::MapUint64ToTwoUint32(static_cast<uint64_t>(_handle), &handle_0,
+                                    &handle_1);
+    memcpy(ImmediateDataAddress(this), _textures, ComputeDataSize(_n));
+  }
+
+  void* Set(void* cmd,
+            GLsizei _n,
+            GLint _width,
+            GLint _height,
+            GLuint64 _handle,
+            GLuint* _textures) {
+    static_cast<ValueType*>(cmd)->Init(_n, _width, _height, _handle, _textures);
+    const uint32_t size = ComputeSize(_n);
+    return NextImmediateCmdAddressTotalSize<ValueType>(cmd, size);
+  }
+
+  GLuint64 handle() const volatile {
+    return static_cast<GLuint64>(
+        GLES2Util::MapTwoUint32ToUint64(handle_0, handle_1));
+  }
+
+  gpu::CommandHeader header;
+  int32_t n;
+  int32_t width;
+  int32_t height;
+  uint32_t handle_0;
+  uint32_t handle_1;
+};
+
+static_assert(sizeof(GenAndBindSharedHandleTextureImmediate) == 24,
+              "size of GenAndBindSharedHandleTextureImmediate should be 24");
+static_assert(
+    offsetof(GenAndBindSharedHandleTextureImmediate, header) == 0,
+    "offset of GenAndBindSharedHandleTextureImmediate header should be 0");
+static_assert(offsetof(GenAndBindSharedHandleTextureImmediate, n) == 4,
+              "offset of GenAndBindSharedHandleTextureImmediate n should be 4");
+static_assert(
+    offsetof(GenAndBindSharedHandleTextureImmediate, width) == 8,
+    "offset of GenAndBindSharedHandleTextureImmediate width should be 8");
+static_assert(
+    offsetof(GenAndBindSharedHandleTextureImmediate, height) == 12,
+    "offset of GenAndBindSharedHandleTextureImmediate height should be 12");
+static_assert(
+    offsetof(GenAndBindSharedHandleTextureImmediate, handle_0) == 16,
+    "offset of GenAndBindSharedHandleTextureImmediate handle_0 should be 16");
+static_assert(
+    offsetof(GenAndBindSharedHandleTextureImmediate, handle_1) == 20,
+    "offset of GenAndBindSharedHandleTextureImmediate handle_1 should be 20");
+
 #endif  // GPU_COMMAND_BUFFER_COMMON_GLES2_CMD_FORMAT_AUTOGEN_H_

@@ -908,4 +908,9 @@ GLuint CreateClientGpuFenceCHROMIUM(ClientGpuFence source) override;
 void WaitGpuFenceCHROMIUM(GLuint gpu_fence_id) override;
 void DestroyGpuFenceCHROMIUM(GLuint gpu_fence_id) override;
 void InvalidateReadbackBufferShadowDataCHROMIUM(GLuint buffer_id) override;
+void GenAndBindSharedHandleTexture(GLsizei n,
+                                   GLint width,
+                                   GLint height,
+                                   GLuint64 handle,
+                                   GLuint* textures) override;
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_INTERFACE_STUB_AUTOGEN_H_

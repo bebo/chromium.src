@@ -403,5 +403,7 @@
 #define glDestroyGpuFenceCHROMIUM GLES2_GET_FUN(DestroyGpuFenceCHROMIUM)
 #define glInvalidateReadbackBufferShadowDataCHROMIUM \
   GLES2_GET_FUN(InvalidateReadbackBufferShadowDataCHROMIUM)
+#define glGenAndBindSharedHandleTexture \
+  GLES2_GET_FUN(GenAndBindSharedHandleTexture)
 
 #endif  // GPU_GLES2_GL2CHROMIUM_AUTOGEN_H_
