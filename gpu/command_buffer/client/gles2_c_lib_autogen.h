@@ -1804,6 +1804,22 @@ void GL_APIENTRY GLES2GenAndBindSharedHandleTexture(GLsizei n,
   gles2::GetGLContext()->GenAndBindSharedHandleTexture(n, width, height, handle,
                                                        textures);
 }
+void GL_APIENTRY GLES2CreatePbufferFromClientBufferEGL(GLint width,
+                                                       GLint height,
+                                                       GLuint64 handle,
+                                                       GLuint64* surface) {
+  gles2::GetGLContext()->CreatePbufferFromClientBufferEGL(width, height, handle,
+                                                          surface);
+}
+void GL_APIENTRY GLES2BindTexImageEGL(GLuint64 surface) {
+  gles2::GetGLContext()->BindTexImageEGL(surface);
+}
+void GL_APIENTRY GLES2ReleaseTexImageEGL(GLuint64 surface) {
+  gles2::GetGLContext()->ReleaseTexImageEGL(surface);
+}
+void GL_APIENTRY GLES2DestroySurfaceEGL(GLuint64 surface) {
+  gles2::GetGLContext()->DestroySurfaceEGL(surface);
+}
 
 namespace gles2 {
 
@@ -3160,6 +3176,23 @@ extern const NameToFunc g_gles2_function_table[] = {
     {
         "glGenAndBindSharedHandleTexture",
         reinterpret_cast<GLES2FunctionPointer>(glGenAndBindSharedHandleTexture),
+    },
+    {
+        "glCreatePbufferFromClientBufferEGL",
+        reinterpret_cast<GLES2FunctionPointer>(
+            glCreatePbufferFromClientBufferEGL),
+    },
+    {
+        "glBindTexImageEGL",
+        reinterpret_cast<GLES2FunctionPointer>(glBindTexImageEGL),
+    },
+    {
+        "glReleaseTexImageEGL",
+        reinterpret_cast<GLES2FunctionPointer>(glReleaseTexImageEGL),
+    },
+    {
+        "glDestroySurfaceEGL",
+        reinterpret_cast<GLES2FunctionPointer>(glDestroySurfaceEGL),
     },
     {
         NULL, NULL,

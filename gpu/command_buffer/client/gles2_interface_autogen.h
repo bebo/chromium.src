@@ -942,4 +942,11 @@ virtual void GenAndBindSharedHandleTexture(GLsizei n,
                                            GLint height,
                                            GLuint64 handle,
                                            GLuint* textures) = 0;
+virtual void CreatePbufferFromClientBufferEGL(GLint width,
+                                              GLint height,
+                                              GLuint64 handle,
+                                              GLuint64* surface) = 0;
+virtual void BindTexImageEGL(GLuint64 surface) = 0;
+virtual void ReleaseTexImageEGL(GLuint64 surface) = 0;
+virtual void DestroySurfaceEGL(GLuint64 surface) = 0;
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_INTERFACE_AUTOGEN_H_

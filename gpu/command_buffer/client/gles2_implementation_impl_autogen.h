@@ -3644,4 +3644,28 @@ void GLES2Implementation::GenAndBindSharedHandleTexture(GLsizei n,
   CheckGLError();
 }
 
+void GLES2Implementation::BindTexImageEGL(GLuint64 surface) {
+  GPU_CLIENT_SINGLE_THREAD_CHECK();
+  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glBindTexImageEGL(" << surface
+                     << ")");
+  helper_->BindTexImageEGL(surface);
+  CheckGLError();
+}
+
+void GLES2Implementation::ReleaseTexImageEGL(GLuint64 surface) {
+  GPU_CLIENT_SINGLE_THREAD_CHECK();
+  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glReleaseTexImageEGL(" << surface
+                     << ")");
+  helper_->ReleaseTexImageEGL(surface);
+  CheckGLError();
+}
+
+void GLES2Implementation::DestroySurfaceEGL(GLuint64 surface) {
+  GPU_CLIENT_SINGLE_THREAD_CHECK();
+  GPU_CLIENT_LOG("[" << GetLogPrefix() << "] glDestroySurfaceEGL(" << surface
+                     << ")");
+  helper_->DestroySurfaceEGL(surface);
+  CheckGLError();
+}
+
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_IMPL_AUTOGEN_H_

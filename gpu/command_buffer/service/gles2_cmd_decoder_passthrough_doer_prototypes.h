@@ -1052,5 +1052,11 @@ error::Error DoGenAndBindSharedHandleTexture(GLsizei n,
                                              GLint height,
                                              GLuint64 handle,
                                              volatile GLuint* textures);
-
+error::Error DoCreatePbufferFromClientBufferEGL(GLint width,
+                                                GLint height,
+                                                GLuint64 handle,
+                                                volatile GLuint64* surfaces);
+error::Error DoBindTexImageEGL(GLuint64 surface);
+error::Error DoReleaseTexImageEGL(GLuint64 surface);
+error::Error DoDestroySurfaceEGL(GLuint64 surface);
 #endif  // GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_PASSTHROUGH_DOER_PROTOTYPES_H_

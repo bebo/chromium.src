@@ -1605,6 +1605,39 @@ void GenAndBindSharedHandleTexture(PP_Resource context_id,
   }
 }
 
+void CreatePbufferFromClientBufferEGL(PP_Resource context_id,
+                                      GLint width,
+                                      GLint height,
+                                      GLuint64 handle,
+                                      GLuint64* surface) {
+  Enter3D enter(context_id, true);
+  if (enter.succeeded()) {
+    ToGles2Impl(&enter)->CreatePbufferFromClientBufferEGL(width, height, handle,
+                                                          surface);
+  }
+}
+
+void BindTexImageEGL(PP_Resource context_id, GLuint64 surface) {
+  Enter3D enter(context_id, true);
+  if (enter.succeeded()) {
+    ToGles2Impl(&enter)->BindTexImageEGL(surface);
+  }
+}
+
+void ReleaseTexImageEGL(PP_Resource context_id, GLuint64 surface) {
+  Enter3D enter(context_id, true);
+  if (enter.succeeded()) {
+    ToGles2Impl(&enter)->ReleaseTexImageEGL(surface);
+  }
+}
+
+void DestroySurfaceEGL(PP_Resource context_id, GLuint64 surface) {
+  Enter3D enter(context_id, true);
+  if (enter.succeeded()) {
+    ToGles2Impl(&enter)->DestroySurfaceEGL(surface);
+  }
+}
+
 }  // namespace
 const PPB_OpenGLES2* PPB_OpenGLES2_Shared::GetInterface() {
   static const struct PPB_OpenGLES2 ppb_opengles2 = {
@@ -1750,7 +1783,11 @@ const PPB_OpenGLES2* PPB_OpenGLES2_Shared::GetInterface() {
       &VertexAttrib4fv,
       &VertexAttribPointer,
       &Viewport,
-      &GenAndBindSharedHandleTexture};
+      &GenAndBindSharedHandleTexture,
+      &CreatePbufferFromClientBufferEGL,
+      &BindTexImageEGL,
+      &ReleaseTexImageEGL,
+      &DestroySurfaceEGL};
   return &ppb_opengles2;
 }
 const PPB_OpenGLES2InstancedArrays*

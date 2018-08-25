@@ -397,3 +397,7 @@ GL_APICALL void         GL_APIENTRY glSetReadbackBufferShadowAllocationINTERNAL 
 
 // EGL shared texture
 GL_APICALL void         GL_APIENTRY glGenAndBindSharedHandleTexture (GLsizei n, GLint width, GLint height, GLuint64 handle, GLuint* textures);
+GL_APICALL void         GL_APIENTRY glCreatePbufferFromClientBufferEGL (GLint width, GLint height, GLuint64 handle, GLuint64* surface);
+GL_APICALL void         GL_APIENTRY glBindTexImageEGL (GLuint64 surface);
+GL_APICALL void         GL_APIENTRY glReleaseTexImageEGL (GLuint64 surface);
+GL_APICALL void         GL_APIENTRY glDestroySurfaceEGL (GLuint64 surface);

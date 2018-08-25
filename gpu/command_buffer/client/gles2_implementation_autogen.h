@@ -1266,4 +1266,15 @@ void GenAndBindSharedHandleTexture(GLsizei n,
                                    GLuint64 handle,
                                    GLuint* textures) override;
 
+void CreatePbufferFromClientBufferEGL(GLint width,
+                                      GLint height,
+                                      GLuint64 handle,
+                                      GLuint64* surface) override;
+
+void BindTexImageEGL(GLuint64 surface) override;
+
+void ReleaseTexImageEGL(GLuint64 surface) override;
+
+void DestroySurfaceEGL(GLuint64 surface) override;
+
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_IMPLEMENTATION_AUTOGEN_H_

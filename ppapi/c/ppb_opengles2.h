@@ -1011,6 +1011,17 @@ struct PPB_OpenGLES2 {
                                         GLint height,
                                         GLuint64 handle,
                                         GLuint* texture);
+  void (*CreatePbufferFromClientBufferEGL)(PP_Resource context,
+                                        GLint width,
+                                        GLint height,
+                                        GLuint64 handle,
+                                        GLuint64* surface);
+  void (*BindTexImageEGL)(PP_Resource context,
+                          GLuint64 surface);
+  void (*ReleaseTexImageEGL)(PP_Resource context,
+                             GLuint64 surface);
+  void (*DestroySurfaceEGL)(PP_Resource context,
+                            GLuint64 surface);
 };
 
 struct PPB_OpenGLES2InstancedArrays_1_0 {

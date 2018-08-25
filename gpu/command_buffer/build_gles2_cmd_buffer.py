@@ -4065,10 +4065,37 @@ _FUNCTION_INFO = {
     'decoder_func': 'DoGenAndBindSharedHandleTexture',
     'resource_type': 'Texture',
     'resource_types': 'Textures',
+    'impl_func': False,
+    'client_test': False,
+    'unit_test': False,
+  },
+  'CreatePbufferFromClientBufferEGL': {
+    'type': 'Custom',
+    'data_transfer_methods': ['bucket'],
+    'cmd_args': 'GLint width, GLint height, GLuint64 handle, uint32_t bucket_id',
+    'impl_func': False,
+    'client_test': False,
+    'unit_test': False,
+  },
+  'BindTexImageEGL': {
+    'type': 'Custom',
     'impl_func': True,
     'client_test': False,
     'unit_test': False,
   },
+  'ReleaseTexImageEGL': {
+    'type': 'Custom',
+    'impl_func': True,
+    'client_test': False,
+    'unit_test': False,
+  },
+  'DestroySurfaceEGL': {
+    'type': 'Custom',
+    'impl_func': True,
+    'client_test': False,
+    'unit_test': False,
+  },
+
 }
 
 

@@ -16483,4 +16483,194 @@ static_assert(
     offsetof(GenAndBindSharedHandleTextureImmediate, handle_1) == 20,
     "offset of GenAndBindSharedHandleTextureImmediate handle_1 should be 20");
 
+struct CreatePbufferFromClientBufferEGL {
+  typedef CreatePbufferFromClientBufferEGL ValueType;
+  static const CommandId kCmdId = kCreatePbufferFromClientBufferEGL;
+  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
+  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
+
+  static uint32_t ComputeSize() {
+    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
+  }
+
+  void SetHeader() { header.SetCmd<ValueType>(); }
+
+  void Init(GLint _width,
+            GLint _height,
+            GLuint64 _handle,
+            uint32_t _bucket_id) {
+    SetHeader();
+    width = _width;
+    height = _height;
+    GLES2Util::MapUint64ToTwoUint32(static_cast<uint64_t>(_handle), &handle_0,
+                                    &handle_1);
+    bucket_id = _bucket_id;
+  }
+
+  void* Set(void* cmd,
+            GLint _width,
+            GLint _height,
+            GLuint64 _handle,
+            uint32_t _bucket_id) {
+    static_cast<ValueType*>(cmd)->Init(_width, _height, _handle, _bucket_id);
+    return NextCmdAddress<ValueType>(cmd);
+  }
+
+  GLuint64 handle() const volatile {
+    return static_cast<GLuint64>(
+        GLES2Util::MapTwoUint32ToUint64(handle_0, handle_1));
+  }
+
+  gpu::CommandHeader header;
+  int32_t width;
+  int32_t height;
+  uint32_t handle_0;
+  uint32_t handle_1;
+  uint32_t bucket_id;
+};
+
+static_assert(sizeof(CreatePbufferFromClientBufferEGL) == 24,
+              "size of CreatePbufferFromClientBufferEGL should be 24");
+static_assert(offsetof(CreatePbufferFromClientBufferEGL, header) == 0,
+              "offset of CreatePbufferFromClientBufferEGL header should be 0");
+static_assert(offsetof(CreatePbufferFromClientBufferEGL, width) == 4,
+              "offset of CreatePbufferFromClientBufferEGL width should be 4");
+static_assert(offsetof(CreatePbufferFromClientBufferEGL, height) == 8,
+              "offset of CreatePbufferFromClientBufferEGL height should be 8");
+static_assert(
+    offsetof(CreatePbufferFromClientBufferEGL, handle_0) == 12,
+    "offset of CreatePbufferFromClientBufferEGL handle_0 should be 12");
+static_assert(
+    offsetof(CreatePbufferFromClientBufferEGL, handle_1) == 16,
+    "offset of CreatePbufferFromClientBufferEGL handle_1 should be 16");
+static_assert(
+    offsetof(CreatePbufferFromClientBufferEGL, bucket_id) == 20,
+    "offset of CreatePbufferFromClientBufferEGL bucket_id should be 20");
+
+struct BindTexImageEGL {
+  typedef BindTexImageEGL ValueType;
+  static const CommandId kCmdId = kBindTexImageEGL;
+  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
+  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
+
+  static uint32_t ComputeSize() {
+    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
+  }
+
+  void SetHeader() { header.SetCmd<ValueType>(); }
+
+  void Init(GLuint64 _surface) {
+    SetHeader();
+    GLES2Util::MapUint64ToTwoUint32(static_cast<uint64_t>(_surface), &surface_0,
+                                    &surface_1);
+  }
+
+  void* Set(void* cmd, GLuint64 _surface) {
+    static_cast<ValueType*>(cmd)->Init(_surface);
+    return NextCmdAddress<ValueType>(cmd);
+  }
+
+  GLuint64 surface() const volatile {
+    return static_cast<GLuint64>(
+        GLES2Util::MapTwoUint32ToUint64(surface_0, surface_1));
+  }
+
+  gpu::CommandHeader header;
+  uint32_t surface_0;
+  uint32_t surface_1;
+};
+
+static_assert(sizeof(BindTexImageEGL) == 12,
+              "size of BindTexImageEGL should be 12");
+static_assert(offsetof(BindTexImageEGL, header) == 0,
+              "offset of BindTexImageEGL header should be 0");
+static_assert(offsetof(BindTexImageEGL, surface_0) == 4,
+              "offset of BindTexImageEGL surface_0 should be 4");
+static_assert(offsetof(BindTexImageEGL, surface_1) == 8,
+              "offset of BindTexImageEGL surface_1 should be 8");
+
+struct ReleaseTexImageEGL {
+  typedef ReleaseTexImageEGL ValueType;
+  static const CommandId kCmdId = kReleaseTexImageEGL;
+  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
+  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
+
+  static uint32_t ComputeSize() {
+    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
+  }
+
+  void SetHeader() { header.SetCmd<ValueType>(); }
+
+  void Init(GLuint64 _surface) {
+    SetHeader();
+    GLES2Util::MapUint64ToTwoUint32(static_cast<uint64_t>(_surface), &surface_0,
+                                    &surface_1);
+  }
+
+  void* Set(void* cmd, GLuint64 _surface) {
+    static_cast<ValueType*>(cmd)->Init(_surface);
+    return NextCmdAddress<ValueType>(cmd);
+  }
+
+  GLuint64 surface() const volatile {
+    return static_cast<GLuint64>(
+        GLES2Util::MapTwoUint32ToUint64(surface_0, surface_1));
+  }
+
+  gpu::CommandHeader header;
+  uint32_t surface_0;
+  uint32_t surface_1;
+};
+
+static_assert(sizeof(ReleaseTexImageEGL) == 12,
+              "size of ReleaseTexImageEGL should be 12");
+static_assert(offsetof(ReleaseTexImageEGL, header) == 0,
+              "offset of ReleaseTexImageEGL header should be 0");
+static_assert(offsetof(ReleaseTexImageEGL, surface_0) == 4,
+              "offset of ReleaseTexImageEGL surface_0 should be 4");
+static_assert(offsetof(ReleaseTexImageEGL, surface_1) == 8,
+              "offset of ReleaseTexImageEGL surface_1 should be 8");
+
+struct DestroySurfaceEGL {
+  typedef DestroySurfaceEGL ValueType;
+  static const CommandId kCmdId = kDestroySurfaceEGL;
+  static const cmd::ArgFlags kArgFlags = cmd::kFixed;
+  static const uint8_t cmd_flags = CMD_FLAG_SET_TRACE_LEVEL(3);
+
+  static uint32_t ComputeSize() {
+    return static_cast<uint32_t>(sizeof(ValueType));  // NOLINT
+  }
+
+  void SetHeader() { header.SetCmd<ValueType>(); }
+
+  void Init(GLuint64 _surface) {
+    SetHeader();
+    GLES2Util::MapUint64ToTwoUint32(static_cast<uint64_t>(_surface), &surface_0,
+                                    &surface_1);
+  }
+
+  void* Set(void* cmd, GLuint64 _surface) {
+    static_cast<ValueType*>(cmd)->Init(_surface);
+    return NextCmdAddress<ValueType>(cmd);
+  }
+
+  GLuint64 surface() const volatile {
+    return static_cast<GLuint64>(
+        GLES2Util::MapTwoUint32ToUint64(surface_0, surface_1));
+  }
+
+  gpu::CommandHeader header;
+  uint32_t surface_0;
+  uint32_t surface_1;
+};
+
+static_assert(sizeof(DestroySurfaceEGL) == 12,
+              "size of DestroySurfaceEGL should be 12");
+static_assert(offsetof(DestroySurfaceEGL, header) == 0,
+              "offset of DestroySurfaceEGL header should be 0");
+static_assert(offsetof(DestroySurfaceEGL, surface_0) == 4,
+              "offset of DestroySurfaceEGL surface_0 should be 4");
+static_assert(offsetof(DestroySurfaceEGL, surface_1) == 8,
+              "offset of DestroySurfaceEGL surface_1 should be 8");
+
 #endif  // GPU_COMMAND_BUFFER_COMMON_GLES2_CMD_FORMAT_AUTOGEN_H_

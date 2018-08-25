@@ -16,6 +16,55 @@
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/gl/gl_version_info.h"
 
+EGLConfig ChooseCompatibleConfig() {
+  const EGLint buffer_bind_to_texture = EGL_BIND_TO_TEXTURE_RGBA;
+  const EGLint buffer_size = 32;
+  EGLint const attrib_list[] = {EGL_RED_SIZE, 8,
+    EGL_GREEN_SIZE, 8,
+    EGL_BLUE_SIZE, 8,
+    EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+    buffer_bind_to_texture, EGL_TRUE,
+    EGL_BUFFER_SIZE, buffer_size,
+    EGL_NONE};
+
+  EGLint num_config;
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  EGLBoolean result =
+    eglChooseConfig(display, attrib_list, nullptr, 0, &num_config);
+  if (result != EGL_TRUE)
+    return nullptr;
+  std::vector<EGLConfig> all_configs(num_config);
+  result = eglChooseConfig(gl::GLSurfaceEGL::GetHardwareDisplay(), attrib_list,
+      all_configs.data(), num_config, &num_config);
+  if (result != EGL_TRUE)
+    return nullptr;
+  for (EGLConfig config : all_configs) {
+    EGLint bits;
+    if (!eglGetConfigAttrib(display, config, EGL_RED_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    if (!eglGetConfigAttrib(display, config, EGL_BLUE_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    if (!eglGetConfigAttrib(display, config, EGL_GREEN_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+    if (!eglGetConfigAttrib(display, config, EGL_ALPHA_SIZE, &bits) ||
+        bits != 8) {
+      continue;
+    }
+
+    return config;
+  }
+  return nullptr;
+}
+
+
 namespace gpu {
 namespace gles2 {
 
@@ -4802,54 +4851,6 @@ GLES2DecoderPassthroughImpl::DoSetReadbackBufferShadowAllocationINTERNAL(
   return error::kNoError;
 }
 
-EGLConfig ChooseCompatibleConfig() {
-  const EGLint buffer_bind_to_texture = EGL_BIND_TO_TEXTURE_RGBA;
-  const EGLint buffer_size = 32;
-  EGLint const attrib_list[] = {EGL_RED_SIZE, 8,
-    EGL_GREEN_SIZE, 8,
-    EGL_BLUE_SIZE, 8,
-    EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-    buffer_bind_to_texture, EGL_TRUE,
-    EGL_BUFFER_SIZE, buffer_size,
-    EGL_NONE};
-
-  EGLint num_config;
-  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
-  EGLBoolean result =
-    eglChooseConfig(display, attrib_list, nullptr, 0, &num_config);
-  if (result != EGL_TRUE)
-    return nullptr;
-  std::vector<EGLConfig> all_configs(num_config);
-  result = eglChooseConfig(gl::GLSurfaceEGL::GetHardwareDisplay(), attrib_list,
-      all_configs.data(), num_config, &num_config);
-  if (result != EGL_TRUE)
-    return nullptr;
-  for (EGLConfig config : all_configs) {
-    EGLint bits;
-    if (!eglGetConfigAttrib(display, config, EGL_RED_SIZE, &bits) ||
-        bits != 8) {
-      continue;
-    }
-
-    if (!eglGetConfigAttrib(display, config, EGL_BLUE_SIZE, &bits) ||
-        bits != 8) {
-      continue;
-    }
-
-    if (!eglGetConfigAttrib(display, config, EGL_GREEN_SIZE, &bits) ||
-        bits != 8) {
-      continue;
-    }
-    if (!eglGetConfigAttrib(display, config, EGL_ALPHA_SIZE, &bits) ||
-        bits != 8) {
-      continue;
-    }
-
-    return config;
-  }
-  return nullptr;
-}
-
 error::Error GLES2DecoderPassthroughImpl::DoGenAndBindSharedHandleTexture(
     GLsizei n,
     GLint width,
@@ -4893,6 +4894,56 @@ error::Error GLES2DecoderPassthroughImpl::DoGenAndBindSharedHandleTexture(
   }
 
   egl_api->eglBindTexImageFn(display, surface, EGL_BACK_BUFFER);
+  return error::kNoError;
+}
+
+error::Error GLES2DecoderPassthroughImpl::DoCreatePbufferFromClientBufferEGL(
+    GLint width,
+    GLint height,
+    GLuint64 handle,
+    volatile GLuint64* surface) {
+  gl::EGLApi* egl_api = gl::g_current_egl_context;
+  EGLint attrs[] = {
+    EGL_WIDTH,          width,
+    EGL_HEIGHT,         height,
+    EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
+    EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
+    EGL_NONE
+  };
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  EGLConfig config = ChooseCompatibleConfig();
+  HANDLE shared_handle = (HANDLE) handle;
+  EGLSurface shared_surface = egl_api->eglCreatePbufferFromClientBufferFn(
+      display,
+      EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE,
+      shared_handle,
+      config,
+      attrs);
+  *surface = reinterpret_cast<GLuint64>(shared_surface);
+  return error::kNoError;
+}
+
+error::Error GLES2DecoderPassthroughImpl::DoBindTexImageEGL(GLuint64 surface) {
+  gl::EGLApi* egl_api = gl::g_current_egl_context;
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  egl_api->eglBindTexImageFn(display, reinterpret_cast<EGLSurface>(surface), EGL_BACK_BUFFER);
+  CheckErrorCallbackState();
+  return error::kNoError;
+}
+
+error::Error GLES2DecoderPassthroughImpl::DoReleaseTexImageEGL(GLuint64 surface) {
+  gl::EGLApi* egl_api = gl::g_current_egl_context;
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  egl_api->eglReleaseTexImageFn(display, reinterpret_cast<EGLSurface>(surface), EGL_BACK_BUFFER);
+  CheckErrorCallbackState();
+  return error::kNoError;
+}
+
+error::Error GLES2DecoderPassthroughImpl::DoDestroySurfaceEGL(GLuint64 surface) {
+  gl::EGLApi* egl_api = gl::g_current_egl_context;
+  EGLDisplay display = gl::GLSurfaceEGL::GetHardwareDisplay();
+  egl_api->eglDestroySurfaceFn(display, reinterpret_cast<EGLSurface>(surface));
+  CheckErrorCallbackState();
   return error::kNoError;
 }
 

@@ -1055,3 +1055,24 @@ void GL_APIENTRY glGenAndBindSharedHandleTexture(GLsizei n,
   glGetInterfacePPAPI()->GenAndBindSharedHandleTexture(
       glGetCurrentContextPPAPI(), n, width, height, handle, textures);
 }
+
+void GL_APIENTRY glCreatePbufferFromClientBufferEGL(GLint width,
+                                                    GLint height,
+                                                    GLuint64 handle,
+                                                    GLuint64* surface) {
+  glGetInterfacePPAPI()->CreatePbufferFromClientBufferEGL(
+      glGetCurrentContextPPAPI(), width, height, handle, surface);
+}
+
+void GL_APIENTRY glBindTexImageEGL(GLuint64 surface) {
+  glGetInterfacePPAPI()->BindTexImageEGL(glGetCurrentContextPPAPI(), surface);
+}
+
+void GL_APIENTRY glReleaseTexImageEGL(GLuint64 surface) {
+  glGetInterfacePPAPI()->ReleaseTexImageEGL(glGetCurrentContextPPAPI(),
+                                            surface);
+}
+
+void GL_APIENTRY glDestroySurfaceEGL(GLuint64 surface) {
+  glGetInterfacePPAPI()->DestroySurfaceEGL(glGetCurrentContextPPAPI(), surface);
+}

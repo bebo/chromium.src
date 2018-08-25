@@ -1229,4 +1229,12 @@ void GLES2InterfaceStub::GenAndBindSharedHandleTexture(GLsizei /* n */,
                                                        GLuint64 /* handle */,
                                                        GLuint* /* textures */) {
 }
+void GLES2InterfaceStub::CreatePbufferFromClientBufferEGL(
+    GLint /* width */,
+    GLint /* height */,
+    GLuint64 /* handle */,
+    GLuint64* /* surface */) {}
+void GLES2InterfaceStub::BindTexImageEGL(GLuint64 /* surface */) {}
+void GLES2InterfaceStub::ReleaseTexImageEGL(GLuint64 /* surface */) {}
+void GLES2InterfaceStub::DestroySurfaceEGL(GLuint64 /* surface */) {}
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_INTERFACE_STUB_IMPL_AUTOGEN_H_

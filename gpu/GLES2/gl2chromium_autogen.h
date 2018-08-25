@@ -405,5 +405,10 @@
   GLES2_GET_FUN(InvalidateReadbackBufferShadowDataCHROMIUM)
 #define glGenAndBindSharedHandleTexture \
   GLES2_GET_FUN(GenAndBindSharedHandleTexture)
+#define glCreatePbufferFromClientBufferEGL \
+  GLES2_GET_FUN(CreatePbufferFromClientBufferEGL)
+#define glBindTexImageEGL GLES2_GET_FUN(BindTexImageEGL)
+#define glReleaseTexImageEGL GLES2_GET_FUN(ReleaseTexImageEGL)
+#define glDestroySurfaceEGL GLES2_GET_FUN(DestroySurfaceEGL)
 
 #endif  // GPU_GLES2_GL2CHROMIUM_AUTOGEN_H_
