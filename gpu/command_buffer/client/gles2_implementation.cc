@@ -3954,7 +3954,6 @@ void GLES2Implementation::ReadPixels(
     SetGLError(GL_INVALID_OPERATION, func_name, "pixels = NULL");
     return;
   }
-
   int8_t* dest = reinterpret_cast<int8_t*>(pixels);
   // Advance pixels pointer past the skip rows and skip pixels
   dest += skip_size;
@@ -7192,6 +7191,29 @@ GLenum GLES2Implementation::GetClientSideGLError() {
   error_bits_ &= ~GLES2Util::GLErrorToErrorBit(error);
   return error;
 }
+
+void GLES2Implementation::GenAndBindSharedHandleTextureHelper(GLsizei /* n */,
+    GLint /* width */,
+    GLint /* height */,
+    GLuint64 /* handle */,
+    const GLuint* /* textures */) {
+}
+
+void GLES2Implementation::CreatePbufferFromClientBufferEGL(GLint width,
+    GLint height,
+    GLuint64 handle,
+    GLuint64* surface) {
+  GPU_CLIENT_SINGLE_THREAD_CHECK();
+  std::vector<int8_t> result;
+  helper_->SetBucketSize(kResultBucketId, 0);
+  helper_->CreatePbufferFromClientBufferEGL(width, height, handle, kResultBucketId);
+  GetBucketContents(kResultBucketId, &result);
+  if (result.empty()) {
+    return;
+  }
+  memcpy(surface, &result[0], result.size());
+}
+
 
 CommandBufferHelper* GLES2Implementation::cmd_buffer_helper() {
   return helper_;

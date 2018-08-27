@@ -619,6 +619,23 @@ interface PPB_OpenGLES2 {
                 [in] GLint y,
                 [in] GLsizei width,
                 [in] GLsizei height);
+  void GenAndBindSharedHandleTexture([in] PP_Resource context,
+                                     [in] GLsizei n,
+                                     [in] GLint width,
+                                     [in] GLint height,
+                                     [in] GLuint64 handle,
+                                     [out] GLuint_ptr_t textures);
+  void CreatePbufferFromClientBufferEGL([in] PP_Resource context,
+                                        [in] GLint width,
+                                        [in] GLint height,
+                                        [in] GLuint64 handle,
+                                        [out] GLuint64_ptr_t surface);
+  void BindTexImageEGL([in] PP_Resource context,
+                       [in] GLuint64 surface);
+  void ReleaseTexImageEGL([in] PP_Resource context,
+                          [in] GLuint64 surface);
+  void DestroySurfaceEGL([in] PP_Resource context,
+                         [in] GLuint64 surface);
 };
 
 

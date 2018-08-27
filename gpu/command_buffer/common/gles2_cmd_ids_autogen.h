@@ -341,7 +341,12 @@
   OP(CreateGpuFenceINTERNAL)                               /* 582 */ \
   OP(WaitGpuFenceCHROMIUM)                                 /* 583 */ \
   OP(DestroyGpuFenceCHROMIUM)                              /* 584 */ \
-  OP(SetReadbackBufferShadowAllocationINTERNAL)            /* 585 */
+  OP(SetReadbackBufferShadowAllocationINTERNAL)            /* 585 */ \
+  OP(GenAndBindSharedHandleTextureImmediate)               /* 586 */ \
+  OP(CreatePbufferFromClientBufferEGL)                     /* 587 */ \
+  OP(BindTexImageEGL)                                      /* 588 */ \
+  OP(ReleaseTexImageEGL)                                   /* 589 */ \
+  OP(DestroySurfaceEGL)                                    /* 590 */
 
 enum CommandId {
   kOneBeforeStartPoint =

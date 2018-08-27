@@ -428,6 +428,7 @@ class GLES2_IMPL_EXPORT GLES2Implementation : public GLES2Interface,
   void BindRenderbufferStub(GLenum target, GLuint renderbuffer);
   void BindTextureStub(GLenum target, GLuint texture);
 
+  void GenAndBindSharedHandleTextureHelper(GLsizei n, GLint width, GLint height, GLuint64 handle, const GLuint* textures);
   void GenBuffersHelper(GLsizei n, const GLuint* buffers);
   void GenFramebuffersHelper(GLsizei n, const GLuint* framebuffers);
   void GenRenderbuffersHelper(GLsizei n, const GLuint* renderbuffers);

@@ -2834,5 +2834,55 @@ error::Error GLES2DecoderPassthroughImpl::HandleDestroyGpuFenceCHROMIUM(
   return DoDestroyGpuFenceCHROMIUM(gpu_fence_id);
 }
 
+error::Error GLES2DecoderPassthroughImpl::HandleCreatePbufferFromClientBufferEGL(
+    uint32_t immediate_data_size,
+    const volatile void* cmd_data) {
+  const volatile gles2::cmds::CreatePbufferFromClientBufferEGL& c =
+      *static_cast<const volatile gles2::cmds::CreatePbufferFromClientBufferEGL*>(cmd_data);
+  GLint width = static_cast<GLint>(c.width);
+  GLint height = static_cast<GLint>(c.height);
+  GLuint64 handle = static_cast<GLuint64>(c.handle());
+  uint32_t bucket_id = c.bucket_id;
+  GLuint64 surface;
+
+  error::Error error = DoCreatePbufferFromClientBufferEGL(width, height, handle, &surface);
+  if (error != error::kNoError) {
+    return error;
+  }
+
+  Bucket* bucket = CreateBucket(bucket_id);
+  bucket->SetSize(sizeof(EGLSurface));
+  bucket->SetData(&surface, 0, sizeof(EGLSurface));
+  return error::kNoError;
+}
+
+error::Error GLES2DecoderPassthroughImpl::HandleBindTexImageEGL(
+    uint32_t immediate_data_size,
+    const volatile void* cmd_data) {
+  const volatile gles2::cmds::BindTexImageEGL& c =
+      *static_cast<const volatile gles2::cmds::BindTexImageEGL*>(cmd_data);
+  GLuint64 surface = reinterpret_cast<GLuint64>(c.surface());
+  return DoBindTexImageEGL(surface);
+}
+
+error::Error GLES2DecoderPassthroughImpl::HandleReleaseTexImageEGL(
+    uint32_t immediate_data_size,
+    const volatile void* cmd_data) {
+  const volatile gles2::cmds::ReleaseTexImageEGL& c =
+      *static_cast<const volatile gles2::cmds::ReleaseTexImageEGL*>(cmd_data);
+  GLuint64 surface = reinterpret_cast<GLuint64>(c.surface());
+  return DoReleaseTexImageEGL(surface);
+}
+
+error::Error GLES2DecoderPassthroughImpl::HandleDestroySurfaceEGL(
+    uint32_t immediate_data_size,
+    const volatile void* cmd_data) {
+  const volatile gles2::cmds::DestroySurfaceEGL& c =
+      *static_cast<const volatile gles2::cmds::DestroySurfaceEGL*>(cmd_data);
+  GLuint64 surface = reinterpret_cast<GLuint64>(c.surface());
+  return DoDestroySurfaceEGL(surface);
+}
+
+
 }  // namespace gles2
 }  // namespace gpu

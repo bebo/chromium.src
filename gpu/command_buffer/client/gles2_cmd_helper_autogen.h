@@ -3328,4 +3328,53 @@ void SetReadbackBufferShadowAllocationINTERNAL(GLuint buffer_id,
   }
 }
 
+void GenAndBindSharedHandleTextureImmediate(GLsizei n,
+                                            GLint width,
+                                            GLint height,
+                                            GLuint64 handle,
+                                            GLuint* textures) {
+  const uint32_t size =
+      gles2::cmds::GenAndBindSharedHandleTextureImmediate::ComputeSize(n);
+  gles2::cmds::GenAndBindSharedHandleTextureImmediate* c =
+      GetImmediateCmdSpaceTotalSize<
+          gles2::cmds::GenAndBindSharedHandleTextureImmediate>(size);
+  if (c) {
+    c->Init(n, width, height, handle, textures);
+  }
+}
+
+void CreatePbufferFromClientBufferEGL(GLint width,
+                                      GLint height,
+                                      GLuint64 handle,
+                                      uint32_t bucket_id) {
+  gles2::cmds::CreatePbufferFromClientBufferEGL* c =
+      GetCmdSpace<gles2::cmds::CreatePbufferFromClientBufferEGL>();
+  if (c) {
+    c->Init(width, height, handle, bucket_id);
+  }
+}
+
+void BindTexImageEGL(GLuint64 surface) {
+  gles2::cmds::BindTexImageEGL* c = GetCmdSpace<gles2::cmds::BindTexImageEGL>();
+  if (c) {
+    c->Init(surface);
+  }
+}
+
+void ReleaseTexImageEGL(GLuint64 surface) {
+  gles2::cmds::ReleaseTexImageEGL* c =
+      GetCmdSpace<gles2::cmds::ReleaseTexImageEGL>();
+  if (c) {
+    c->Init(surface);
+  }
+}
+
+void DestroySurfaceEGL(GLuint64 surface) {
+  gles2::cmds::DestroySurfaceEGL* c =
+      GetCmdSpace<gles2::cmds::DestroySurfaceEGL>();
+  if (c) {
+    c->Init(surface);
+  }
+}
+
 #endif  // GPU_COMMAND_BUFFER_CLIENT_GLES2_CMD_HELPER_AUTOGEN_H_

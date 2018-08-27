@@ -5290,6 +5290,42 @@ error::Error GLES2DecoderImpl::HandleSetReadbackBufferShadowAllocationINTERNAL(
   return error::kNoError;
 }
 
+error::Error GLES2DecoderImpl::HandleGenAndBindSharedHandleTextureImmediate(
+    uint32_t immediate_data_size,
+    const volatile void* cmd_data) {
+  const volatile gles2::cmds::GenAndBindSharedHandleTextureImmediate& c =
+      *static_cast<
+          const volatile gles2::cmds::GenAndBindSharedHandleTextureImmediate*>(
+          cmd_data);
+  GLsizei n = static_cast<GLsizei>(c.n);
+  GLint width = static_cast<GLint>(c.width);
+  GLint height = static_cast<GLint>(c.height);
+  GLuint64 handle = c.handle();
+  uint32_t data_size;
+  if (!SafeMultiplyUint32(n, sizeof(GLuint), &data_size)) {
+    return error::kOutOfBounds;
+  }
+  volatile GLuint* textures =
+      GetImmediateDataAs<volatile GLuint*>(c, data_size, immediate_data_size);
+  if (n < 0) {
+    LOCAL_SET_GL_ERROR(GL_INVALID_VALUE, "glGenAndBindSharedHandleTexture",
+                       "n < 0");
+    return error::kNoError;
+  }
+  if (textures == NULL) {
+    return error::kOutOfBounds;
+  }
+  auto textures_copy = std::make_unique<GLuint[]>(n);
+  GLuint* textures_safe = textures_copy.get();
+  std::copy(textures, textures + n, textures_safe);
+  if (!CheckUniqueAndNonNullIds(n, textures_safe) ||
+      !GenAndBindSharedHandleTextureHelper(n, width, height, handle,
+                                           textures_safe)) {
+    return error::kInvalidArguments;
+  }
+  return error::kNoError;
+}
+
 bool GLES2DecoderImpl::SetCapabilityState(GLenum cap, bool enabled) {
   switch (cap) {
     case GL_BLEND:

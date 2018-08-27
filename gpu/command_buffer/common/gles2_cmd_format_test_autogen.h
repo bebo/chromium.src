@@ -5435,4 +5435,70 @@ TEST_F(GLES2FormatTest, SetReadbackBufferShadowAllocationINTERNAL) {
   CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
 }
 
+TEST_F(GLES2FormatTest, GenAndBindSharedHandleTextureImmediate) {
+  static GLuint ids[] = {
+      12, 23, 34,
+  };
+  cmds::GenAndBindSharedHandleTextureImmediate& cmd =
+      *GetBufferAs<cmds::GenAndBindSharedHandleTextureImmediate>();
+  void* next_cmd = cmd.Set(&cmd, static_cast<GLsizei>(arraysize(ids)), ids);
+  EXPECT_EQ(static_cast<uint32_t>(
+                cmds::GenAndBindSharedHandleTextureImmediate::kCmdId),
+            cmd.header.command);
+  EXPECT_EQ(sizeof(cmd) + RoundSizeToMultipleOfEntries(cmd.n * 4u),
+            cmd.header.size * 4u);
+  EXPECT_EQ(static_cast<GLsizei>(arraysize(ids)), cmd.n);
+  CheckBytesWrittenMatchesExpectedSize(
+      next_cmd,
+      sizeof(cmd) + RoundSizeToMultipleOfEntries(arraysize(ids) * 4u));
+  EXPECT_EQ(0, memcmp(ids, ImmediateDataAddress(&cmd), sizeof(ids)));
+}
+
+TEST_F(GLES2FormatTest, CreatePbufferFromClientBufferEGL) {
+  cmds::CreatePbufferFromClientBufferEGL& cmd =
+      *GetBufferAs<cmds::CreatePbufferFromClientBufferEGL>();
+  void* next_cmd =
+      cmd.Set(&cmd, static_cast<GLint>(11), static_cast<GLint>(12),
+              static_cast<GLuint64>(13), static_cast<uint32_t>(14));
+  EXPECT_EQ(
+      static_cast<uint32_t>(cmds::CreatePbufferFromClientBufferEGL::kCmdId),
+      cmd.header.command);
+  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
+  EXPECT_EQ(static_cast<GLint>(11), cmd.width);
+  EXPECT_EQ(static_cast<GLint>(12), cmd.height);
+  EXPECT_EQ(static_cast<GLuint64>(13), cmd.handle());
+  EXPECT_EQ(static_cast<uint32_t>(14), cmd.bucket_id);
+  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
+}
+
+TEST_F(GLES2FormatTest, BindTexImageEGL) {
+  cmds::BindTexImageEGL& cmd = *GetBufferAs<cmds::BindTexImageEGL>();
+  void* next_cmd = cmd.Set(&cmd, static_cast<GLuint64>(11));
+  EXPECT_EQ(static_cast<uint32_t>(cmds::BindTexImageEGL::kCmdId),
+            cmd.header.command);
+  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
+  EXPECT_EQ(static_cast<GLuint64>(11), cmd.surface());
+  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
+}
+
+TEST_F(GLES2FormatTest, ReleaseTexImageEGL) {
+  cmds::ReleaseTexImageEGL& cmd = *GetBufferAs<cmds::ReleaseTexImageEGL>();
+  void* next_cmd = cmd.Set(&cmd, static_cast<GLuint64>(11));
+  EXPECT_EQ(static_cast<uint32_t>(cmds::ReleaseTexImageEGL::kCmdId),
+            cmd.header.command);
+  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
+  EXPECT_EQ(static_cast<GLuint64>(11), cmd.surface());
+  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
+}
+
+TEST_F(GLES2FormatTest, DestroySurfaceEGL) {
+  cmds::DestroySurfaceEGL& cmd = *GetBufferAs<cmds::DestroySurfaceEGL>();
+  void* next_cmd = cmd.Set(&cmd, static_cast<GLuint64>(11));
+  EXPECT_EQ(static_cast<uint32_t>(cmds::DestroySurfaceEGL::kCmdId),
+            cmd.header.command);
+  EXPECT_EQ(sizeof(cmd), cmd.header.size * 4u);
+  EXPECT_EQ(static_cast<GLuint64>(11), cmd.surface());
+  CheckBytesWrittenMatchesExpectedSize(next_cmd, sizeof(cmd));
+}
+
 #endif  // GPU_COMMAND_BUFFER_COMMON_GLES2_CMD_FORMAT_TEST_AUTOGEN_H_

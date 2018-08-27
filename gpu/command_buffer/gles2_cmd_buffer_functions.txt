@@ -394,3 +394,10 @@ GL_APICALL void         GL_APIENTRY glDestroyGpuFenceCHROMIUM (GLuint gpu_fence_
 GL_APICALL void         GL_APIENTRY glInvalidateReadbackBufferShadowDataCHROMIUM (GLidBuffer buffer_id);
 // (used for CHROMIUM_nonblocking_readback implementation)
 GL_APICALL void         GL_APIENTRY glSetReadbackBufferShadowAllocationINTERNAL (GLidBuffer buffer_id, GLint shm_id, GLuint shm_offset, GLuint size);
+
+// EGL shared texture
+GL_APICALL void         GL_APIENTRY glGenAndBindSharedHandleTexture (GLsizei n, GLint width, GLint height, GLuint64 handle, GLuint* textures);
+GL_APICALL void         GL_APIENTRY glCreatePbufferFromClientBufferEGL (GLint width, GLint height, GLuint64 handle, GLuint64* surface);
+GL_APICALL void         GL_APIENTRY glBindTexImageEGL (GLuint64 surface);
+GL_APICALL void         GL_APIENTRY glReleaseTexImageEGL (GLuint64 surface);
+GL_APICALL void         GL_APIENTRY glDestroySurfaceEGL (GLuint64 surface);

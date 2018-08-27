@@ -2441,6 +2441,274 @@ TEST_P(%(test_name)s, %(name)sInvalidArgs) {
     f.write("}\n")
     f.write("\n")
 
+class GenBindHandler(TypeHandler):
+  """Handler for glGen___ type functions."""
+
+  def InitFunction(self, func):
+    """Overrriden from TypeHandler."""
+    pass
+
+  def WriteGetDataSizeCode(self, func, f):
+    """Overrriden from TypeHandler."""
+    code = """  uint32_t data_size;
+  if (!%sSafeMultiplyUint32(n, sizeof(GLuint), &data_size)) {
+    return error::kOutOfBounds;
+  }
+""" % _Namespace()
+    f.write(code)
+
+  def WriteHandlerImplementation (self, func, f):
+    """Overrriden from TypeHandler."""
+    raise NotImplementedError("GENn functions are immediate")
+
+  def WriteImmediateHandlerImplementation(self, func, f):
+    """Overrriden from TypeHandler."""
+    args = list(map(lambda x: x.name, func.GetCmdArgs()))
+    param_name = func.GetLastOriginalArg().name
+    f.write("  auto %(name)s_copy = std::make_unique<GLuint[]>(n);\n"
+            "  GLuint* %(name)s_safe = %(name)s_copy.get();\n"
+            "  std::copy(%(name)s, %(name)s + n, %(name)s_safe);\n"
+            "  if (!%(ns)sCheckUniqueAndNonNullIds(n, %(name)s_safe) ||\n"
+            "      !%(func)sHelper(%(args)s, %(name)s_safe)) {\n"
+            "    return error::kInvalidArguments;\n"
+            "  }\n" % {'name': param_name,
+                       'func': func.original_name,
+                       'ns': _Namespace(),
+                       'args': ", ".join(args)})
+
+  def WriteGLES2Implementation(self, func, f):
+    """Overrriden from TypeHandler."""
+    log_code = ("""  GPU_CLIENT_LOG_CODE_BLOCK({
+    for (GLsizei i = 0; i < n; ++i) {
+      GPU_CLIENT_LOG("  " << i << ": " << %s[i]);
+    }
+  });""" % func.GetOriginalArgs()[1].name)
+    args = {
+        'log_code': log_code,
+        'return_type': func.return_type,
+        'prefix' : _prefix,
+        'name': func.original_name,
+        'typed_args': func.MakeTypedOriginalArgString(""),
+        'args': func.MakeOriginalArgString(""),
+        'resource_types': func.GetInfo('resource_types'),
+        'count_name': func.GetOriginalArgs()[0].name,
+        'last_param_name': func.GetLastOriginalArg().name
+      }
+    f.write(
+        "%(return_type)s %(prefix)sImplementation::"
+        "%(name)s(%(typed_args)s) {\n" %
+        args)
+    func.WriteDestinationInitalizationValidation(f)
+    self.WriteClientGLCallLog(func, f)
+    for arg in func.GetOriginalArgs():
+      arg.WriteClientSideValidationCode(f, func)
+    not_shared = func.GetInfo('not_shared')
+    if not_shared:
+      alloc_code = ("""\
+      IdAllocator* id_allocator = GetIdAllocator(IdNamespaces::k%s);
+      for (GLsizei ii = 0; ii < n; ++ii)
+      %s[ii] = id_allocator->AllocateID();""" %
+      (func.GetInfo('resource_types'), func.GetOriginalArgs()[1].name))
+    else:
+      alloc_code = ("""\
+      GetIdHandler(SharedIdNamespaces::k%(resource_types)s)->
+      MakeIds(this, 0, n, %(last_param_name)s);""" % args) # JAKE
+    args['alloc_code'] = alloc_code
+
+    code = """\
+    GPU_CLIENT_SINGLE_THREAD_CHECK();
+    %(alloc_code)s
+    %(name)sHelper(%(args)s);
+    helper_->%(name)sImmediate(%(args)s);
+    """
+    if not not_shared:
+      code += """\
+      if (share_group_->bind_generates_resource())
+      helper_->CommandBufferHelper::Flush();
+      """
+    code += """\
+    %(log_code)s
+    CheckGLError();
+    }
+
+    """
+    f.write(code % args)
+
+  def WriteGLES2ImplementationUnitTest(self, func, f):
+    """Overrriden from TypeHandler."""
+    code = """
+TEST_F(%(prefix)sImplementationTest, %(name)s) {
+  GLuint ids[2] = { 0, };
+  struct Cmds {
+    cmds::%(name)sImmediate gen;
+    GLuint data[2];
+  };
+  Cmds expected;
+  expected.gen.Init(arraysize(ids), &ids[0]);
+  expected.data[0] = k%(types)sStartId;
+  expected.data[1] = k%(types)sStartId + 1;
+  gl_->%(name)s(arraysize(ids), &ids[0]);
+  EXPECT_EQ(0, memcmp(&expected, commands_, sizeof(expected)));
+  EXPECT_EQ(k%(types)sStartId, ids[0]);
+  EXPECT_EQ(k%(types)sStartId + 1, ids[1]);
+}
+"""
+    f.write(code % {
+          'prefix' : _prefix,
+          'name': func.name,
+          'types': func.GetInfo('resource_types'),
+        })
+
+  def WriteServiceUnitTest(self, func, f, *extras):
+    """Overrriden from TypeHandler."""
+    raise NotImplementedError("GENn functions are immediate")
+
+  def WriteImmediateServiceUnitTest(self, func, f, *extras):
+    """Overrriden from TypeHandler."""
+    valid_test = """
+TEST_P(%(test_name)s, %(name)sValidArgs) {
+  EXPECT_CALL(*gl_, %(gl_func_name)s(1, _))
+      .WillOnce(SetArgPointee<1>(kNewServiceId));
+  cmds::%(name)s* cmd = GetImmediateAs<cmds::%(name)s>();
+  GLuint temp = kNewClientId;
+  SpecializedSetup<cmds::%(name)s, 0>(true);
+  cmd->Init(1, &temp);
+  EXPECT_EQ(error::kNoError,
+            ExecuteImmediateCmd(*cmd, sizeof(temp)));
+  EXPECT_EQ(GL_NO_ERROR, GetGLError());
+  EXPECT_TRUE(Get%(resource_name)s(kNewClientId) != NULL);
+}
+"""
+    self.WriteValidUnitTest(func, f, valid_test, {
+        'resource_name': func.GetInfo('resource_type'),
+      }, *extras)
+    duplicate_id_test = """
+TEST_P(%(test_name)s, %(name)sDuplicateOrNullIds) {
+  EXPECT_CALL(*gl_, %(gl_func_name)s(_, _)).Times(0);
+  cmds::%(name)s* cmd = GetImmediateAs<cmds::%(name)s>();
+  GLuint temp[3] = {kNewClientId, kNewClientId + 1, kNewClientId};
+  SpecializedSetup<cmds::%(name)s, 1>(true);
+  cmd->Init(3, temp);
+  EXPECT_EQ(error::kInvalidArguments,
+            ExecuteImmediateCmd(*cmd, sizeof(temp)));
+  EXPECT_TRUE(Get%(resource_name)s(kNewClientId) == NULL);
+  EXPECT_TRUE(Get%(resource_name)s(kNewClientId + 1) == NULL);
+  GLuint null_id[2] = {kNewClientId, 0};
+  cmd->Init(2, null_id);
+  EXPECT_EQ(error::kInvalidArguments,
+            ExecuteImmediateCmd(*cmd, sizeof(temp)));
+  EXPECT_TRUE(Get%(resource_name)s(kNewClientId) == NULL);
+}
+    """
+    self.WriteValidUnitTest(func, f, duplicate_id_test, {
+        'resource_name': func.GetInfo('resource_type'),
+      }, *extras)
+    invalid_test = """
+TEST_P(%(test_name)s, %(name)sInvalidArgs) {
+  EXPECT_CALL(*gl_, %(gl_func_name)s(_, _)).Times(0);
+  cmds::%(name)s* cmd = GetImmediateAs<cmds::%(name)s>();
+  SpecializedSetup<cmds::%(name)s, 0>(false);
+  cmd->Init(1, &client_%(resource_name)s_id_);
+  EXPECT_EQ(error::kInvalidArguments,
+            ExecuteImmediateCmd(*cmd, sizeof(&client_%(resource_name)s_id_)));
+}
+"""
+    self.WriteValidUnitTest(func, f, invalid_test, {
+          'resource_name': func.GetInfo('resource_type').lower(),
+        }, *extras)
+
+  def WriteImmediateCmdComputeSize(self, _func, f):
+    """Overrriden from TypeHandler."""
+    f.write("  static uint32_t ComputeDataSize(GLsizei _n) {\n")
+    f.write(
+        "    return static_cast<uint32_t>(sizeof(GLuint) * _n);  // NOLINT\n")
+    f.write("  }\n")
+    f.write("\n")
+    f.write("  static uint32_t ComputeSize(GLsizei _n) {\n")
+    f.write("    return static_cast<uint32_t>(\n")
+    f.write("        sizeof(ValueType) + ComputeDataSize(_n));  // NOLINT\n")
+    f.write("  }\n")
+    f.write("\n")
+
+  def WriteImmediateCmdSetHeader(self, _func, f):
+    """Overrriden from TypeHandler."""
+    f.write("  void SetHeader(GLsizei _n) {\n")
+    f.write("    header.SetCmdByTotalSize<ValueType>(ComputeSize(_n));\n")
+    f.write("  }\n")
+    f.write("\n")
+
+  def WriteImmediateCmdInit(self, func, f):
+    """Overrriden from TypeHandler."""
+    last_arg = func.GetLastOriginalArg()
+    f.write("  void Init(%s, %s _%s) {\n" %
+               (func.MakeTypedCmdArgString("_"),
+                last_arg.type, last_arg.name))
+    f.write("    SetHeader(_n);\n")
+    args = func.GetCmdArgs()
+    for arg in args:
+      arg.WriteSetCode(f, 4, '_%s' % arg.name)
+    f.write("    memcpy(ImmediateDataAddress(this),\n")
+    f.write("           _%s, ComputeDataSize(_n));\n" % last_arg.name)
+    f.write("  }\n")
+    f.write("\n")
+
+  def WriteImmediateCmdSet(self, func, f):
+    """Overrriden from TypeHandler."""
+    last_arg = func.GetLastOriginalArg()
+    copy_args = func.MakeCmdArgString("_", False)
+    f.write("  void* Set(void* cmd%s, %s _%s) {\n" %
+               (func.MakeTypedCmdArgString("_", True),
+                last_arg.type, last_arg.name))
+    f.write("    static_cast<ValueType*>(cmd)->Init(%s, _%s);\n" %
+               (copy_args, last_arg.name))
+    f.write("    const uint32_t size = ComputeSize(_n);\n")
+    f.write("    return NextImmediateCmdAddressTotalSize<ValueType>("
+               "cmd, size);\n")
+    f.write("  }\n")
+    f.write("\n")
+
+  def WriteImmediateCmdHelper(self, func, f):
+    """Overrriden from TypeHandler."""
+    code = """  void %(name)s(%(typed_args)s) {
+    const uint32_t size = %(lp)s::cmds::%(name)s::ComputeSize(n);
+    %(lp)s::cmds::%(name)s* c =
+        GetImmediateCmdSpaceTotalSize<%(lp)s::cmds::%(name)s>(size);
+    if (c) {
+      c->Init(%(args)s);
+    }
+  }
+
+"""
+    f.write(code % {
+          "lp" : _lower_prefix,
+          "name": func.name,
+          "typed_args": func.MakeTypedOriginalArgString(""),
+          "args": func.MakeOriginalArgString(""),
+        })
+
+  def WriteImmediateFormatTest(self, func, f):
+    """Overrriden from TypeHandler."""
+    f.write("TEST_F(%sFormatTest, %s) {\n" % (_prefix, func.name))
+    f.write("  static GLuint ids[] = { 12, 23, 34, };\n")
+    f.write("  cmds::%s& cmd = *GetBufferAs<cmds::%s>();\n" %
+               (func.name, func.name))
+    f.write("  void* next_cmd = cmd.Set(\n")
+    f.write("      &cmd, static_cast<GLsizei>(arraysize(ids)), ids);\n")
+    f.write("  EXPECT_EQ(static_cast<uint32_t>(cmds::%s::kCmdId),\n" %
+               func.name)
+    f.write("            cmd.header.command);\n")
+    f.write("  EXPECT_EQ(sizeof(cmd) +\n")
+    f.write("            RoundSizeToMultipleOfEntries(cmd.n * 4u),\n")
+    f.write("            cmd.header.size * 4u);\n")
+    f.write("  EXPECT_EQ(static_cast<GLsizei>(arraysize(ids)), cmd.n);\n");
+    f.write("  CheckBytesWrittenMatchesExpectedSize(\n")
+    f.write("      next_cmd, sizeof(cmd) +\n")
+    f.write("      RoundSizeToMultipleOfEntries(arraysize(ids) * 4u));\n")
+    f.write("  EXPECT_EQ(0, memcmp(ids, ImmediateDataAddress(&cmd),\n")
+    f.write("                      sizeof(ids)));\n")
+    f.write("}\n")
+    f.write("\n")
+
 
 class CreateHandler(TypeHandler):
   """Handler for glCreate___ type functions."""
@@ -6302,6 +6570,7 @@ class GLGenerator(object):
         'Delete': DeleteHandler(),
         'DELn': DELnHandler(),
         'GENn': GENnHandler(),
+        'GenBind': GenBindHandler(),
         'GETn': GETnHandler(),
         'GLchar': GLcharHandler(),
         'GLcharN': GLcharNHandler(),
