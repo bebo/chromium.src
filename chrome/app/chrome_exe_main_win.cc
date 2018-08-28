@@ -39,6 +39,11 @@
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
 
+extern "C" {
+__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+
 namespace {
 
 // List of switches that it's safe to rendezvous early with. Fast start should
