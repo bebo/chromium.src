@@ -1505,7 +1505,8 @@ void RenderFrameHostImpl::OnDidAddMessageToConsole(
       HasWebUIScheme(delegate_->GetMainFrameLastCommittedURL());
   const int32_t resolved_level = is_web_ui ? level : ::logging::LOG_INFO;
 
-  if (!is_web_ui && resolved_level < ::logging::LOG_ERROR) {
+  if (!is_web_ui && resolved_level < ::logging::LOG_ERROR &&
+      ::logging::GetVlogVerbosity() < 1) {
     return;
   }
 
